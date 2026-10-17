@@ -180,8 +180,76 @@ def get_agent(agent_id: int) -> dict:
         o = by_id.get(other, {})
         out_rels.append({**r, "other": {"agent_id": other, "name": o.get("name"), "age": o.get("age"),
                                         "occupation": o.get("occupation")}})
-    return {"profile": profile, "state": state, "relationships": out_rels, "beliefs": [],
+    beliefs = sorted(store().list(f"agents/{agent_id}/beliefs"), key=lambda b: -int(b.get("updated_t", 0)))
+    return {"profile": profile, "state": state, "relationships": out_rels, "beliefs": beliefs,
             "watched": agent_id in _watched()}
+
+
+def _names() -> dict[int, str]:
+    return {d["agent_id"]: (d.get("row") or {}).get("name") or f"#{d['agent_id']}" for d in _agents()}
+
+
+@api.get("/agents/{agent_id}/thoughts")
+def agent_thoughts(agent_id: int, limit: int = Query(50, ge=1, le=500)) -> list[dict]:
+    """This agent's private thoughts (debrief reactions, reflections; ad thoughts from phase 4), newest first."""
+    rows = sorted(store().list(f"agents/{agent_id}/thoughts", limit=2000), key=lambda r: -int(r.get("t", 0)))
+    return rows[:limit]
+
+
+@api.get("/agents/{agent_id}/conversations")
+def agent_conversations(agent_id: int, limit: int = Query(100, ge=1, le=500)) -> list[dict]:
+    """Conversations this agent took part in, newest first (`with` resolved to a name)."""
+    names = _names()
+    rows = sorted(store().list(f"agents/{agent_id}/conversations", limit=2000), key=lambda r: -int(r.get("t", 0)))
+    return [{**r, "with_name": names.get(r.get("with") or -1)} for r in rows[:limit]]
+
+
+@api.get("/conversations/{session_id}")
+def conversation(session_id: str, as_agent: int = Query(...)) -> dict:
+    """Transcript + ONLY `as_agent`'s private prep and debrief (the other side's private parts never leave)."""
+    doc = store().get("conversations", session_id)
+    if doc is None or as_agent not in doc.get("participants", []):
+        raise HTTPException(404, "unknown conversation for this agent")
+    mine = (doc.get("private") or {}).get(str(as_agent), {})
+    names = _names()
+    return {"conversation": doc["conversation"], "messages": doc.get("messages", []),
+            "share_plan": mine.get("share_plan"), "debrief": mine.get("debrief"), "store_thoughts": [],
+            "names": {str(p): names.get(p) for p in doc.get("participants", [])}}
+
+
+@api.get("/agents/{agent_id}/memories")
+def agent_memories(agent_id: int, q: str = "", limit: int = Query(100, ge=1, le=500)) -> list[dict]:
+    """This agent's episodic memories (no embeddings), newest first; `q` filters by text."""
+    rows = [{k: v for k, v in r.items() if k != "embedding"} for r in store().list(f"agents/{agent_id}/memories",
+                                                                                   limit=2000)]
+    rows = [r for r in rows if r.get("agent_id") == agent_id and (not q or q.lower() in r.get("text", "").lower())]
+    return sorted(rows, key=lambda r: (-int(r.get("t", 0)), r.get("mid", "")))[:limit]
+
+
+@api.get("/world/highlights")
+def highlights(day: int = Query(..., ge=1)) -> dict:
+    """Highlights JSON for a completed sim day (W-08)."""
+    import json
+
+    from population.genesis import genesis_bucket
+    from shared.files import get_files
+
+    files, bucket = get_files(), genesis_bucket(get_settings())
+    key = f"highlights/day-{day}.json"
+    if not files.exists(bucket, key):
+        raise HTTPException(404, "no highlights for that day yet")
+    return json.loads(files.read(bucket, key))
+
+
+@api.get("/world/highlights/days")
+def highlight_days() -> dict:
+    """Completed days with highlights (latest 14)."""
+    from population.genesis import genesis_bucket
+    from shared.files import get_files
+
+    files, bucket = get_files(), genesis_bucket(get_settings())
+    today = simtime.day_of(_now_t())
+    return {"days": [d for d in range(max(1, today - 14), today) if files.exists(bucket, f"highlights/day-{d}.json")]}
 
 
 class Watchlist(BaseModel):

@@ -11,6 +11,7 @@ from engine import checkpoint
 from engine.clock import Clock
 from engine.events import EventBus, Sink
 from engine.governor import BudgetGovernor
+from engine.highlights import HighlightRecorder, day_of_end, encode, key_for
 from engine.lease import Lease
 from engine.live import LiveHub
 from engine.social_rt import SocialRuntime
@@ -21,6 +22,7 @@ from shared import time as simtime
 from shared.files import Files
 from shared.llm import LLMClient, get_llm
 from shared.schemas.agent import AgentProfile, AgentState
+from shared.schemas.events import Event
 from shared.settings import Settings
 from shared.store import DocStore
 from world.map import WorldMap, get_map
@@ -58,6 +60,8 @@ class Engine:
         self.gov = BudgetGovernor()
         self.social_enabled = social
         self.social: SocialRuntime | None = None
+        self.highlights: HighlightRecorder | None = None
+        self._first_line: dict[str, str] = {}
         self.hub = LiveHub()
         self.world: World | None = None
         self.bus: EventBus | None = None
@@ -92,6 +96,9 @@ class Engine:
                                         g["relationships"], watched=watched)
             if ck is not None and ck.get("social"):
                 self.social.load(ck["social"])
+        self.highlights = HighlightRecorder({p.agent_id: p.name.split()[0] for p in g["profiles"]})
+        if ck is not None and ck.get("highlights"):
+            self.highlights.load(ck["highlights"])
         replay = 0
         while w.t < last_flushed:
             w.step()
@@ -100,6 +107,7 @@ class Engine:
         self.bus.suppress_until_t = -1          # replay done: everything from here on is new
         if self.social is not None:
             self.bus.listeners.append(self.social.on_event)
+        self.bus.listeners.append(self._highlight_event)
         self.world = w
         self.bus.new("engine_start", w.t, None, {"holder": self.lease.holder, "resumed_from": ck["t"] if ck else None,
                                                  "replayed_ticks": replay})
@@ -151,6 +159,13 @@ class Engine:
         w.step()
         if self.social is not None:
             await self.social.tick(w, bus)
+        if self.highlights is not None:
+            self.highlights.sample(w.t, [w.position(a, float(w.t))[:2] for a in w.agents])
+            done = day_of_end(w.t)
+            if done is not None:
+                h = self.highlights.finish_day(done)
+                await asyncio.to_thread(self.files.write, self.bucket, key_for(done), encode(h))
+                self._first_line.clear()
         if w.t % 60 == 0:
             gs = self.gov.on_sim_hour(w.t)
             self.clock.slowed = self.gov.slowed
@@ -177,6 +192,8 @@ class Engine:
         state = w.to_checkpoint()
         if self.social is not None:
             state["social"] = self.social.to_dict()
+        if self.highlights is not None:
+            state["highlights"] = self.highlights.to_dict()
         info = await asyncio.to_thread(checkpoint.save, self.files, self.bucket, self.store, state)
         docs = {}
         for a in w.agents:
@@ -226,6 +243,18 @@ class Engine:
         """SIGTERM on deploy: hand off and stop."""
         self._stop.set()
         await self.handoff()
+
+    def _highlight_event(self, ev: Event) -> None:
+        """Bus listener feeding the day's highlight candidates."""
+        if self.highlights is None or self.world is None:
+            return
+        if ev.kind == "message" and ev.payload.get("seq") == 0 and ev.session_id:
+            self._first_line[ev.session_id] = ev.payload.get("text", "")
+            return
+        xy = None
+        if ev.agent_id is not None and 0 <= ev.agent_id < len(self.world.agents):
+            xy = self.world.position(self.world.agents[ev.agent_id], float(ev.t))[:2]
+        self.highlights.on_event(ev, xy, self._first_line.pop(ev.session_id or "", ""))
 
     # ------------------------------------------------------------------ views
     def budget(self) -> dict[str, float]:

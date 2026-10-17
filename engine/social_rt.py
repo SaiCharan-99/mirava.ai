@@ -176,7 +176,11 @@ class SocialRuntime:
                 aid = int(key.split(":")[1])
                 if res is not None:
                     payload, cost = res
-                    bus.new("reflection", t, aid, payload)
+                    ev = bus.new("reflection", t, aid, payload)
+                    self._background(asyncio.to_thread(self.store.set, f"agents/{aid}/thoughts", ev.event_id, {
+                        "t": t, "label": simtime.fmt(t), "kind": "reflection", "agent_id": aid,
+                        "trigger": {"channel": "reflection"}, "text": payload["text"], "product_id": None,
+                        "attitude_delta": None}))
                     self.gov.record(cost, "P3")
                     self.stats["cost_usd"] += cost
                     self.stats["reflections"] += 1
@@ -188,9 +192,11 @@ class SocialRuntime:
     def _emit(self, w: World, bus: EventBus, out: Outcome, t: int, pclass: str) -> None:
         """Emit an outcome's events, texts, live items and working-memory notes."""
         texts: list[tuple[str, int, str | None, str, int]] = []
+        emitted: list[Event] = []
         for spec in out.events:
             ev = bus.new(spec["kind"], t, spec["agent_id"], spec["payload"], other_id=spec.get("other_id"),
                          session_id=out.session_id, rendered=out.rendered)
+            emitted.append(ev)
             p = spec["payload"]
             if spec["kind"] == "message":
                 texts.append(("message", ev.agent_id or 0, ev.event_id, p["text"], t))
@@ -204,6 +210,7 @@ class SocialRuntime:
                 for x in (spec["agent_id"], spec.get("other_id")):
                     if x is not None:
                         self.remember(x, f"Chatted briefly about {p['topic']}.", 2, "conversation", t)
+        self._background(asyncio.to_thread(self._persist, out, emitted, t))
         if out.messages:
             first = out.messages[0]
             w.live_evts.append({"k": "bubble", "session_id": out.session_id, "a": first.speaker, "b": first.listener,
@@ -215,9 +222,49 @@ class SocialRuntime:
             self.gov.record(out.cost_usd, pclass)
             self.stats["cost_usd"] += out.cost_usd
         if texts:
-            fut = asyncio.ensure_future(self._texts(bus, texts, out.session_id))
-            self._bg.add(fut)
-            fut.add_done_callback(self._bg.discard)
+            self._background(self._texts(bus, texts, out.session_id))
+
+    def _background(self, coro: Awaitable[Any]) -> None:
+        """Fire-and-forget with a strong reference (best-effort side writes)."""
+        fut = asyncio.ensure_future(coro)
+        self._bg.add(fut)
+        fut.add_done_callback(self._bg.discard)
+
+    def _persist(self, out: Outcome, events: list[Event], t: int) -> None:
+        """Firestore read models for the profile: `conversations/{sid}` and `agents/{id}/thoughts/{eid}`."""
+        conv = next((e for e in events if e.kind in ("conversation", "interaction")), None)
+        if conv is None:
+            return
+        private: dict[str, dict[str, Any]] = {}
+        for e in events:
+            if e.kind in ("share_plan", "debrief") and e.agent_id is not None:
+                private.setdefault(str(e.agent_id), {})[e.kind] = e.payload
+        msgs = [{"seq": e.payload["seq"], "speaker": e.payload["speaker"], "listener": e.payload["listener"],
+                 "text": e.payload["text"], "t": e.t, "event_id": e.event_id} for e in events if e.kind == "message"]
+        participants = sorted({x for x in (conv.agent_id, conv.other_id) if x is not None})
+        summary = conv.payload if conv.kind == "conversation" else {
+            "session_id": out.session_id, "participants": participants, "kind": conv.payload.get("conv_kind"),
+            "t_start": t, "t_end": t + out.minutes, "topics": [conv.payload.get("topic")], "n_messages": 0,
+            "rendered": False}
+        self.store.set("conversations", out.session_id, {"session_id": out.session_id, "participants": participants,
+                                                         "t": t, "conversation": summary, "messages": msgs,
+                                                         "private": private})
+        for me in participants:
+            other = next((x for x in participants if x != me), None)
+            self.store.set(f"agents/{me}/conversations", out.session_id, {
+                "session_id": out.session_id, "with": other, "kind": summary.get("kind"), "t": t,
+                "label": simtime.fmt(t), "topics": summary.get("topics") or [], "n_messages": summary.get("n_messages", 0),
+                "rendered": bool(summary.get("rendered")), "first_line": msgs[0]["text"] if msgs else ""})
+        for e in events:
+            if e.kind != "debrief" or e.agent_id is None:
+                continue
+            deltas = e.payload.get("belief_deltas") or []
+            prod = next((d["subject"].split(":", 1)[1] for d in deltas if d["subject"].startswith("product:")), None)
+            self.store.set(f"agents/{e.agent_id}/thoughts", e.event_id, {
+                "t": e.t, "label": simtime.fmt(e.t), "kind": "debrief", "agent_id": e.agent_id,
+                "trigger": {"channel": "conversation", "session_id": out.session_id},
+                "text": e.payload.get("reaction", ""), "product_id": prod,
+                "attitude_delta": round(sum(float(d["attitude_delta"]) for d in deltas), 2) if deltas else None})
 
     async def _texts(self, bus: EventBus, rows: list[tuple[str, int, str | None, str, int]],
                      session_id: str | None = None) -> None:

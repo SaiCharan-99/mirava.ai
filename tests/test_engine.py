@@ -207,6 +207,12 @@ async def test_engine_social_day(tmp_path):
     assert all(ev["private"] for ev in sink.events if ev["kind"] in ("share_plan", "debrief", "reflection"))
     assert any(t["kind"] == "message" and t["embedding"] and len(t["embedding"]) == 768 for t in sink.texts)
     assert "budget" in kinds and e.state()["budget"]["used_usd"] >= 0
+    await asyncio.sleep(0.2)
+    h = json.loads(e.files.read(e.bucket, "highlights/day-1.json"))
+    assert h["day"] == 1 and 0 < len(h["moments"]) <= 40 and len(h["samples"]["positions"]) == 144
+    assert [m["t"] for m in h["moments"]] == sorted(m["t"] for m in h["moments"])
+    convs_docs = e.store.list("conversations")
+    assert convs_docs and all(set(d["private"]) <= {str(p) for p in d["participants"]} for d in convs_docs)
     e2, sink2 = await _social_day(tmp_path / "b", 1440 + 200)
     strip = lambda evs: [(x["event_id"], json.dumps(x["payload"], sort_keys=True, default=str))  # noqa: E731
                          for x in evs if x["kind"] not in ("budget", "engine_start")]
