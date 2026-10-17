@@ -99,7 +99,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 01 | GCP project, billing, budget alert, gcloud + ADC | 1 | ✅ | 2026-10-17 | project mirava-ai-hack (#760833706192), free trial, billing ✅, ADC ✅ (saicharangobburu@gmail.com); budget alert set in console by user |
 | 02 | APIs enabled, service accounts + roles | 1 | ✅ | 2026-10-17 | 19 APIs (+billingbudgets); SAs mirava-api, mirava-engine, mirava-analyst-ro, mirava-scheduler; roles per guide 02 (run.invoker on world-engine in phase 2) |
 | 03 | Secret Manager `openrouter-api-key` | 1 | ✅ | 2026-10-17 | version 1 = dev key from .env (rotate to a prod key in phase 6); accessor: mirava-api, mirava-engine |
-| 04 | Artifact Registry `launch-lens`, Cloud Build permissions | 1 | ⬜ | | |
+| 04 | Artifact Registry `mirava`, Cloud Build permissions | 1 | ✅ | 2026-10-17 | repo asia-south1/mirava; builds run as 760833706192-compute SA (deploy roles granted, also to legacy cloudbuild SA) |
 | 05 | Cloud Run `launch-lens-api` | 1 | ⬜ | | |
 | 06 | Firebase Hosting | 1 | ⬜ | | |
 | 07 | Firestore emulator (local) | 1 | ✅ | 2026-10-17 | 127.0.0.1:8080; needs Java 21+ (Temurin 25 JRE installed) |
