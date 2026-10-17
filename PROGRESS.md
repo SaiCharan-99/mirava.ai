@@ -97,7 +97,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 00 | OpenRouter account, API key in `.env`, models verified, credit limit | 1 | ✅ | 2026-10-17 | key in .env only; 4 model ids listed; llm-smoke OK (structured + 768-d embedding) |
 | 15 | OpenStreetMap extract for Indiranagar (only if Overpass is blocked) | 1 | not needed | 2026-10-17 | Overpass reachable; extract committed |
 | 01 | GCP project, billing, budget alert, gcloud + ADC | 1 | ✅ | 2026-10-17 | project mirava-ai-hack (#760833706192), free trial, billing ✅, ADC ✅ (saicharangobburu@gmail.com); budget alert set in console by user |
-| 02 | APIs enabled, service accounts + roles | 1 | ⬜ | | |
+| 02 | APIs enabled, service accounts + roles | 1 | ✅ | 2026-10-17 | 19 APIs (+billingbudgets); SAs mirava-api, mirava-engine, mirava-analyst-ro, mirava-scheduler; roles per guide 02 (run.invoker on world-engine in phase 2) |
 | 03 | Secret Manager `openrouter-api-key` | 1 | ⬜ | | |
 | 04 | Artifact Registry `launch-lens`, Cloud Build permissions | 1 | ⬜ | | |
 | 05 | Cloud Run `launch-lens-api` | 1 | ⬜ | | |
