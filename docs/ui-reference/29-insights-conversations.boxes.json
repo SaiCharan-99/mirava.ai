@@ -1,0 +1,152 @@
+{
+ "app-header": [
+  0,
+  0,
+  1440,
+  56
+ ],
+ "header-clock": [
+  893,
+  17,
+  156,
+  21
+ ],
+ "budget-meter": [
+  1066,
+  15,
+  140,
+  25
+ ],
+ "theme-toggle": [
+  1222,
+  14,
+  71,
+  28
+ ],
+ "app-sidebar": [
+  0,
+  56,
+  232,
+  844
+ ],
+ "nav-world": [
+  10,
+  70,
+  211,
+  38
+ ],
+ "nav-launch": [
+  10,
+  110,
+  211,
+  38
+ ],
+ "nav-insights": [
+  10,
+  150,
+  211,
+  38
+ ],
+ "nav-people": [
+  10,
+  190,
+  211,
+  38
+ ],
+ "nav-guide": [
+  10,
+  267,
+  211,
+  38
+ ],
+ "world-status": [
+  16,
+  321,
+  199,
+  254
+ ],
+ "app-main": [
+  232,
+  56,
+  1208,
+  844
+ ],
+ "page-header": [
+  260,
+  78,
+  1152,
+  58
+ ],
+ "page-title": [
+  260,
+  78,
+  726,
+  33
+ ],
+ "page-actions": [
+  1079,
+  110,
+  333,
+  26
+ ],
+ "insights-tabs": [
+  260,
+  154,
+  1152,
+  41
+ ],
+ "insights-tab-ask": [
+  260,
+  154,
+  52,
+  40
+ ],
+ "insights-tab-overview": [
+  314,
+  154,
+  88,
+  40
+ ],
+ "insights-tab-sources": [
+  404,
+  154,
+  80,
+  40
+ ],
+ "insights-tab-hoardings": [
+  485,
+  154,
+  93,
+  40
+ ],
+ "insights-tab-segments": [
+  580,
+  154,
+  91,
+  40
+ ],
+ "insights-tab-conversations": [
+  673,
+  154,
+  119,
+  40
+ ],
+ "insights-tab-polls": [
+  795,
+  154,
+  58,
+  40
+ ],
+ "insights-tab-interview": [
+  855,
+  154,
+  87,
+  40
+ ],
+ "insights-body": [
+  260,
+  211,
+  1152,
+  601
+ ]
+}

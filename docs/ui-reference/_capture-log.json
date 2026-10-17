@@ -1,0 +1,11 @@
+{
+  "target": "mockup",
+  "at": "2026-10-17T15:45:10.342Z",
+  "log": [
+    {
+      "screen": "01-globe",
+      "ok": true,
+      "errors": []
+    }
+  ]
+}
