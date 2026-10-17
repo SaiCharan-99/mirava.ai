@@ -22,6 +22,8 @@ class DocStore(Protocol):
     def set_many(self, collection: str, docs: dict[str, dict], merge: bool = False) -> None: ...
     def where(self, collection: str, field: str, value: Any, limit: int = 1000) -> builtins.list[dict]: ...
     def update_if(self, collection: str, doc_id: str, pred: Callable[[dict | None], bool], data: dict) -> bool: ...
+    def nearest(self, collection: str, field: str, vector: builtins.list[float], k: int, filter_field: str,
+                filter_value: Any) -> builtins.list[dict]: ...
 
 
 _LOCK = threading.Lock()
@@ -68,6 +70,29 @@ class MemoryStoreBackend:
             self.set(collection, doc_id, data)
             return True
 
+    def nearest(self, collection: str, field: str, vector: builtins.list[float], k: int, filter_field: str,
+                filter_value: Any) -> builtins.list[dict]:
+        """Brute-force cosine nearest neighbours among docs with `filter_field == filter_value`."""
+        docs = [d for d in self.where(collection, filter_field, filter_value, limit=100_000) if d.get(field)]
+        docs.sort(key=lambda d: -sum(a * b for a, b in zip(d[field], vector, strict=False)))
+        return docs[:k]
+
+
+def _vec_in(data: dict) -> dict:
+    """Wrap `embedding` lists as Firestore Vectors so the vector index sees them."""
+    if isinstance(data.get("embedding"), list):
+        from google.cloud.firestore_v1.vector import Vector
+
+        return {**data, "embedding": Vector(data["embedding"])}
+    return data
+
+
+def _vec_out(data: dict | None) -> dict | None:
+    """Turn Firestore Vectors back into plain lists."""
+    if data is not None and data.get("embedding") is not None and not isinstance(data["embedding"], list):
+        data["embedding"] = list(data["embedding"])
+    return data
+
 
 class FirestoreBackend:
     """google-cloud-firestore; honours FIRESTORE_EMULATOR_HOST locally."""
@@ -82,11 +107,11 @@ class FirestoreBackend:
     def get(self, collection: str, doc_id: str) -> dict | None:
         """Fetch one document."""
         snap = self._db.collection(collection).document(doc_id).get()
-        return snap.to_dict() if snap.exists else None
+        return _vec_out(snap.to_dict()) if snap.exists else None
 
     def set(self, collection: str, doc_id: str, data: dict, merge: bool = False) -> None:
         """Write (or merge) one document."""
-        self._db.collection(collection).document(doc_id).set(data, merge=merge)
+        self._db.collection(collection).document(doc_id).set(_vec_in(data), merge=merge)
 
     def delete(self, collection: str, doc_id: str) -> None:
         """Delete one document."""
@@ -94,7 +119,7 @@ class FirestoreBackend:
 
     def list(self, collection: str, limit: int = 1000) -> list[dict]:
         """List up to `limit` documents."""
-        return [d.to_dict() for d in self._db.collection(collection).limit(limit).stream()]
+        return [_vec_out(d.to_dict()) or {} for d in self._db.collection(collection).limit(limit).stream()]
 
     def set_many(self, collection: str, docs: dict[str, dict], merge: bool = False) -> None:
         """Batched writes (≤ 450 per commit)."""
@@ -102,7 +127,7 @@ class FirestoreBackend:
         for i in range(0, len(items), 450):
             batch = self._db.batch()
             for k, v in items[i:i + 450]:
-                batch.set(self._db.collection(collection).document(k), v, merge=merge)
+                batch.set(self._db.collection(collection).document(k), _vec_in(v), merge=merge)
             batch.commit()
 
     def where(self, collection: str, field: str, value: Any, limit: int = 1000) -> builtins.list[dict]:
@@ -110,7 +135,7 @@ class FirestoreBackend:
         from google.cloud.firestore_v1.base_query import FieldFilter
 
         q = self._db.collection(collection).where(filter=FieldFilter(field, "==", value)).limit(limit)
-        return [d.to_dict() for d in q.stream()]
+        return [_vec_out(d.to_dict()) or {} for d in q.stream()]
 
     def update_if(self, collection: str, doc_id: str, pred: Callable[[dict | None], bool], data: dict) -> bool:
         """Transactional compare-and-set."""
@@ -127,6 +152,18 @@ class FirestoreBackend:
             return True
 
         return bool(run(self._db.transaction()))
+
+    def nearest(self, collection: str, field: str, vector: builtins.list[float], k: int, filter_field: str,
+                filter_value: Any) -> builtins.list[dict]:
+        """Vector `find_nearest` (cosine) with an equality pre-filter (needs the composite vector index)."""
+        from google.cloud.firestore_v1.base_query import FieldFilter
+        from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
+        from google.cloud.firestore_v1.vector import Vector
+
+        q = self._db.collection(collection).where(filter=FieldFilter(filter_field, "==", filter_value))
+        vq = q.find_nearest(vector_field=field, query_vector=Vector(vector), distance_measure=DistanceMeasure.COSINE,
+                            limit=k)
+        return [_vec_out(d.to_dict()) or {} for d in vq.stream()]
 
 
 _default: DocStore | None = None

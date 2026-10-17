@@ -216,7 +216,7 @@ class DecisionAdapter(Protocol):
 # DecisionResult: {choice, scores: dict[str,float], reason, engine: "openrouter"|"fake"|"laya", rendered}
 
 # mind/memory.py
-class MemoryStore(Protocol):            # constructed per agent: MemoryStore(agent_id); cannot touch other agents
+class MemoryStore(Protocol):            # constructed per agent: MemoryStore(agent_id, store, llm=None, on_event=None); cannot touch other agents
     agent_id: int
     async def add(self, entry: MemoryEntry) -> None
     async def retrieve(self, query: str, k: int = 6, kinds: list[str] | None = None) -> list[MemoryEntry]
@@ -227,7 +227,9 @@ class MemoryStore(Protocol):            # constructed per agent: MemoryStore(age
 # mind/context.py
 class AgentContext(BaseModel):          # everything a prompt may know about ONE agent
     agent_id: int; persona_card: str; now: str; beliefs: list[Belief]; memories: list[MemoryEntry]; stimulus: str
-def build(agent_id: int, purpose: str, query: str, stimulus: str = "") -> AgentContext   # ≤900 tokens
+async def build(agent_id: int, purpose: str, query: str, stimulus: str = "", *, store: DocStore,
+                llm: LLMClient | None, now: str = "", now_t: int | None = None, k: int = 6) -> AgentContext   # ≤900 tokens
+# DocStore.nearest(collection, field, vector, k, filter_field, filter_value) — find_nearest with equality pre-filter
 
 # social/sessions.py
 class SessionRegistry(Protocol):
