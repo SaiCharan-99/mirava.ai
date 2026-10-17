@@ -98,3 +98,18 @@ async def test_prune_keeps_top(world: tuple[MemoryStoreBackend, FakeGemini]) -> 
     assert removed == n0 - 10 and len(store.list(f"agents/{A}/memories")) == 10
     assert any(MARKER in m["text"] for m in store.list(f"agents/{A}/memories"))  # most important survives
     assert len(store.list(f"agents/{B}/memories")) == 35
+
+
+async def test_reflection_writes_own_memories_and_prunes(world: tuple[MemoryStoreBackend, FakeGemini]) -> None:
+    from mind.reflect import day_importance, reflect
+
+    store, llm = world
+    eps = [{"t": 700, "text": "My phone got cracked today.", "importance": 6},
+           {"t": 720, "text": "Talked to Arjun about cricket.", "importance": 7}]
+    assert day_importance(eps) >= 12
+    before_b = len(store.list(f"agents/{B}/memories"))
+    payload, cost = await reflect(A, eps, 1440, store=store, llm=llm)
+    rows = store.list(f"agents/{A}/memories")
+    assert any(r["kind"] == "reflection" for r in rows) and all(r["agent_id"] == A for r in rows)
+    assert set(payload) == {"text", "belief_updates", "pruned_count"} and payload["belief_updates"] == []
+    assert len(store.list(f"agents/{B}/memories")) == before_b and cost >= 0

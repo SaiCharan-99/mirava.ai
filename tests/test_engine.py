@@ -1,6 +1,7 @@
 """Engine: lease, determinism, checkpoint/resume, movement on the graph, live protocol, tasks, clock."""
 
 import asyncio
+import json
 import math
 import random
 
@@ -120,12 +121,12 @@ async def test_checkpoint_resume_no_duplicates(tmp_path):
     store, files, sink = MemoryStoreBackend(), LocalFiles(str(tmp_path)), NullSink()
     await run_genesis(N, 99, store=store, files=files, sink=NullSink(), llm=None, settings=s)
     kill_at = random.Random(5).randint(200, 400)
-    e1 = Engine(s, store, files, sink)
+    e1 = Engine(s, store, files, sink, social=False)
     e1.boot()
     for _ in range(kill_at):
         await e1.tick()
     # crash: no shutdown; restart from the last checkpoint and replay silently
-    e2 = Engine(s, store, files, sink)
+    e2 = Engine(s, store, files, sink, social=False)
     e2.boot()
     final = 520
     while e2.world.t < final:
@@ -133,7 +134,7 @@ async def test_checkpoint_resume_no_duplicates(tmp_path):
     await e2.bus.flush()
     ids = [e["event_id"] for e in sink.events]
     assert len(ids) == len(set(ids))
-    ref = Engine(s, MemoryStoreBackend(), files, NullSink())
+    ref = Engine(s, MemoryStoreBackend(), files, NullSink(), social=False)
     ref.store.set("world", "state", {"last_flushed_t": -1})
     ref.boot()
     while ref.world.t < final:
@@ -173,3 +174,40 @@ def test_lease_revision_handoff():
     assert not old.renew()
     old.release()
     assert new.acquire() and not new.handoff_requested()
+
+
+async def _social_day(tmp_path, ticks: int):
+    """Run an engine with the social layer for `ticks` minutes from genesis; returns (engine, sink)."""
+    s = Settings(world_agents=N, world_seed=99, checkpoint_every_sim_minutes=10**6, gcs_bucket_worlds="w",
+                 local_files_dir=str(tmp_path))
+    store, files, sink = MemoryStoreBackend(), LocalFiles(str(tmp_path)), NullSink()
+    await run_genesis(N, 99, store=store, files=files, sink=NullSink(), llm=None, settings=s)
+    e = Engine(s, store, files, sink)
+    e.boot()
+    seen_overlap = False
+    for _ in range(ticks):
+        await e.tick()
+        busy = [p for ss in e.social.sessions.sessions.values() for p in ss.participants]
+        seen_overlap |= len(busy) != len(set(busy))
+    await asyncio.sleep(0)
+    await e.bus.flush()
+    assert not seen_overlap
+    return e, sink
+
+
+async def test_engine_social_day(tmp_path):
+    e, sink = await _social_day(tmp_path / "a", 1440 + 200)
+    kinds = [ev["kind"] for ev in sink.events]
+    assert kinds.count("gate") > 0 and kinds.count("conversation") + kinds.count("interaction") > 0
+    convs = [ev for ev in sink.events if ev["kind"] == "conversation"]
+    for c in convs:
+        msgs = [m for m in sink.events if m["kind"] == "message" and m["session_id"] == c["session_id"]]
+        assert 2 <= len(msgs) <= 20 and msgs[0]["payload"]["seq"] == 0
+        assert len(msgs) == c["payload"]["n_messages"]
+    assert all(ev["private"] for ev in sink.events if ev["kind"] in ("share_plan", "debrief", "reflection"))
+    assert any(t["kind"] == "message" and t["embedding"] and len(t["embedding"]) == 768 for t in sink.texts)
+    assert "budget" in kinds and e.state()["budget"]["used_usd"] >= 0
+    e2, sink2 = await _social_day(tmp_path / "b", 1440 + 200)
+    strip = lambda evs: [(x["event_id"], json.dumps(x["payload"], sort_keys=True, default=str))  # noqa: E731
+                         for x in evs if x["kind"] not in ("budget", "engine_start")]
+    assert strip(sink.events) == strip(sink2.events)

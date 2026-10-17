@@ -310,7 +310,7 @@ def chart(spec: dict) -> dict          # ECharts option
   "awareness":{"nova-x1":0.34,"pulse-5":0.52}}
 {"type":"clock","t":31726,"speed":1.0}
 ```
-Agent `mode` values: `walk|two_wheeler|car|auto|bus|metro|idle|offmap` (`offmap` = outside the map, not drawn). `act` values: `sleep|home|commute|work|school|college|eat|cafe|gym|park|shop|store_shift|offmap_work|metro|roam`. Phase-2 `evt` items also include `{"k":"activity","a","act","place"(name or null)}`, `{"k":"life_event","a","type"}`, `{"k":"payday","a","amount"}` (DECISIONS #66).
+Agent `mode` values: `walk|two_wheeler|car|auto|bus|metro|idle|offmap` (`offmap` = outside the map, not drawn). `act` values: `sleep|home|commute|work|school|college|eat|cafe|gym|park|shop|store_shift|offmap_work|metro|roam`. Phase-2 `evt` items also include `{"k":"activity","a","act","place"(name or null)}`, `{"k":"life_event","a","type"}`, `{"k":"payday","a","amount"}` (DECISIONS #66). Phase 3 adds `{"k":"talk","a","b","session_id","topic","rendered","place"}` when a pair starts talking (they stop for ~6 sim min) and `bubble` gains `n` (message count) when the transcript is applied (DECISIONS #74).
 Notice and thought texts in `evt` are truncated to 140 characters. Full private texts are only served by the API to the profile drawer and Insights.
 
 ---

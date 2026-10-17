@@ -36,7 +36,6 @@ class Outcome:
 
     session_id: str
     events: list[dict[str, Any]] = field(default_factory=list)   # {kind, agent_id, other_id, payload, private?}
-    texts: list[dict[str, Any]] = field(default_factory=list)    # texts rows (embedding filled in)
     messages: list[Message] = field(default_factory=list)
     cost_usd: float = 0.0
     minutes: int = 3
@@ -46,10 +45,6 @@ class Outcome:
         """Queue one event spec."""
         self.events.append({"kind": kind, "agent_id": agent_id, "other_id": other_id, "payload": payload})
 
-    def text(self, kind: str, agent_id: int, text: str, private: bool, t: int) -> None:
-        """Queue one texts row."""
-        self.texts.append({"kind": kind, "agent_id": agent_id, "session_id": self.session_id, "private": private,
-                           "text": text, "t": t})
 
 
 async def unrendered(sid: str, a: Participant, b: Participant, g: GateResult, t: int, store: DocStore) -> Outcome:
@@ -82,7 +77,6 @@ async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResu
     o.cost_usd += ka + kb
     for plan, cands in ((pa, ca), (pb, cb)):
         o.ev("share_plan", plan.agent_id, {**plan.model_dump(), "candidates": [c.model_dump() for c in cands]})
-        o.text("share_plan", plan.agent_id, " | ".join(c.text for c in cands), True, t)
     msgs, out, kd, model = await write_dialogue(pa, pb, {a.agent_id: a.style, b.agent_id: b.style}, relationship,
                                                 place, MAX_STRANGER if stranger else MAX_SOCIAL, llm=llm, t=t,
                                                 product=g.product is not None, priority_class=pc)
@@ -92,7 +86,6 @@ async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResu
     for m in msgs:
         o.ev("message", m.speaker, {"seq": m.seq, "speaker": m.speaker, "listener": m.listener, "text": m.text,
                                      "conv_kind": g.kind}, m.listener)
-        o.text("message", m.speaker, m.text, False, t)
     products = list(dict.fromkeys(out.product_mentions + ([g.product] if g.product else [])))
     conv = Conversation(session_id=sid, participants=[a.agent_id, b.agent_id], place_id=place, kind=g.kind,
                         t_start=t, t_end=t + o.minutes, topics=out.topics or g.topics, product_mentions=products,
@@ -112,7 +105,6 @@ async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResu
     o.cost_usd += xa + xb
     for aid, d in ((a.agent_id, da), (b.agent_id, db)):
         o.ev("debrief", aid, d.model_dump())
-        o.text("debrief", aid, f"{d.reaction} {d.summary}", True, t_end)
         o.ev("memory_write", aid, {"mid": f"conv-{sid}-{aid}", "kind": "conversation", "importance": d.importance})
     for aid, kind, payload in sink:
         o.ev(kind, aid, payload)

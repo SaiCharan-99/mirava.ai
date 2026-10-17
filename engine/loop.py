@@ -10,12 +10,16 @@ from typing import Any
 from engine import checkpoint
 from engine.clock import Clock
 from engine.events import EventBus, Sink
+from engine.governor import BudgetGovernor
 from engine.lease import Lease
 from engine.live import LiveHub
+from engine.social_rt import SocialRuntime
 from engine.world import World
+from mind.decision import get_decider
 from population.genesis import genesis_bucket, unpack
 from shared import time as simtime
 from shared.files import Files
+from shared.llm import LLMClient, get_llm
 from shared.schemas.agent import AgentProfile, AgentState
 from shared.settings import Settings
 from shared.store import DocStore
@@ -33,6 +37,7 @@ def load_genesis(files: Files, bucket: str, version: str = "v1") -> dict[str, An
     return {"profiles": [AgentProfile.model_validate(p) for p in rd("profiles")],
             "metas": {int(k): v for k, v in rd("meta").items()},
             "states": [AgentState.model_validate(s) for s in rd("states")],
+            "relationships": rd("relationships"),
             "manifest": json.loads(files.read(bucket, f"genesis/{version}/manifest.json"))}
 
 
@@ -40,7 +45,7 @@ class Engine:
     """Owns the World while holding the lease; otherwise waits read-only."""
 
     def __init__(self, settings: Settings, store: DocStore, files: Files, sink: Sink,
-                 wm: WorldMap | None = None) -> None:
+                 wm: WorldMap | None = None, llm: LLMClient | None = None, social: bool = True) -> None:
         self.s = settings
         self.store = store
         self.files = files
@@ -49,6 +54,10 @@ class Engine:
         self.bucket = genesis_bucket(settings)
         self.clock = Clock(seconds_per_sim_day=settings.world_seconds_per_sim_day, speed=settings.world_speed)
         self.lease = Lease(store)
+        self.llm = llm or get_llm(settings)
+        self.gov = BudgetGovernor()
+        self.social_enabled = social
+        self.social: SocialRuntime | None = None
         self.hub = LiveHub()
         self.world: World | None = None
         self.bus: EventBus | None = None
@@ -77,12 +86,20 @@ class Engine:
         else:
             w.init_from_states(g["states"])
         self.bus.listeners.clear()
+        if self.social_enabled:
+            watched = {int(d["agent_id"]) for d in self.store.where("agents", "watched", True)}
+            self.social = SocialRuntime(self.store, self.llm, get_decider(self.llm, self.s), self.gov,
+                                        g["relationships"], watched=watched)
+            if ck is not None and ck.get("social"):
+                self.social.load(ck["social"])
         replay = 0
         while w.t < last_flushed:
             w.step()
             replay += 1
         self.bus.flush_sync(upto_t=w.t)
         self.bus.suppress_until_t = -1          # replay done: everything from here on is new
+        if self.social is not None:
+            self.bus.listeners.append(self.social.on_event)
         self.world = w
         self.bus.new("engine_start", w.t, None, {"holder": self.lease.holder, "resumed_from": ck["t"] if ck else None,
                                                  "replayed_ticks": replay})
@@ -132,6 +149,13 @@ class Engine:
         assert w is not None and bus is not None
         t0 = time.perf_counter()
         w.step()
+        if self.social is not None:
+            await self.social.tick(w, bus)
+        if w.t % 60 == 0:
+            gs = self.gov.on_sim_hour(w.t)
+            self.clock.slowed = self.gov.slowed
+            self.clock.budget_factor = self.gov.speed_factor
+            bus.new("budget", w.t, None, {**vars(gs), **({"social": self.social.stats} if self.social else {})})
         self.tick_ms.append((time.perf_counter() - t0) * 1000)
         self.tick_ms = self.tick_ms[-600:]
         self.last_tick_real = time.time()
@@ -151,6 +175,8 @@ class Engine:
         assert w is not None and bus is not None
         t0 = time.perf_counter()
         state = w.to_checkpoint()
+        if self.social is not None:
+            state["social"] = self.social.to_dict()
         info = await asyncio.to_thread(checkpoint.save, self.files, self.bucket, self.store, state)
         docs = {}
         for a in w.agents:
@@ -203,8 +229,9 @@ class Engine:
 
     # ------------------------------------------------------------------ views
     def budget(self) -> dict[str, float]:
-        """Budget used today (governor arrives in phase 3)."""
-        return {"used_usd": 0.0, "cap_usd": self.s.daily_cap_usd}
+        """Budget used today (background world) from the governor."""
+        return {"used_usd": round(self.gov.spent_today, 3), "cap_usd": self.s.daily_cap_usd,
+                "slowed": self.gov.slowed, "speed_factor": self.gov.speed_factor}
 
     def healthy(self) -> bool:
         """A tick happened in the last 120 s (or we are paused / waiting for the lease)."""

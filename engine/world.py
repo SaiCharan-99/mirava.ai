@@ -50,6 +50,7 @@ class Agent:
     mood: float = 0.6
     life_event_at: int = -1
     life_event_type: str = ""
+    talk_until: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Checkpoint form."""
@@ -174,10 +175,14 @@ class World:
 
     def _act(self, a: Agent, t: int, m: int) -> None:
         """Routine/plan step for one agent: trips, arrivals, activity changes, paydays, life events."""
+        if t < a.talk_until:                      # talkers stop and face each other (T-06)
+            self._timed(a, t, m)
+            return
         if a.route:
             last = a.route[-1]
             if t >= last.t1:
                 self._arrive(a, t)
+            self._timed(a, t, m)
             return
         blk = self._block(a, m)
         target, act = blk["place"], blk["act"]
@@ -197,6 +202,10 @@ class World:
             self._start_trip(a, t, target, act)
         elif a.activity != act:
             self._set_activity(a, t, act)
+        self._timed(a, t, m)
+
+    def _timed(self, a: Agent, t: int, m: int) -> None:
+        """Life events and paydays happen whatever the agent is doing."""
         if a.life_event_at == t:
             self._life_event(a, t)
         if m == 9 * 60:

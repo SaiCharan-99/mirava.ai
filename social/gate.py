@@ -99,7 +99,7 @@ async def gate(a: Side, b: Side, relationship: dict | None, place_kind: str | No
         return GateResult(pair, False, kind, topics, f"skip ({res.reason})", 0.0, "P5", False, product)
     watched = a.watched or b.watched
     priority = 2.0 * (product is not None) + 1.0 * watched + closeness
-    pclass = "P2" if product or watched else ("P3" if known and closeness >= 0.5 else "P4")
+    pclass = "P0" if watched else ("P2" if product else "P4")   # §17: P0 watched, P2 product chats, P4 social
     est = EST_COST["product" if product else kind]
     rendered = governor.allow(pclass, est)
     why = f"{'known' if known else 'stranger'} c={closeness:.2f} free={free:.2f}" + (f" product={product}" if product else "")

@@ -140,6 +140,8 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - [phase 1] `indiranagar.tmj` gains object layer `lights` and documents `labels` object types (INTERFACES §4.1) — needed for night lighting — DECISIONS #60.
 
 ## 8. Known issues / tech debt
+- [phase 3] [minor] Boot replay from a checkpoint (≤ 1 sim hour) re-steps the world without the social layer, so talk pauses in that window are not reproduced (positions may differ slightly from what viewers saw; events are not re-emitted). In-flight conversations at a crash are dropped.
+- [phase 3] [fixed] Paydays at 09:00 and life events were skipped for agents travelling at that minute (phase 2).
 - [phase 2] [minor] On deploy Cloud Run kept the old revision instance alive >20 min (even after deleting the revision). Fixed with revision handoff in `engine/lease.py`; first real test on the next engine deploy. If a new revision stays `follower`, set `world/lease.holder` to the new holder id (`GET /state` → engine.holder).
 - [phase 2] [minor] Tick p95 108–220 ms in the cloud (target 150, budget 2.5 s); fast dev clock can't keep pace.
 - [phase 2] [minor] BigQuery can hold a few duplicate event_ids around restarts (Pub/Sub has no dedupe): views dedupe by event_id.
