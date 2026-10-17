@@ -1,4 +1,4 @@
-# PROGRESS.md — Launch Lens build log (v3 · always-on agent world)
+# PROGRESS.md — mirava.ai build log (v3 · always-on agent world)
 
 Living document. Every Claude Code session reads it first and updates it last (`/end-phase`). Keep it accurate and short. Rows 28+ of `docs/DECISIONS.md` describe the current (v3) design.
 
@@ -6,16 +6,16 @@ Living document. Every Claude Code session reads it first and updates it last (`
 | Field | Value |
 |---|---|
 | Current phase | 1 — Foundation, globe, Indiranagar map, app shell |
-| Phase status | ⬜ Not started |
+| Phase status | 🟨 In progress |
 | Repo green (`make test` + `make lint`) | n/a |
-| Last session | — |
+| Last session | 2026-10-17 · phase 1 |
 | Builder | Sai Charan (Claude Code) |
 | Deadline | 18 Oct 2026 |
 
 ## 2. Phase tracker
 | # | Phase | Status | Date | Visual check | Notes |
 |---|---|---|---|---|---|
-| 1 | Foundation, globe, Indiranagar map, app shell | ⬜ | | | |
+| 1 | Foundation, globe, Indiranagar map, app shell | 🟨 | 2026-10-17 | | |
 | 2 | Population & the always-on world engine | ⬜ | | | |
 | 3 | Memory, think/speak conversations, governor, highlights | ⬜ | | | |
 | 4 | Launch Studio, channels and attention | ⬜ | | | |
@@ -119,7 +119,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 _Filled in by phase 1 and updated by every phase._
 
 ## 7. Contract changes (to docs/INTERFACES.md)
-_None yet. Every change: what, why, which phase, DECISIONS.md entry #._
+- [phase 1] `indiranagar.tmj` gains object layer `lights` and documents `labels` object types (INTERFACES §4.1) — needed for night lighting — DECISIONS #60.
 
 ## 8. Known issues / tech debt
 _None yet. Format: `[phase N] [blocking|minor] description — where — suggested fix`._

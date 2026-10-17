@@ -277,7 +277,7 @@ def chart(spec: dict) -> dict          # ECharts option
 
 ### 4.1 Map assets (`assets/`)
 - `assets/osm/indiranagar.osm.json`: Overpass JSON, committed, ODbL.
-- `assets/maps/indiranagar.tmj`: Tiled JSON, 8 m tiles, layers `ground`, `landuse`, `roads`, `rail`, `buildings`, `decor`, `labels`. Custom tile properties: `walkable`, `road_class`.
+- `assets/maps/indiranagar.tmj`: Tiled JSON, 8 m tiles (16 px; 2 px per metre), tile layers `ground`, `landuse`, `roads`, `rail`, `buildings`, `decor`; object layers `labels` (text objects, `type` = `road_label` or `place_label:<kind>`) and `lights` (points, `type` = `street|shopfront|window|site`, property `radius_m`; DECISIONS #60). Custom tile properties: `name`, `walkable`, `road_class`.
 - `assets/maps/roadgraph.json`: `{nodes:[{id,x,y}], edges:[{a,b,len_m,class,modes:[...]}]}`.
 - `assets/maps/places.json`: `[Place]`. `assets/maps/sites.json`: `[Site]`. `assets/maps/stores.json`: `[Store]`.
 - Tileset: `assets/tiles/city.png`, 16 px per tile, palette from the mockup.
