@@ -80,6 +80,7 @@ class Engine:
             w.step()
             replay += 1
         self.bus.flush_sync(upto_t=w.t)
+        self.bus.suppress_until_t = -1          # replay done: everything from here on is new
         self.world = w
         self.bus.new("engine_start", w.t, None, {"holder": self.lease.holder, "resumed_from": ck["t"] if ck else None,
                                                  "replayed_ticks": replay})
