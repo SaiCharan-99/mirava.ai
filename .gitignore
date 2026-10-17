@@ -19,3 +19,4 @@ artifacts/
 # os
 .DS_Store
 .devpath.sh
+.data-emu.log

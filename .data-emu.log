@@ -1,2 +1,0 @@
-WARNING: Cloud Firestore Emulator support for Java JRE version 21 will be dropped after gcloud command-line tool release 576.0.0. Please upgrade to Java JRE version 25 or higher to continue using the latest Cloud Firestore Emulator.
-ERROR: (gcloud.emulators.firestore.start) The java executable on your PATH is not a Java 21+ JRE. The Google Cloud Firestore emulator requires a Java 21+ JRE installed and on your system PATH
