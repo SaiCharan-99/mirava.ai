@@ -101,7 +101,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 03 | Secret Manager `openrouter-api-key` | 1 | ✅ | 2026-10-17 | version 1 = dev key from .env (rotate to a prod key in phase 6); accessor: mirava-api, mirava-engine |
 | 04 | Artifact Registry `mirava`, Cloud Build permissions | 1 | ✅ | 2026-10-17 | repo asia-south1/mirava; builds run as 760833706192-compute SA (deploy roles granted, also to legacy cloudbuild SA) |
 | 05 | Cloud Run `launch-lens-api` | 1 | ⬜ | | |
-| 06 | Firebase Hosting | 1 | ⬜ | | |
+| 06 | Firebase Hosting | 1 | ✅ | 2026-10-18 | Firebase added to mirava-ai-hack (Blaze/free trial); site mirava-ai-hack.web.app; .firebaserc committed |
 | 07 | Firestore emulator (local) | 1 | ✅ | 2026-10-17 | 127.0.0.1:8080; needs Java 21+ (Temurin 25 JRE installed) |
 | 07 | Firestore database `asia-south1` | 2 | ⬜ | | |
 | 08 | Cloud Storage buckets + CORS | 2 | ⬜ | | |
