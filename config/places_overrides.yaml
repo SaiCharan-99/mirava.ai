@@ -1,0 +1,45 @@
+# Fictional places placed on real OSM lots (W-03). Anchors are a fraction along a named OSM road; mapgen picks the
+# nearest suitable building to that point and replaces it with the override. Never use real retailer names here.
+overrides:
+  - name: Digital Bazaar
+    kind: store
+    store_id: ST-DIGITAL-BAZAAR
+    store_kind: multi_brand
+    format: Multi-brand electronics
+    anchor: {road: 100 Feet Road, at: 0.42}
+    building: [commercial, retail, "yes"]
+  - name: ElectroHub
+    kind: store
+    store_id: ST-ELECTROHUB
+    store_kind: multi_brand
+    format: Multi-brand electronics
+    anchor: {road: Chinmaya Mission Hospital Road, at: 0.62}
+    building: [commercial, retail, "yes"]
+  - name: PhoneWorld
+    kind: store
+    store_id: ST-PHONEWORLD
+    store_kind: phone_shop
+    format: Mobile phone shop
+    anchor: {road: 12th Main Road, at: 0.5}
+    building: [commercial, retail, "yes"]
+  - name: Orbit Tech Park
+    kind: techpark
+    anchor: {road: Indiranagar Double Road, at: 0.78}
+    building: [commercial, office, "yes"]
+    largest_within_m: 350
+  - name: Indiranagar Central Mall
+    kind: mall
+    anchor: {road: 100 Feet Road, at: 0.86}
+    building: [retail, commercial, "yes"]
+    largest_within_m: 300
+  - name: Newspaper stand
+    kind: news_vendor
+    anchor: {station: Indiranagar, offset_m: [18, 22]}
+    kiosk_m: 4
+
+online_stores:
+  - store_id: ST-SHOPKART
+    name: ShopKart
+    store_kind: online
+
+store_hours: [630, 1290]   # 10:30–21:30 sim minutes of day

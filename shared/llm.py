@@ -98,6 +98,7 @@ def strict_schema(schema_model: type[BaseModel]) -> dict:
 
 def to_messages(prompt: str | list, images: list[str] | None) -> list[dict]:
     """Build OpenAI-style chat messages; images become image_url parts on the last user message."""
+    msgs: list[dict[str, Any]]
     if isinstance(prompt, list):
         msgs = copy.deepcopy(prompt)
     else:

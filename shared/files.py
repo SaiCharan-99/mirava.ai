@@ -48,7 +48,7 @@ class GCSFiles:
     """google-cloud-storage."""
 
     def __init__(self, settings: Settings) -> None:
-        from google.cloud import storage
+        from google.cloud import storage  # type: ignore[attr-defined]
 
         self.client: Any = storage.Client(project=settings.gcp_project_id)
 

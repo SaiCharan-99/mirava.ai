@@ -35,7 +35,7 @@ package = false
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
-markers = ["cloud: needs real cloud resources (skipped by default)"]
+markers = ["cloud: needs real cloud resources (skipped by default)", "slow: rebuilds the map twice (~45 s)"]
 addopts = "-m 'not cloud' -q"
 
 [tool.ruff]
@@ -52,4 +52,6 @@ python_version = "3.12"
 ignore_missing_imports = true
 check_untyped_defs = false
 warn_unused_ignores = false
+allow_redefinition_new = true
+local_partial_types = true
 exclude = ["web/", "tools/visual/", "[.]venv/"]
