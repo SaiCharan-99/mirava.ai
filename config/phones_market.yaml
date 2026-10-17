@@ -1,0 +1,27 @@
+# Simulated Indian smartphone market (P-06). Real brands appear only as owned possessions, labelled simulated.
+# All shares and hazards are labelled assumptions.
+assumed: true
+price_band_by_income:      # income band → share of price bands
+  "<25k":   {budget: 0.80, mid: 0.17, premium: 0.03, flagship: 0.0}
+  "25-50k": {budget: 0.50, mid: 0.40, premium: 0.08, flagship: 0.02}
+  "50k-1L": {budget: 0.18, mid: 0.50, premium: 0.24, flagship: 0.08}
+  "1-2L":   {budget: 0.05, mid: 0.35, premium: 0.35, flagship: 0.25}
+  ">2L":    {budget: 0.02, mid: 0.13, premium: 0.35, flagship: 0.50}
+brand_share_by_band:
+  budget:   {Xiaomi: 0.24, Vivo: 0.20, realme: 0.16, Samsung: 0.16, Oppo: 0.12, Motorola: 0.08, Apple: 0.04}
+  mid:      {Samsung: 0.24, Vivo: 0.17, Xiaomi: 0.14, OnePlus: 0.14, Oppo: 0.11, realme: 0.08, Motorola: 0.06, Apple: 0.06}
+  premium:  {Samsung: 0.30, OnePlus: 0.22, Apple: 0.22, Vivo: 0.10, Oppo: 0.08, Xiaomi: 0.08}
+  flagship: {Apple: 0.55, Samsung: 0.35, OnePlus: 0.06, Google: 0.04}
+tier_price_inr:
+  budget: [7000, 15000]
+  mid: [15000, 30000]
+  premium: [30000, 60000]
+  flagship: [60000, 160000]
+# phone age in years ~ lognormal(mu, sigma) clipped [0.05, 9]; median exp(mu) ≈ 2.5 y, ~17% older than 5 y
+age_years: {mu: 0.92, sigma: 0.78, min: 0.05, max: 9.0}
+# daily hazards (probability per agent per sim day) at age 0, multiplied by (1 + age_years * age_slope)
+hazards:
+  lost:   {base: 0.00008, age_slope: 0.0}
+  broken: {base: 0.00030, age_slope: 0.30}
+  slow:   {base: 0.00030, age_slope: 0.60}
+lifestyle_hazard_multiplier: {student_life: 1.5, fitness_focused: 1.3, social_butterfly: 1.2}

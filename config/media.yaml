@@ -1,0 +1,21 @@
+# Media diet distributions (P-04). Simulated; all values are labelled assumptions.
+assumed: true
+apps: [Instagram, YouTube, community, news_app]
+# sessions per day by age band (min, max)
+sessions_per_day: {"5-17": [1, 3], "18-34": [3, 6], "35-59": [2, 4], "60-88": [1, 2]}
+session_minutes: [5, 35]
+# preferred session start windows (minute of day)
+windows: [[420, 510], [760, 820], [1080, 1170], [1260, 1380]]
+app_weights_by_age:
+  "5-17": {YouTube: 0.7, Instagram: 0.3}
+  "18-34": {Instagram: 0.5, YouTube: 0.3, community: 0.2}
+  "35-59": {YouTube: 0.45, Instagram: 0.3, community: 0.1, news_app: 0.15}
+  "60-88": {YouTube: 0.5, news_app: 0.5}
+community_prob: {"5-17": 0.0, "18-34": 0.55, "35-59": 0.3, "60-88": 0.05}
+newspaper_prob: {"5-17": 0.05, "18-34": 0.15, "35-59": 0.45, "60-88": 0.8}
+newspaper_minute: [400, 480]
+news_app_prob: {"5-17": 0.0, "18-34": 0.3, "35-59": 0.45, "60-88": 0.3}
+forums: [r/IndiranagarLife, r/BangaloreTech, r/BangaloreStyle]
+# following reviewers: probability per (agent, reviewer) when interests overlap
+follow_prob_interest_match: 0.22
+follow_prob_base: 0.02

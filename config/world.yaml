@@ -1,0 +1,18 @@
+# World engine defaults (W-05, E-07). Env vars override (WORLD_SEED, WORLD_SECONDS_PER_SIM_DAY).
+world_seed: 4271
+seconds_per_sim_day: 3600
+checkpoint_every_sim_minutes: 60
+keep_checkpoints: 48
+genesis_version: v1
+start_t: 0              # world epoch: Day 1 · Mon 00:00
+lease: {expiry_s: 60, renew_s: 20}
+health_stale_s: 120
+speeds_m_per_min: {walk: 78, two_wheeler: 380, car: 320, auto: 300, bus: 230}
+walk_max_m: 900         # trips shorter than this are walked
+needs:                  # per sim minute drift by activity group (0..1 scale)
+  energy: {sleep: 0.0017, active: -0.0011, rest: -0.0004}
+  hunger: {eat: -0.02, any: 0.0011}
+  social: {social: 0.003, alone: -0.0006}
+  fatigue: {sleep: -0.0016, work: 0.0011, rest: -0.0003, active: 0.0005}
+  stimulation: {out: 0.002, home: -0.0008, sleep: 0.0}
+highlights: 40

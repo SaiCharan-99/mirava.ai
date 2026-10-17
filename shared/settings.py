@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     pubsub_topic_events: str = "world-events"
     pubsub_topic_texts: str = "world-texts"
     event_sink: Literal["local", "pubsub"] = "local"
+    store_backend: Literal["firestore", "memory"] = "firestore"
+    engine_port: int = 8100
+    engine_auth_audience: str = ""          # cloud: expected ID-token audience for POST /commands
+    engine_allowed_callers: str = ""        # cloud: comma-separated service-account emails allowed to send commands
+    world_speed: float = 1.0                # dev multiplier on top of seconds_per_sim_day
 
     model_armor_enabled: bool = False
     model_armor_template: str = ""

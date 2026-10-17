@@ -12,13 +12,22 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
-import { applyFreeze } from "./lib/visualTest";
+import { applyFreeze, isVisualTest } from "./lib/visualTest";
+import { startLive } from "./lib/liveSync";
+import { useWatch } from "./state/watch";
+import { simClock } from "./world/tracks";
 import { loadFixtures } from "./visual-fixtures/types";
 import { useWorld } from "./state/world";
 
 applyFreeze();
 // Phase 1: world stats, ticker and products come from the mockup fixtures until world-engine streams /live (phase 2).
-useWorld.getState().loadFixtures(await loadFixtures());
+// Fixtures render until world-engine's /live `hello` arrives (and always in visual-test mode).
+const fx = await loadFixtures();
+useWorld.getState().loadFixtures(fx);
+simClock.set(fx.t);
+simClock.frozen = isVisualTest;
+if (isVisualTest) useWatch.getState().seed(fx.agents.filter((a) => a.watch).map((a) => a.id), true);
+if (!isVisualTest) startLive();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

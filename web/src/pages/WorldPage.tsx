@@ -5,18 +5,41 @@ import { withMode } from "../lib/visualTest";
 import { WorldCanvas } from "../world/WorldCanvas";
 import { Minimap } from "../world/Minimap";
 import type { FixtureProduct } from "../visual-fixtures/types";
+import { HoverCard, Meter, ProfileDrawer, StageChip } from "../components/Profile";
+import { useAgentView } from "../components/agentHooks";
+import { useWatch } from "../state/watch";
+import { initials } from "../lib/agentView";
+import { worldRef } from "../world/ref";
+
+/** One watched agent in the side panel (mockup renderSide "watching"). */
+function WatchItem({ id }: { id: number }) {
+  const { view: a } = useAgentView(id);
+  const fx = useWorld((s) => s.fixtures);
+  const live = useWorld((s) => s.products).filter((p) => p.status === "live");
+  const openP = useWorld((s) => s.openProfile);
+  if (!a) return null;
+  const fa = fx?.agents.find((x) => x.id === id);
+  const th = fx && id === fx.featured.id ? fx.featured.thoughts[0] : fa?.thoughts[0];
+  const showTh = useWorld.getState().source !== "live" && th;
+  return (
+    <div className="item" style={{ cursor: "pointer" }} onClick={() => { worldRef.scene?.focusAgent(id); openP(id); }}>
+      <div className="row" style={{ gap: 10 }}>
+        <div className="avatar" style={{ background: a.shirt }}>{initials(a.name)}</div>
+        <div style={{ flex: 1 }}><b>{a.name}</b><div className="xs muted">{a.act} · {a.place ?? "on the move"}</div></div>
+      </div>
+      <div className="xs" style={{ marginTop: 6 }}>
+        {live.map((p, i) => (
+          <span key={p.id}>{i > 0 && <>{"   "}</>}<span className="pdot" style={{ background: p.hex, width: 7, height: 7, marginRight: 4 }} />{p.name}: <StageChip b={a.beliefs[p.id]} /></span>
+        ))}
+      </div>
+      {showTh && <div className="thought" style={{ marginTop: 6, fontSize: 11.5 }}>“{th.txt || "(glanced, no thought)"}”</div>}
+    </div>
+  );
+}
 
 const LENSES: [Lens, string][] = [["activity", "Activity"], ["aware", "Product awareness"], ["sentiment", "Sentiment"], ["hoardings", "Hoardings"]];
 const SIDE_TABS: [SideTab, string][] = [["now", "Happening now"], ["watching", "Watching"], ["products", "Products"]];
 const CURIOUS_PLUS = ["curious", "researching", "inquiring", "deciding", "purchased"];
-
-function Meter({ label, v, col }: { label: string; v: number; col: string }) {
-  return (
-    <div className="meter"><span className="muted">{label}</span>
-      <div className="bar"><i style={{ width: `${Math.round(v * 100)}%`, background: col }} /></div>
-      <span className="mono">{Math.round(v * 100)}%</span></div>
-  );
-}
 
 function Stats() {
   const s = useWorld((x) => x.stats);
@@ -72,6 +95,17 @@ function Dock() {
   );
 }
 
+function Watching() {
+  const ids = useWatch((s) => s.ids);
+  return (
+    <>
+      <h3>Watching ({ids.length})</h3>
+      <div className="list">{ids.map((id) => <WatchItem key={id} id={id} />)}</div>
+      <p className="xs muted" style={{ marginTop: 10 }}>Star anyone in their profile or on the People page to watch them. Watching never changes what they see.</p>
+    </>
+  );
+}
+
 function SideBody() {
   const tab = useWorld((s) => s.sideTab);
   const ticker = useWorld((s) => s.ticker);
@@ -92,25 +126,7 @@ function SideBody() {
     );
   }
   const agents = fx?.agents ?? [];
-  if (tab === "watching") {
-    const w = agents.filter((a) => a.watch);
-    return (
-      <>
-        <h3>Watching ({w.length})</h3>
-        <div className="list">
-          {w.map((a) => (
-            <div className="item" key={a.id}>
-              <div className="row" style={{ gap: 10 }}>
-                <div className="avatar" style={{ background: a.look.shirt }}>{a.name.split(" ").map((s) => s[0]).join("").slice(0, 2)}</div>
-                <div style={{ flex: 1 }}><b>{a.name}</b><div className="xs muted">{a.act} · {a.place ?? "on the move"}</div></div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="xs muted" style={{ marginTop: 10 }}>Star anyone in their profile or on the People page to watch them. Watching never changes what they see.</p>
-      </>
-    );
-  }
+  if (tab === "watching") return <Watching />;
   const n = agents.length || 1;
   const card = (p: FixtureProduct) => {
     const live = p.status === "live";
@@ -180,7 +196,7 @@ export function WorldPage() {
         <Dock />
         <Minimap />
         <div className="attrib">Indiranagar from OpenStreetMap · © OpenStreetMap contributors (ODbL)</div>
-        <div className="drawer" data-testid="profile-drawer" />
+        <ProfileDrawer />
       </div>
       <div className="side" data-testid="world-side">
         <div className="sidetabs">
@@ -192,7 +208,7 @@ export function WorldPage() {
       </div>
       <DayBar />
     </div>
-      <div className="hovercard hidden" data-testid="agent-hovercard" />
+      <HoverCard />
     </div>
   );
 }

@@ -16,6 +16,9 @@ dependencies = [
   "google-cloud-firestore>=2.18",
   "google-cloud-storage>=2.18",
   "google-cloud-bigquery>=3.25",
+  "msgpack>=1.2.3",
+  "zstandard>=0.25.0",
+  "google-cloud-pubsub>=2.43.0",
 ]
 
 [dependency-groups]

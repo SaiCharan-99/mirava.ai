@@ -19,6 +19,10 @@ export function WorldCanvas() {
       worldRef.scene = scene;
       const s = useWorld.getState();
       scene.setHour(s.hourOverride ?? minuteOfDay(s.t) / 60);
+      const pf = worldRef.pendingFocus ?? s.profile?.id ?? null;
+      worldRef.pendingFocus = null;
+      if (pf !== null) scene.focusAgent(pf);
+      else if (s.hover) scene.focusAgent(s.hover.id);
     };
     const game = new Phaser.Game({
       type: Phaser.AUTO, parent: host.current, pixelArt: true, backgroundColor: "#0a0d12",
@@ -41,6 +45,7 @@ export function WorldCanvas() {
     });
     return () => {
       unsub();
+      useWorld.getState().setHover(null);
       worldRef.scene = null;
       game.destroy(true);
     };

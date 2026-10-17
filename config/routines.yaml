@@ -1,0 +1,297 @@
+# Routine templates (P-04, E-01). Each day type is a list of blocks; a block lasts until the next one starts.
+# act: sleep|home|work|school|college|eat|cafe|gym|park|shop|store_shift|roam   (roam = gig work hopping between places)
+# `options` picks one act per day (weights); `home` means stay home. Times jitter per agent by ±jitter_min.
+jitter_min: 25
+templates:
+  office:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "06:50", act: home}
+      - {at: "08:40", act: work}
+      - {at: "13:00", act: eat}
+      - {at: "13:50", act: work}
+      - {at: "18:30", options: {home: 0.35, gym: 0.18, cafe: 0.2, shop: 0.15, park: 0.12}}
+      - {at: "20:00", act: home}
+      - {at: "23:15", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "08:30", act: home}
+      - {at: "11:00", options: {home: 0.3, cafe: 0.25, shop: 0.25, park: 0.2}}
+      - {at: "13:30", act: home}
+      - {at: "17:00", options: {home: 0.3, cafe: 0.3, park: 0.2, shop: 0.2}}
+      - {at: "20:30", act: home}
+      - {at: "23:45", act: sleep}
+  office_late:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "07:40", act: home}
+      - {at: "09:40", act: work}
+      - {at: "13:30", act: eat}
+      - {at: "14:20", act: work}
+      - {at: "20:00", options: {home: 0.4, cafe: 0.3, gym: 0.3}}
+      - {at: "21:30", act: home}
+      - {at: "00:00", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "09:00", act: home}
+      - {at: "11:30", options: {cafe: 0.5, work: 0.3, home: 0.2}}
+      - {at: "15:00", act: home}
+      - {at: "18:00", options: {cafe: 0.4, gym: 0.3, home: 0.3}}
+      - {at: "21:00", act: home}
+  office_long:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "06:30", act: home}
+      - {at: "08:00", act: work}
+      - {at: "13:30", act: eat}
+      - {at: "14:15", act: work}
+      - {at: "19:45", act: home}
+      - {at: "22:45", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "08:00", act: home}
+      - {at: "10:00", options: {park: 0.3, shop: 0.3, cafe: 0.2, home: 0.2}}
+      - {at: "13:00", act: home}
+      - {at: "22:30", act: sleep}
+  shift:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "06:00", act: home}
+      - {at: "07:00", act: work}
+      - {at: "15:00", act: home}
+      - {at: "17:30", options: {shop: 0.4, park: 0.2, home: 0.4}}
+      - {at: "19:00", act: home}
+      - {at: "22:30", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "06:00", act: home}
+      - {at: "07:00", options: {work: 0.6, home: 0.4}}
+      - {at: "15:00", act: home}
+      - {at: "17:30", options: {shop: 0.4, park: 0.3, home: 0.3}}
+      - {at: "19:30", act: home}
+      - {at: "22:30", act: sleep}
+  school:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "06:40", act: home}
+      - {at: "07:50", act: school}
+      - {at: "15:10", act: home}
+      - {at: "16:30", options: {park: 0.5, home: 0.5}}
+      - {at: "18:30", act: home}
+      - {at: "21:30", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "08:00", act: home}
+      - {at: "10:00", options: {park: 0.4, home: 0.4, shop: 0.2}}
+      - {at: "12:30", act: home}
+      - {at: "16:30", options: {park: 0.6, home: 0.4}}
+      - {at: "18:30", act: home}
+      - {at: "22:00", act: sleep}
+  college:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "07:30", act: home}
+      - {at: "08:45", act: college}
+      - {at: "15:30", options: {cafe: 0.35, home: 0.35, gym: 0.15, shop: 0.15}}
+      - {at: "17:30", act: home}
+      - {at: "19:30", options: {cafe: 0.3, home: 0.7}}
+      - {at: "21:30", act: home}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "09:30", act: home}
+      - {at: "12:00", options: {cafe: 0.4, shop: 0.3, park: 0.1, home: 0.2}}
+      - {at: "15:00", act: home}
+      - {at: "18:00", options: {cafe: 0.5, home: 0.3, shop: 0.2}}
+      - {at: "21:30", act: home}
+  teacher:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "06:00", act: home}
+      - {at: "07:30", act: work}
+      - {at: "15:30", act: home}
+      - {at: "17:00", options: {shop: 0.4, park: 0.3, home: 0.3}}
+      - {at: "18:30", act: home}
+      - {at: "22:00", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "07:30", act: home}
+      - {at: "10:30", options: {shop: 0.4, park: 0.3, home: 0.3}}
+      - {at: "13:00", act: home}
+      - {at: "22:30", act: sleep}
+  shopkeeper:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "06:30", act: home}
+      - {at: "09:30", act: work}
+      - {at: "14:00", act: eat}
+      - {at: "14:40", act: work}
+      - {at: "21:30", act: home}
+      - {at: "23:30", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "06:30", act: home}
+      - {at: "09:30", act: work}
+      - {at: "14:00", act: eat}
+      - {at: "14:40", act: work}
+      - {at: "21:30", act: home}
+      - {at: "23:30", act: sleep}
+  restaurant:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "08:00", act: home}
+      - {at: "10:30", act: work}
+      - {at: "16:00", act: home}
+      - {at: "18:00", act: work}
+      - {at: "23:00", act: home}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "08:00", act: home}
+      - {at: "10:30", act: work}
+      - {at: "23:00", act: home}
+  gig:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "06:30", act: home}
+      - {at: "08:00", act: roam}
+      - {at: "14:00", act: eat}
+      - {at: "14:40", act: roam}
+      - {at: "21:30", act: home}
+      - {at: "23:00", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "07:00", act: home}
+      - {at: "09:00", act: roam}
+      - {at: "14:00", act: eat}
+      - {at: "14:40", act: roam}
+      - {at: "22:00", act: home}
+      - {at: "23:30", act: sleep}
+  creator:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "08:00", act: home}
+      - {at: "11:00", options: {cafe: 0.5, shop: 0.2, park: 0.1, home: 0.2}}
+      - {at: "13:30", act: home}
+      - {at: "17:00", options: {cafe: 0.35, gym: 0.35, park: 0.1, home: 0.2}}
+      - {at: "19:00", act: home}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "09:00", act: home}
+      - {at: "11:30", options: {cafe: 0.5, shop: 0.3, park: 0.2}}
+      - {at: "14:30", act: home}
+      - {at: "18:00", options: {cafe: 0.5, home: 0.5}}
+      - {at: "21:00", act: home}
+  homemaker:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "05:45", act: home}
+      - {at: "10:30", options: {shop: 0.55, park: 0.15, home: 0.3}}
+      - {at: "12:00", act: home}
+      - {at: "17:00", options: {park: 0.35, shop: 0.25, home: 0.4}}
+      - {at: "18:30", act: home}
+      - {at: "22:30", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "06:30", act: home}
+      - {at: "11:00", options: {shop: 0.4, home: 0.6}}
+      - {at: "13:00", act: home}
+      - {at: "17:30", options: {park: 0.3, shop: 0.3, cafe: 0.1, home: 0.3}}
+      - {at: "19:30", act: home}
+      - {at: "22:45", act: sleep}
+  retired:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "05:30", act: home}
+      - {at: "06:00", options: {park: 0.6, home: 0.4}}
+      - {at: "07:30", act: home}
+      - {at: "10:30", options: {shop: 0.4, home: 0.6}}
+      - {at: "12:00", act: home}
+      - {at: "17:00", options: {park: 0.5, home: 0.5}}
+      - {at: "18:30", act: home}
+      - {at: "21:45", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "05:30", act: home}
+      - {at: "06:00", options: {park: 0.6, home: 0.4}}
+      - {at: "07:30", act: home}
+      - {at: "17:00", options: {park: 0.4, shop: 0.2, home: 0.4}}
+      - {at: "18:30", act: home}
+      - {at: "21:45", act: sleep}
+  domestic:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "05:30", act: home}
+      - {at: "06:30", act: work}
+      - {at: "13:00", act: home}
+      - {at: "16:00", act: work}
+      - {at: "19:00", act: home}
+      - {at: "22:00", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "05:30", act: home}
+      - {at: "06:30", act: work}
+      - {at: "12:00", act: home}
+      - {at: "17:00", options: {shop: 0.3, park: 0.2, home: 0.5}}
+      - {at: "19:00", act: home}
+      - {at: "22:00", act: sleep}
+  salesperson_a:     # store shift A (opening)
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "07:00", act: home}
+      - {at: "10:15", act: store_shift}
+      - {at: "14:00", act: eat}
+      - {at: "14:40", act: store_shift}
+      - {at: "17:00", act: home}
+      - {at: "23:00", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "07:00", act: home}
+      - {at: "10:15", act: store_shift}
+      - {at: "14:00", act: eat}
+      - {at: "14:40", act: store_shift}
+      - {at: "17:00", act: home}
+      - {at: "23:00", act: sleep}
+  salesperson_b:     # store shift B (closing)
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "08:30", act: home}
+      - {at: "13:30", act: store_shift}
+      - {at: "17:30", act: eat}
+      - {at: "18:10", act: store_shift}
+      - {at: "21:40", act: home}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "08:30", act: home}
+      - {at: "13:30", act: store_shift}
+      - {at: "17:30", act: eat}
+      - {at: "18:10", act: store_shift}
+      - {at: "21:40", act: home}
+  reviewer:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "08:30", act: home}
+      - {at: "11:00", options: {cafe: 0.5, shop: 0.3, home: 0.2}}
+      - {at: "13:30", act: home}
+      - {at: "17:00", options: {cafe: 0.4, gym: 0.3, shop: 0.3}}
+      - {at: "19:30", act: home}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "09:30", act: home}
+      - {at: "12:00", options: {cafe: 0.4, shop: 0.4, park: 0.2}}
+      - {at: "15:00", act: home}
+      - {at: "18:00", options: {cafe: 0.5, home: 0.5}}
+      - {at: "21:30", act: home}
+  news_desk:
+    weekday:
+      - {at: "00:00", act: sleep}
+      - {at: "05:30", act: home}
+      - {at: "06:30", act: work}
+      - {at: "13:00", act: eat}
+      - {at: "13:45", act: work}
+      - {at: "19:00", act: home}
+      - {at: "22:30", act: sleep}
+    weekend:
+      - {at: "00:00", act: sleep}
+      - {at: "06:30", act: home}
+      - {at: "07:30", act: work}
+      - {at: "12:30", act: home}
+      - {at: "22:30", act: sleep}

@@ -2,6 +2,17 @@ import Phaser from "phaser";
 import { nightAlpha } from "../lib/time";
 
 import { PX_PER_M } from "./ref";
+import { simClock, tracks } from "./tracks";
+import { useWorld } from "../state/world";
+import { isVisualTest } from "../lib/visualTest";
+import type { FixtureAgent } from "../visual-fixtures/types";
+
+type Look = FixtureAgent["look"];
+/** One drawable agent in Tiled pixels. */
+export interface Drawn { id: number; x: number; y: number; h: number; mode: string; moving: boolean; look: Look; sleeping: boolean }
+const U = 4; // mockup sprite unit → Tiled px (matches Z_TO_CAM)
+const MOCK_W = 1200; // mockup map width in its units (fixture x/y)
+const hex = (c: string): number => parseInt(c.replace("#", "").slice(0, 6), 16);
 
 /** View zoom `z` (mockup units, 0.6–6) → Phaser camera zoom. */
 export const Z_TO_CAM = 0.25;
@@ -29,6 +40,9 @@ export class WorldScene extends Phaser.Scene {
   metro: { x: number; y: number } | null = null;
   onView: ((v: ViewInfo) => void) | null = null;
   onReady: (() => void) | null = null;
+  private agentsG!: Phaser.GameObjects.Graphics;
+  private drawn: Drawn[] = [];
+  private downAt: { x: number; y: number } | null = null;
 
   constructor() {
     super("world");
@@ -47,6 +61,7 @@ export class WorldScene extends Phaser.Scene {
     this.mapW = map.widthInPixels;
     this.mapH = map.heightInPixels;
     this.drawSites(this.cache.json.get("sites") as SiteLite[]);
+    this.agentsG = this.add.graphics().setDepth(15);
     this.night = this.add.rectangle(-200, -200, this.mapW + 400, this.mapH + 400, 0x080e28, 0).setOrigin(0).setDepth(20);
     this.makeGlowTexture();
     this.glows = this.add.container(0, 0).setDepth(21);
@@ -78,6 +93,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(): void {
+    this.drawAgents();
     const inv = 1 / this.cameras.main.zoom;
     const showRoad = this.z >= 0.8;
     const showPlace = this.z >= 1.5;
@@ -142,6 +158,7 @@ export class WorldScene extends Phaser.Scene {
     let lastClick = 0;
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       last = { x: p.x, y: p.y };
+      this.downAt = { x: p.x, y: p.y };
       const now = p.downTime;
       if (now - lastClick < 300) {
         const w = cam.getWorldPoint(p.x, p.y);
@@ -149,9 +166,25 @@ export class WorldScene extends Phaser.Scene {
       }
       lastClick = now;
     });
-    this.input.on("pointerup", () => (last = null));
+    this.input.on("pointerup", (p: Phaser.Input.Pointer) => {
+      last = null;
+      if (this.downAt && Math.abs(p.x - this.downAt.x) + Math.abs(p.y - this.downAt.y) < 4) {
+        const a = this.nearest(p.x, p.y);
+        if (a) useWorld.getState().openProfile(a.id);
+      }
+      this.downAt = null;
+    });
+    this.input.on("gameout", () => {
+      if (!(isVisualTest && useWorld.getState().hover?.pinned)) useWorld.getState().setHover(null);
+    });
     this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
-      if (!p.isDown || !last) return;
+      if (!p.isDown || !last) {
+        if (useWorld.getState().hover?.pinned && isVisualTest) return;
+        const a = this.nearest(p.x, p.y);
+        const ev = p.event as MouseEvent | undefined;
+        useWorld.getState().setHover(a ? { id: a.id, sx: ev?.clientX ?? p.x, sy: ev?.clientY ?? p.y } : null);
+        return;
+      }
       cam.scrollX -= (p.x - last.x) / cam.zoom;
       cam.scrollY -= (p.y - last.y) / cam.zoom;
       last = { x: p.x, y: p.y };
@@ -160,6 +193,113 @@ export class WorldScene extends Phaser.Scene {
     this.input.on("wheel", (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
       this.zoomBy(dy > 0 ? 1 / 1.15 : 1.15, p.x, p.y);
     });
+  }
+
+  /** Current agent positions: fixtures (visual-test / before hello) or live tracks interpolated at 60 fps. */
+  collect(): Drawn[] {
+    const st = useWorld.getState();
+    const fx = st.fixtures;
+    const looks = fx?.agents ?? [];
+    const lookOf = (id: number): Look => looks[id % Math.max(1, looks.length)]?.look ?? { skin: "#d9a07b", hair: "#222", shirt: "#14b8a6", pants: "#334155", hairLong: false, cap: false };
+    const out: Drawn[] = [];
+    if (st.source === "live") {
+      tracks.advance(simClock.now());
+      for (const tr of tracks.byId.values()) {
+        if (tr.mode === "offmap") continue;
+        out.push({ id: tr.id, x: tr.x * PX_PER_M, y: tr.y * PX_PER_M, h: tr.h, mode: tr.mode, moving: tr.moving, look: lookOf(tr.id), sleeping: tr.act === "sleep" });
+      }
+    } else {
+      const k = this.mapW / MOCK_W;
+      for (const a of looks as (FixtureAgent & { mode?: string; moving?: boolean })[]) {
+        out.push({ id: a.id, x: a.x * k, y: a.y * k, h: a.heading, mode: a.mode ?? "walk", moving: !!a.moving, look: a.look, sleeping: a.act === "Sleeping" });
+      }
+    }
+    return out;
+  }
+
+  /** Tiled-pixel position of an agent (null if unknown or off the map). */
+  agentPx(id: number): { x: number; y: number } | null {
+    const d = (this.drawn.length ? this.drawn : this.collect()).find((a) => a.id === id);
+    return d ? { x: d.x, y: d.y } : null;
+  }
+
+  /** Viewport (client) coordinates of a Tiled-pixel point. */
+  clientOf(x: number, y: number): { x: number; y: number } {
+    const cam = this.cameras.main;
+    cam.preRender();
+    const r = this.game.canvas.getBoundingClientRect();
+    const v = cam.worldView;
+    return { x: r.left + (x - v.x) * cam.zoom, y: r.top + (y - v.y) * cam.zoom };
+  }
+
+  /** Centre on an agent at view zoom 3 (`__ll.focus`). */
+  focusAgent(id: number, z = 3): boolean {
+    const p = this.agentPx(id);
+    if (!p) return false;
+    this.focusPx(p.x, p.y, z);
+    return true;
+  }
+
+  /** Nearest agent to a screen point (mockup radius rule; sleepers skipped when zoomed out). */
+  nearest(sx: number, sy: number): Drawn | null {
+    const w = this.cameras.main.getWorldPoint(sx, sy);
+    const lim = ((7 / this.z + 3) * U) ** 2;
+    let best: Drawn | null = null;
+    let bd = lim;
+    for (const a of this.drawn) {
+      if (a.sleeping && this.z < 2.2) continue;
+      const dx = a.x - w.x;
+      const dy = a.y - 3 * U - w.y;
+      const dd = dx * dx + dy * dy;
+      if (dd < bd) {
+        bd = dd;
+        best = a;
+      }
+    }
+    return best;
+  }
+
+  private drawAgents(): void {
+    const g = this.agentsG;
+    if (!g) return;
+    this.drawn = this.collect();
+    g.clear();
+    const v = this.cameras.main.worldView;
+    const frozen = simClock.frozen;
+    const now = performance.now();
+    const r = (c: number, x: number, y: number, w: number, h: number, a = 1) => g.fillStyle(c, a).fillRect(x * U, y * U, w * U, h * U);
+    for (const a of this.drawn) {
+      if (a.x < v.x - 60 || a.y < v.y - 60 || a.x > v.right + 60 || a.y > v.bottom + 60) continue;
+      const x = a.x / U;
+      const y = a.y / U;
+      const L = a.look;
+      if (a.mode === "idle" && a.sleeping) continue;
+      if (a.moving && a.mode !== "walk") {
+        r(0x000000, x - 3, y, 6, 1.2, 0.3);
+        const hz = a.h % 180 > 45 && a.h % 180 < 135;
+        if (a.mode === "car" || a.mode === "bus" || a.mode === "auto") {
+          const col = a.mode === "bus" ? 0x2563eb : a.mode === "auto" ? 0xfacc15 : hex(L.shirt);
+          const s = a.mode === "bus" ? 1.8 : 1;
+          if (hz) r(col, x - 4 * s, y - 3.5, 8 * s, 4); else r(col, x - 2, y - 6 * s, 4, 7 * s);
+          if (hz) r(0xcbd5e1, x - 2, y - 3, 3, 1.5); else r(0xcbd5e1, x - 1.5, y - 5, 3, 1.5);
+          continue;
+        }
+        if (hz) r(0x111827, x - 3.5, y - 1.5, 7, 1.6); else r(0x111827, x - 0.8, y - 4, 1.6, 5);
+        r(hex(L.shirt), x - 1.5, y - 5, 3, 3);
+        r(hex(L.skin), x - 1.2, y - 7.2, 2.4, 2.2);
+        r(0x334155, x - 1.5, y - 7.8, 3, 1.2);
+        continue;
+      }
+      const stp = a.moving && !frozen ? Math.floor(now / 160 + a.id) % 2 : 0;
+      r(0x000000, x - 2, y, 4, 1.2, 0.3);
+      r(hex(L.pants), x - 1.5, y - 2.5, 1.2, 2.5 - (stp ? 0.6 : 0));
+      r(hex(L.pants), x + 0.3, y - 2.5, 1.2, 2.5 - (stp ? 0 : 0.6));
+      r(hex(L.shirt), x - 2, y - 5.5, 4, 3.2);
+      r(hex(L.skin), x - 1.5, y - 8, 3, 2.6);
+      r(hex(L.hair), x - 1.6, y - 8.6, 3.2, 1.2);
+      if (L.hairLong) r(hex(L.hair), x - 1.8, y - 8, 0.8, 2.6);
+      if (L.cap) r(0xef4444, x - 1.8, y - 9, 3.6, 1.1);
+    }
   }
 
   private makeGlowTexture(): void {

@@ -14,6 +14,8 @@ export interface WorldStats {
 
 export type Lens = "activity" | "aware" | "sentiment" | "hoardings";
 export type SideTab = "now" | "watching" | "products";
+export type ProfileTab = "overview" | "relations" | "possessions" | "thoughts" | "conversations" | "memory";
+export interface HoverInfo { id: number; sx: number; sy: number; pinned?: boolean }
 
 export interface WorldStore {
   ready: boolean;
@@ -29,6 +31,13 @@ export interface WorldStore {
   sideTab: SideTab;
   hourOverride: number | null;
   zoomCmd: { kind: "in" | "out" | "fit" | "focus"; x?: number; y?: number; z?: number; seq: number } | null;
+  connected: boolean;
+  hover: HoverInfo | null;
+  profile: { id: number; tab: ProfileTab } | null;
+  setHover: (h: HoverInfo | null) => void;
+  openProfile: (id: number, tab?: ProfileTab) => void;
+  setProfileTab: (tab: ProfileTab) => void;
+  closeProfile: () => void;
   setLens: (l: Lens) => void;
   setSideTab: (t: SideTab) => void;
   setHour: (h: number) => void;
@@ -56,6 +65,16 @@ export const useWorld = create<WorldStore>((set, get) => ({
   sideTab: "now",
   hourOverride: null,
   zoomCmd: null,
+  connected: false,
+  hover: null,
+  profile: null,
+  setHover: (hover) => set({ hover }),
+  openProfile: (id, tab) => set({ profile: { id, tab: tab ?? get().profile?.tab ?? "overview" }, hover: null }),
+  setProfileTab: (tab) => {
+    const p = get().profile;
+    if (p) set({ profile: { ...p, tab } });
+  },
+  closeProfile: () => set({ profile: null }),
   setLens: (lens) => set({ lens }),
   setSideTab: (sideTab) => set({ sideTab }),
   setHour: (h) => set({ hourOverride: h, t: Math.floor(get().t / 1440) * 1440 + Math.round(h * 60) }),

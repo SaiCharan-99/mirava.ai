@@ -44,7 +44,8 @@ class DuckDBShim:
         sql = sql.replace("`", "")
         if dataset:
             sql = re.sub(rf"\b(?:[\w-]+\.)?{re.escape(dataset)}\.", "", sql)
-        return sql
+        sql = re.sub(r"\bFLOAT64\b", "DOUBLE", sql)
+        return re.sub(r"\bINT64\b", "BIGINT", sql)
 
     def query(self, sql: str, params: dict | None = None) -> list[dict]:
         """Run SQL; `@name` params are bound as `$name`."""

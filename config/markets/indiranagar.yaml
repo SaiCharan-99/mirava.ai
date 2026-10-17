@@ -1,0 +1,126 @@
+# Population priors for Indiranagar, Bengaluru (P-01). Simulated data.
+# Sources: India age structure from the US Census Bureau International Database
+# (bigquery-public-data.census_bureau_international, values cached here) and urban labour shares from World Bank WDI
+# (bigquery-public-data.world_bank_wdi, cached). The Indiranagar skew (young professionals, higher incomes) is a
+# labelled assumption.
+sources:
+  age_bands: {source: "Census IDB India 2025 urban, reweighted for Indiranagar", assumed: true}
+  gender: {source: "Census IDB India 2025", assumed: false}
+  occupation: {source: "World Bank WDI urban employment shares + local assumptions", assumed: true}
+  income_band: {source: "assumption (Indiranagar affluent)", assumed: true}
+  commute_mode: {source: "assumption (Bengaluru mode share)", assumed: true}
+  household_mix: {source: "assumption", assumed: true}
+
+age_bands:            # inclusive [lo, hi] → share
+  - {lo: 5,  hi: 9,  share: 0.06}
+  - {lo: 10, hi: 17, share: 0.08}
+  - {lo: 18, hi: 24, share: 0.14}
+  - {lo: 25, hi: 34, share: 0.27}
+  - {lo: 35, hi: 44, share: 0.18}
+  - {lo: 45, hi: 59, share: 0.16}
+  - {lo: 60, hi: 74, share: 0.09}
+  - {lo: 75, hi: 88, share: 0.02}
+
+gender: {female: 0.49, male: 0.51}
+
+# occupation shares inside each age band (keys = occupation ids below)
+occupation_by_band:
+  "5-9":   {school_student: 1.0}
+  "10-17": {school_student: 1.0}
+  "18-24": {college_student: 0.46, software_engineer: 0.12, shop_assistant: 0.07, delivery_partner: 0.08, salesperson: 0.05,
+            content_creator: 0.04, restaurant_staff: 0.06, data_analyst: 0.05, job_seeker: 0.07}
+  "25-34": {software_engineer: 0.26, product_designer: 0.05, ux_designer: 0.04, data_analyst: 0.06, product_manager: 0.06,
+            startup_founder: 0.03, consultant: 0.04, banker: 0.03, teacher: 0.03, doctor: 0.02, nurse: 0.02,
+            shop_assistant: 0.04, salesperson: 0.03, delivery_partner: 0.05, auto_driver: 0.02, restaurant_staff: 0.03,
+            content_creator: 0.03, journalist: 0.01, homemaker: 0.05, job_seeker: 0.03, lawyer: 0.02, accountant: 0.03,
+            domestic_worker: 0.02}
+  "35-44": {software_engineer: 0.20, product_manager: 0.06, consultant: 0.05, banker: 0.04, teacher: 0.04, doctor: 0.03,
+            shopkeeper: 0.07, auto_driver: 0.04, delivery_partner: 0.03, homemaker: 0.15, govt_employee: 0.05,
+            startup_founder: 0.03, lawyer: 0.03, accountant: 0.04, security_guard: 0.03, domestic_worker: 0.04,
+            salesperson: 0.02, journalist: 0.01, content_creator: 0.01, product_designer: 0.03}
+  "45-59": {software_engineer: 0.09, shopkeeper: 0.12, homemaker: 0.22, govt_employee: 0.10, teacher: 0.05, doctor: 0.04,
+            banker: 0.05, consultant: 0.04, auto_driver: 0.06, security_guard: 0.05, domestic_worker: 0.05, accountant: 0.05,
+            lawyer: 0.03, product_designer: 0.02, journalist: 0.01, salesperson: 0.02}
+  "60-74": {retired: 0.70, shopkeeper: 0.10, homemaker: 0.12, consultant: 0.04, doctor: 0.02, domestic_worker: 0.02}
+  "75-88": {retired: 0.85, homemaker: 0.15}
+
+# label · income-band shares · workplace kind (office|techpark|school|college|shop|restaurant|home|roaming|roaming_homes|none)
+# · offmap = share working outside the map · commute shares · routine template · pay cycle · interests pool
+occupations:
+  school_student:    {label: School student, income: {"<25k": 1.0}, work: school, offmap: 0.0, commute: {walk: 0.6, bus: 0.2, car: 0.2}, routine: school, interests: [gaming, cricket, music, anime, football]}
+  college_student:   {label: College student, income: {"<25k": 0.9, "25-50k": 0.1}, work: college, offmap: 0.6, commute: {metro: 0.45, bus: 0.25, two_wheeler: 0.25, walk: 0.05}, routine: college, interests: [gaming, music, fashion, tech, startups, football, anime]}
+  software_engineer: {label: Software engineer, income: {"50k-1L": 0.3, "1-2L": 0.45, ">2L": 0.25}, work: techpark, offmap: 0.55, commute: {metro: 0.3, two_wheeler: 0.3, car: 0.3, auto: 0.1}, routine: office, interests: [tech, startups, gadgets, cricket, travel, gaming, fitness]}
+  product_designer:  {label: Product designer, income: {"50k-1L": 0.3, "1-2L": 0.55, ">2L": 0.15}, work: office, offmap: 0.3, commute: {metro: 0.3, two_wheeler: 0.3, auto: 0.2, walk: 0.2}, routine: office, interests: [design, photography, art, travel, coffee]}
+  ux_designer:       {label: UX designer, income: {"50k-1L": 0.4, "1-2L": 0.5, ">2L": 0.1}, work: office, offmap: 0.3, commute: {metro: 0.3, two_wheeler: 0.2, auto: 0.3, walk: 0.2}, routine: office, interests: [design, photography, travel, coffee, art]}
+  data_analyst:      {label: Data analyst, income: {"25-50k": 0.3, "50k-1L": 0.5, "1-2L": 0.2}, work: techpark, offmap: 0.5, commute: {metro: 0.4, two_wheeler: 0.3, bus: 0.3}, routine: office, interests: [tech, cricket, finance, gaming]}
+  product_manager:   {label: Product manager, income: {"1-2L": 0.55, ">2L": 0.45}, work: techpark, offmap: 0.5, commute: {car: 0.5, metro: 0.2, two_wheeler: 0.3}, routine: office, interests: [startups, tech, finance, travel, running]}
+  startup_founder:   {label: Startup founder, income: {"50k-1L": 0.3, "1-2L": 0.3, ">2L": 0.4}, work: office, offmap: 0.1, commute: {car: 0.4, two_wheeler: 0.4, walk: 0.2}, routine: office_late, interests: [startups, tech, finance, fitness]}
+  consultant:        {label: Consultant, income: {"1-2L": 0.5, ">2L": 0.5}, work: office, offmap: 0.6, commute: {car: 0.6, metro: 0.2, auto: 0.2}, routine: office, interests: [finance, travel, golf, wine, cricket]}
+  banker:            {label: Bank officer, income: {"50k-1L": 0.6, "1-2L": 0.4}, work: office, offmap: 0.3, commute: {two_wheeler: 0.5, car: 0.3, bus: 0.2}, routine: office, interests: [finance, cricket, movies, family]}
+  teacher:           {label: Teacher, income: {"25-50k": 0.6, "50k-1L": 0.4}, work: school, offmap: 0.0, commute: {two_wheeler: 0.5, walk: 0.3, bus: 0.2}, routine: teacher, interests: [reading, music, family, cooking]}
+  doctor:            {label: Doctor, income: {"1-2L": 0.5, ">2L": 0.5}, work: office, offmap: 0.4, commute: {car: 0.8, two_wheeler: 0.2}, routine: office_long, interests: [health, travel, reading, music]}
+  nurse:             {label: Nurse, income: {"25-50k": 0.8, "50k-1L": 0.2}, work: office, offmap: 0.4, commute: {bus: 0.5, two_wheeler: 0.3, walk: 0.2}, routine: shift, interests: [family, movies, cooking, devotional]}
+  shopkeeper:        {label: Shopkeeper, income: {"25-50k": 0.5, "50k-1L": 0.4, "1-2L": 0.1}, work: shop, offmap: 0.0, commute: {walk: 0.5, two_wheeler: 0.5}, routine: shopkeeper, interests: [cricket, news, family, devotional]}
+  shop_assistant:    {label: Shop assistant, income: {"<25k": 0.7, "25-50k": 0.3}, work: shop, offmap: 0.0, commute: {walk: 0.4, bus: 0.4, two_wheeler: 0.2}, routine: shopkeeper, interests: [movies, music, cricket, fashion]}
+  salesperson:       {label: Retail salesperson, income: {"<25k": 0.4, "25-50k": 0.6}, work: shop, offmap: 0.0, commute: {bus: 0.4, two_wheeler: 0.4, walk: 0.2}, routine: shopkeeper, interests: [gadgets, movies, cricket, music]}
+  restaurant_staff:  {label: Restaurant staff, income: {"<25k": 0.8, "25-50k": 0.2}, work: restaurant, offmap: 0.0, commute: {walk: 0.5, bus: 0.3, two_wheeler: 0.2}, routine: restaurant, interests: [movies, music, cricket, cooking]}
+  delivery_partner:  {label: Delivery partner, income: {"<25k": 0.6, "25-50k": 0.4}, work: roaming, offmap: 0.0, commute: {two_wheeler: 1.0}, routine: gig, pay: weekly, interests: [cricket, movies, music, bikes]}
+  auto_driver:       {label: Auto driver, income: {"<25k": 0.6, "25-50k": 0.4}, work: roaming, offmap: 0.0, commute: {auto: 1.0}, routine: gig, pay: weekly, interests: [cricket, movies, news, devotional]}
+  content_creator:   {label: Content creator, income: {"25-50k": 0.4, "50k-1L": 0.4, "1-2L": 0.2}, work: home, offmap: 0.0, commute: {two_wheeler: 0.5, walk: 0.3, auto: 0.2}, routine: creator, interests: [tech, fashion, fitness, travel, food, photography]}
+  journalist:        {label: Journalist, income: {"25-50k": 0.4, "50k-1L": 0.6}, work: office, offmap: 0.2, commute: {two_wheeler: 0.6, metro: 0.4}, routine: office, interests: [news, books, cricket, tech]}
+  homemaker:         {label: Homemaker, income: {"<25k": 0.6, "25-50k": 0.2, "50k-1L": 0.15, "1-2L": 0.05}, work: none, offmap: 0.0, commute: {walk: 0.7, auto: 0.3}, routine: homemaker, interests: [cooking, family, tv_serials, devotional, gardening, shopping]}
+  retired:           {label: Retired, income: {"<25k": 0.4, "25-50k": 0.35, "50k-1L": 0.2, "1-2L": 0.05}, work: none, offmap: 0.0, commute: {walk: 0.8, auto: 0.2}, routine: retired, interests: [news, devotional, walking, gardening, family, cricket]}
+  govt_employee:     {label: Government employee, income: {"25-50k": 0.5, "50k-1L": 0.5}, work: office, offmap: 0.7, commute: {bus: 0.4, two_wheeler: 0.4, metro: 0.2}, routine: office, interests: [cricket, news, family, devotional]}
+  lawyer:            {label: Lawyer, income: {"50k-1L": 0.4, "1-2L": 0.4, ">2L": 0.2}, work: office, offmap: 0.6, commute: {car: 0.7, two_wheeler: 0.3}, routine: office, interests: [reading, cricket, travel, news]}
+  accountant:        {label: Accountant, income: {"25-50k": 0.4, "50k-1L": 0.6}, work: office, offmap: 0.3, commute: {two_wheeler: 0.5, bus: 0.3, metro: 0.2}, routine: office, interests: [finance, cricket, movies, family]}
+  security_guard:    {label: Security guard, income: {"<25k": 1.0}, work: office, offmap: 0.0, commute: {walk: 0.4, bus: 0.6}, routine: shift, interests: [cricket, movies, devotional]}
+  domestic_worker:   {label: Domestic worker, income: {"<25k": 1.0}, work: roaming_homes, offmap: 0.0, commute: {walk: 0.8, bus: 0.2}, routine: domestic, interests: [family, tv_serials, devotional]}
+  job_seeker:        {label: Looking for work, income: {"<25k": 1.0}, work: none, offmap: 0.0, commute: {walk: 0.5, bus: 0.5}, routine: homemaker, interests: [gaming, cricket, movies, tech]}
+
+education:
+  default: Graduate
+  school_student: In school
+  college_student: Undergraduate
+  software_engineer: B.Tech
+  product_designer: B.Des
+  ux_designer: B.Des
+  data_analyst: B.Sc
+  product_manager: MBA
+  startup_founder: B.Tech
+  consultant: MBA
+  doctor: MBBS
+  nurse: B.Sc Nursing
+  lawyer: LLB
+  accountant: B.Com
+  shopkeeper: Class 12
+  shop_assistant: Class 10
+  salesperson: Class 12
+  restaurant_staff: Class 10
+  delivery_partner: Class 12
+  auto_driver: Class 8
+  security_guard: Class 10
+  domestic_worker: Class 5
+
+income_ranges:   # monthly ₹ per band
+  "<25k": [8000, 24500]
+  "25-50k": [25000, 49500]
+  "50k-1L": [50000, 99000]
+  "1-2L": [100000, 199000]
+  ">2L": [200000, 450000]
+
+household:
+  target_households: 410
+  flatmate_share_of_young_singles: 0.45
+  joint_share_of_elderly: 0.55
+
+special_agents:
+  reviewers: {tech: 6, lifestyle: 4}
+  salespeople: {ST-ELECTROHUB: 3, ST-DIGITAL-BAZAAR: 3, ST-PHONEWORLD: 2}
+  news_desk: 1
+
+names:
+  female: [Meera, Ananya, Priya, Divya, Kavya, Riya, Sneha, Pooja, Aisha, Fatima, Harini, Lakshmi, Shruti, Nandini, Deepa, Jyothi, Asha, Rekha, Sunita, Neha, Ishita, Tanvi, Sanjana, Bhavana, Swathi, Pallavi, Aditi, Zara, Sara, Nisha, Roopa, Vidya, Anjali, Keerthi, Sowmya, Gayathri, Mary, Ruth, Farah, Simran]
+  male: [Naveen, Ravi, Arjun, Rahul, Karthik, Vikram, Aditya, Nikhil, Tarun, Kiran, Suresh, Mahesh, Rohan, Varun, Imran, Faisal, Joseph, Thomas, Manoj, Prakash, Ganesh, Harish, Sanjay, Vivek, Abhishek, Siddharth, Akash, Pranav, Yash, Kabir, Mohan, Ramesh, Venkat, Anand, Dinesh, Gautham, Shreyas, Aryan, Samuel, Zaid]
+  surnames: [Iyer, Singh, Sharma, Kulkarni, Patel, Khan, Krishnan, Naidu, Kumar, Gowda, Reddy, Thomas, "D'Souza", Varma, Rao, Menon, Nair, Shetty, Hegde, Bhat, Pillai, Joshi, Das, Fernandes, Mehta, Agarwal, Murthy, Prasad, Chatterjee, Banerjee, Ahmed, Siddiqui, Mathew, George, Kamath, Pai, Shenoy, Bose, Gupta, Srinivasan]
+
+lifestyles: [young_professional, family_first, traditional, student_life, fitness_focused, creative, frugal, social_butterfly]

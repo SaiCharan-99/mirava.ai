@@ -45,7 +45,7 @@ test: ## pytest + web unit tests
 
 lint: ## ruff + mypy + eslint + tsc + gitleaks
 	$(PY) ruff check .
-	$(PY) mypy shared world api tools/mapgen tools/llm_smoke.py tools/gen_types.py
+	$(PY) mypy shared world api population engine mind tools/mapgen tools/llm_smoke.py tools/gen_types.py
 	cd $(WEB) && $(ESLINT) src --max-warnings=0
 	cd $(WEB) && $(TSC) --noEmit -p .
 	gitleaks git . --no-banner --redact --exit-code 1
@@ -60,11 +60,11 @@ map: ## OSM extract → Tiled map, road graph, places, sites, stores, tileset
 fetch-osm: ## (re)download the Overpass extract (normally committed)
 	$(PY) python -m tools.mapgen.fetch_osm
 
-genesis: ## phase 2
-	@echo "make genesis arrives in phase 2"; exit 1
+genesis: ## create the 1,000 agents + genesis files/Firestore docs/agent_snapshot events (needs the emulator locally)
+	$(PY) python -m population.genesis $(ARGS)
 
-engine: ## phase 2
-	@echo "make engine arrives in phase 2"; exit 1
+engine: ## world-engine alone on :8100 (fast clock, fakes)
+	$(DEVENV) $(PY) uvicorn engine.app:app --port 8100
 
 llm-smoke: ## one structured call + one embedding via the configured backend
 	$(PY) python -m tools.llm_smoke
