@@ -82,8 +82,8 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | Item | Value |
 |---|---|
 | GCP project / region | mirava-ai-hack (760833706192) / asia-south1 |
-| Web URL (Firebase Hosting) | _phase 1_ |
-| API URL (Cloud Run `launch-lens-api`) | _phase 1_ |
+| Web URL (Firebase Hosting) | https://mirava-ai-hack.web.app |
+| API URL (Cloud Run `mirava-api`) | https://mirava-api-kfh7v3hvjq-el.a.run.app (public path: https://mirava-ai-hack.web.app/api/healthz) |
 | world-engine URL / revision | _phase 2_ |
 | OSM extract date / map stats | _phase 1_ |
 | Genesis version / seed | _phase 2_ |
@@ -100,7 +100,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 02 | APIs enabled, service accounts + roles | 1 | ✅ | 2026-10-17 | 19 APIs (+billingbudgets); SAs mirava-api, mirava-engine, mirava-analyst-ro, mirava-scheduler; roles per guide 02 (run.invoker on world-engine in phase 2) |
 | 03 | Secret Manager `openrouter-api-key` | 1 | ✅ | 2026-10-17 | version 1 = dev key from .env (rotate to a prod key in phase 6); accessor: mirava-api, mirava-engine |
 | 04 | Artifact Registry `mirava`, Cloud Build permissions | 1 | ✅ | 2026-10-17 | repo asia-south1/mirava; builds run as 760833706192-compute SA (deploy roles granted, also to legacy cloudbuild SA) |
-| 05 | Cloud Run `launch-lens-api` | 1 | ⬜ | | |
+| 05 | Cloud Run `mirava-api` | 1 | ✅ | 2026-10-18 | asia-south1, SA mirava-api, secret mounted, min 0 / max 5; deployed by Cloud Build 2098a98e (SUCCESS) |
 | 06 | Firebase Hosting | 1 | ✅ | 2026-10-18 | Firebase added to mirava-ai-hack (Blaze/free trial); site mirava-ai-hack.web.app; .firebaserc committed |
 | 07 | Firestore emulator (local) | 1 | ✅ | 2026-10-17 | 127.0.0.1:8080; needs Java 21+ (Temurin 25 JRE installed) |
 | 07 | Firestore database `asia-south1` | 2 | ⬜ | | |
@@ -122,7 +122,7 @@ _Filled in by phase 1 and updated by every phase._
 - [phase 1] `indiranagar.tmj` gains object layer `lights` and documents `labels` object types (INTERFACES §4.1) — needed for night lighting — DECISIONS #60.
 
 ## 8. Known issues / tech debt
-_None yet. Format: `[phase N] [blocking|minor] description — where — suggested fix`._
+- [phase 1] [minor] Cloud Run's front end answers `GET /healthz` itself with 404 on the direct run.app URL; `/api/healthz` works. **world-engine (phase 2) needs a different health path** (e.g. `/health` or `/api/healthz`) or the Scheduler watchdog will 404 — api/main.py, INTERFACES §5 — suggested fix: add `/health` and update the contract.
 
 ## 9. Handoff notes for the next session
 _Phase 1 has not started. Start with `/start-phase 1`._
