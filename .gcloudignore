@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv/
+.data/
+artifacts/
+**/node_modules/
+web/dist/
+web/public/assets/
+assets/osm/
+docs/
+tools/visual/
+.env
+*.key
+service-account*.json

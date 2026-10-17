@@ -1,0 +1,36 @@
+# Cloud Build: api image → Artifact Registry → Cloud Run `mirava-api`; web → Firebase Hosting.
+#   gcloud builds submit --config infra/cloudbuild.yaml --region asia-south1 --substitutions _REGION=asia-south1 .
+substitutions:
+  _REGION: asia-south1
+  _REPO: mirava
+  _API_SERVICE: mirava-api
+  _API_SA: mirava-api
+options:
+  logging: CLOUD_LOGGING_ONLY
+steps:
+  - id: api-image
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "api/Dockerfile", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID",
+           "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:latest", "."]
+  - id: api-push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "--all-tags", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api"]
+  - id: api-deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args: ["run", "deploy", "${_API_SERVICE}",
+           "--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID",
+           "--region=${_REGION}", "--service-account=${_API_SA}@$PROJECT_ID.iam.gserviceaccount.com",
+           "--set-secrets=OPENROUTER_API_KEY=openrouter-api-key:latest",
+           "--set-env-vars=ENV=cloud,LLM_BACKEND=openrouter,DECISION_BACKEND=openrouter,BQ_BACKEND=bigquery,BQ_DATASET=mirava,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=${_REGION},INTERACTIVE_CAP_USD=5",
+           "--allow-unauthenticated", "--min-instances=0", "--max-instances=5"]
+  - id: web-build
+    name: node:20
+    entrypoint: bash
+    args: ["-c", "cd web && npm ci && npm run build"]
+  - id: web-deploy
+    name: node:20
+    entrypoint: bash
+    args: ["-c", "npx --yes firebase-tools@13 deploy --only hosting --project $PROJECT_ID --non-interactive"]
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID

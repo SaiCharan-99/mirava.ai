@@ -54,7 +54,7 @@ export class WorldScene extends Phaser.Scene {
       const r = Number(o.properties?.find((p) => p.name === "radius_m")?.value ?? 14) * PX_PER_M;
       const tint = o.type === "street" ? 0xffc878 : o.type === "site" ? 0xfff0c8 : o.type === "window" ? 0xffd68c : 0xffc078;
       const img = this.add.image(o.x, o.y, "glow").setBlendMode(Phaser.BlendModes.ADD).setTint(tint);
-      img.setDisplaySize(r * 2, r * 2).setAlpha(o.type === "street" ? 0.55 : 0.9);
+      img.setDisplaySize(r * 2, r * 2).setAlpha(o.type === "street" ? 0.45 : o.type === "site" ? 0.8 : 0.6);
       this.glows.add(img);
     }
     for (const o of (map.getObjectLayer("labels")?.objects ?? []) as TiledObject[]) {
@@ -131,6 +131,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private emitView(): void {
+    this.cameras.main.preRender();
     const v = this.cameras.main.worldView;
     this.onView?.({ x: v.x, y: v.y, w: v.width, h: v.height, mapW: this.mapW, mapH: this.mapH, z: this.z });
   }

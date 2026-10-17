@@ -1,0 +1,11 @@
+.git
+.venv
+.data
+artifacts
+**/node_modules
+web
+docs
+tools/visual
+assets/osm
+.env
+*.key
