@@ -5,8 +5,8 @@ Living document. Every Claude Code session reads it first and updates it last (`
 ## 1. Current status
 | Field | Value |
 |---|---|
-| Current phase | 3 — Memory, think/speak conversations, governor, highlights (not started) |
-| Phase status | Phase 2 ✅ done · phase 3 ⬜ |
+| Current phase | 3 — Memory, think/speak conversations, governor, highlights (in progress) |
+| Phase status | Phase 2 ✅ done · phase 3 🟨 |
 | Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (47 py + 14 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
 | Last session | 2026-10-18 · phase 2 |
 | Builder | Sai Charan (Claude Code) |
@@ -17,7 +17,7 @@ Living document. Every Claude Code session reads it first and updates it last (`
 |---|---|---|---|---|---|
 | 1 | Foundation, globe, Indiranagar map, app shell | ✅ | 2026-10-18 | 01/02/33 PASS | hello deploy live |
 | 2 | Population & the always-on world engine | ✅ | 2026-10-18 | 03/04/05/06/10/32 PASS; 13/14 review | world-engine live on Cloud Run |
-| 3 | Memory, think/speak conversations, governor, highlights | ⬜ | | | |
+| 3 | Memory, think/speak conversations, governor, highlights | 🟨 | 2026-10-18 | | |
 | 4 | Launch Studio, channels and attention | ⬜ | | | |
 | 5 | Stores, buying and Insights | ⬜ | | | |
 | 6 | Hardening, deploy, demo, submission | ⬜ | | | |
@@ -109,7 +109,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 10 | Pub/Sub `world-events`, `world-texts` + BigQuery subscriptions | 2 | ✅ | 2026-10-18 | world-events-to-bq / world-texts-to-bq (table schema); ping verified |
 | 05 | Cloud Run `world-engine` (always-on, min=max=1) | 2 | ✅ | 2026-10-18 | SA mirava-engine, 2 vCPU/4 GiB, no-cpu-throttling, session affinity, public; /commands needs ID token from mirava-api; mirava-api has ENGINE_URL |
 | 16 | Cloud Scheduler watchdog | 2 | ✅ | 2026-10-18 | world-engine-watchdog, */5, GET /health, asia-south1 |
-| 07 | Firestore vector index `memories` | 3 | ⬜ | | |
+| 07 | Firestore vector index `memories` | 3 | ✅ | 2026-10-18 | composite CICAgOjXh4EK: agent_id ASC + embedding flat 768-d, scope COLLECTION, READY |
 | 12 | Model Armor template | 4 | ⬜ | | |
 | 09 | BigQuery views + `ll-analyst-ro` + VECTOR_SEARCH check | 5 | ⬜ | | |
 | 13 | Monitoring dashboard + alerts | 6 | ⬜ | | |
