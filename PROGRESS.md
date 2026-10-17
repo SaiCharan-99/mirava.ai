@@ -95,14 +95,14 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | # | Item | Needed by phase | Status | Date | Notes (names, region — no secrets) |
 |---|---|---|---|---|---|
 | 00 | OpenRouter account, API key in `.env`, models verified, credit limit | 1 | ⬜ | | |
-| 15 | OpenStreetMap extract for Indiranagar (only if Overpass is blocked) | 1 | ⬜ / not needed | | |
+| 15 | OpenStreetMap extract for Indiranagar (only if Overpass is blocked) | 1 | not needed | 2026-10-17 | Overpass reachable; extract committed |
 | 01 | GCP project, billing, budget alert, gcloud + ADC | 1 | ⬜ | | |
 | 02 | APIs enabled, service accounts + roles | 1 | ⬜ | | |
 | 03 | Secret Manager `openrouter-api-key` | 1 | ⬜ | | |
 | 04 | Artifact Registry `launch-lens`, Cloud Build permissions | 1 | ⬜ | | |
 | 05 | Cloud Run `launch-lens-api` | 1 | ⬜ | | |
 | 06 | Firebase Hosting | 1 | ⬜ | | |
-| 07 | Firestore emulator (local) | 1 | ⬜ | | |
+| 07 | Firestore emulator (local) | 1 | ✅ | 2026-10-17 | 127.0.0.1:8080; needs Java 21+ (Temurin 25 JRE installed) |
 | 07 | Firestore database `asia-south1` | 2 | ⬜ | | |
 | 08 | Cloud Storage buckets + CORS | 2 | ⬜ | | |
 | 09 | BigQuery dataset `launch_lens` (+ public data priors) | 2 | ⬜ | | |

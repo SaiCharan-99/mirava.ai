@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     bq_backend: Literal["duckdb", "bigquery"] = "duckdb"
     bq_dataset: str = "mirava"
     duckdb_path: str = ".data/mirava.duckdb"
-    firestore_emulator_host: str | None = "localhost:8080"
+    firestore_emulator_host: str | None = "127.0.0.1:8080"
     gcs_bucket_uploads: str = ""
     gcs_bucket_worlds: str = ""
     gcs_bucket_exports: str = ""

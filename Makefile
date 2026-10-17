@@ -26,7 +26,7 @@ dev: ## Firestore emulator + api + web (engine arrives in phase 2), fakes + fast
 	@echo "api :8000 · web :5173 · firestore emulator :8080 (Ctrl+C stops all)"
 	WORLD_SECONDS_PER_SIM_DAY=120 LLM_BACKEND=fake DECISION_BACKEND=fake BQ_BACKEND=duckdb \
 	  npx --yes concurrently -k -n emu,api,web -c yellow,cyan,magenta \
-	  "gcloud emulators firestore start --host-port=localhost:8080 --quiet" \
+	  "gcloud emulators firestore start --host-port=127.0.0.1:8080 --quiet" \
 	  "$(PY) uvicorn api.main:app --port 8000 --reload" \
 	  "cd $(WEB) && npm run dev"
 
@@ -37,7 +37,7 @@ web: ## web alone on :5173
 	cd $(WEB) && node scripts/sync-assets.mjs && $(VITE) --port 5173 --strictPort
 
 emulator: ## Firestore emulator alone on :8080
-	gcloud emulators firestore start --host-port=localhost:8080 --quiet
+	gcloud emulators firestore start --host-port=127.0.0.1:8080 --quiet
 
 test: ## pytest + web unit tests
 	$(PY) pytest
