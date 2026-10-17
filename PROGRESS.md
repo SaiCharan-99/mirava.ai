@@ -81,7 +81,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 ## 5. Environment
 | Item | Value |
 |---|---|
-| GCP project / region | _phase 1_ |
+| GCP project / region | mirava-ai-hack (760833706192) / asia-south1 |
 | Web URL (Firebase Hosting) | _phase 1_ |
 | API URL (Cloud Run `launch-lens-api`) | _phase 1_ |
 | world-engine URL / revision | _phase 2_ |
@@ -94,9 +94,9 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets here — only names and ✅.
 | # | Item | Needed by phase | Status | Date | Notes (names, region — no secrets) |
 |---|---|---|---|---|---|
-| 00 | OpenRouter account, API key in `.env`, models verified, credit limit | 1 | ⬜ | | |
+| 00 | OpenRouter account, API key in `.env`, models verified, credit limit | 1 | ✅ | 2026-10-17 | key in .env only; 4 model ids listed; llm-smoke OK (structured + 768-d embedding) |
 | 15 | OpenStreetMap extract for Indiranagar (only if Overpass is blocked) | 1 | not needed | 2026-10-17 | Overpass reachable; extract committed |
-| 01 | GCP project, billing, budget alert, gcloud + ADC | 1 | ⬜ | | |
+| 01 | GCP project, billing, budget alert, gcloud + ADC | 1 | 🟨 | 2026-10-17 | project mirava-ai-hack (#760833706192), free trial, billing ✅; budget alert + ADC pending |
 | 02 | APIs enabled, service accounts + roles | 1 | ⬜ | | |
 | 03 | Secret Manager `openrouter-api-key` | 1 | ⬜ | | |
 | 04 | Artifact Registry `launch-lens`, Cloud Build permissions | 1 | ⬜ | | |
