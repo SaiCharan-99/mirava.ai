@@ -1,0 +1,5 @@
+/* App-only additions (the mockup's markup used inline styles or canvas for these). Tokens only — no new colours. */
+.stage .phaser-host{position:absolute;inset:0}
+.stage .phaser-host canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+.globe .cobe{width:720px;height:720px;justify-self:center;transition:transform 1s cubic-bezier(.6,0,.4,1)}
+.globe.leaving .cobe{transform:scale(2.6)}

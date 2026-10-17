@@ -1,0 +1,22 @@
+/* Design tokens — copied verbatim from docs/ui-mockup.html (INTERFACES §6.2). Do not invent new colours. */
+:root{
+  --bg:#0b0f15; --bg2:#0f141c; --panel:#131a24; --panel2:#18212d; --panel3:#1e2937;
+  --line:#253141; --line2:#2f3d50; --ink:#e7edf5; --ink2:#b3c0d0; --muted:#7f8ea3;
+  --teal:#2dd4bf; --teal2:#14b8a6; --teal-soft:rgba(45,212,191,.12);
+  --amber:#f5b041; --amber-soft:rgba(245,176,65,.13); --red:#f87171; --red-soft:rgba(248,113,113,.13);
+  --green:#4ade80; --green-soft:rgba(74,222,128,.12); --violet:#a78bfa; --violet-soft:rgba(167,139,250,.14);
+  --blue:#60a5fa; --pink:#f472b6;
+  --c1:#2dd4bf; --c2:#f5b041; --c3:#60a5fa; --c4:#f472b6; --c5:#64748b; --c6:#a78bfa;
+  --p1:#f97316; --p2:#22c55e; --p3:#8b5cf6; --p4:#ec4899; --p5:#eab308; --p6:#06b6d4;
+  --private:#c084fc; --private-soft:rgba(192,132,252,.12);
+  --r:12px;
+}
+:root[data-theme="light"]{
+  --bg:#f3f5f8; --bg2:#eef1f5; --panel:#ffffff; --panel2:#f7f9fb; --panel3:#eef2f6;
+  --line:#e2e8f0; --line2:#d3dbe6; --ink:#0f172a; --ink2:#334155; --muted:#64748b;
+  --teal:#0d9488; --teal2:#0f766e; --teal-soft:rgba(13,148,136,.10);
+  --amber:#b7791f; --red:#dc2626; --green:#16a34a; --violet:#7c3aed; --blue:#2563eb;
+  --c1:#0d9488; --c2:#d97706; --c3:#2563eb; --c4:#db2777; --c5:#94a3b8; --c6:#7c3aed;
+  --p1:#ea580c; --p2:#16a34a; --p3:#7c3aed; --p4:#db2777; --p5:#ca8a04; --p6:#0891b2;
+  --private:#9333ea; --private-soft:rgba(147,51,234,.08);
+}

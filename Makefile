@@ -6,6 +6,11 @@ SHELL := bash
 PY := uv run
 WEB := web
 VISUAL := tools/visual
+# call JS tools through node directly (no npm/npx → cmd.exe shims; robust to a broken Windows PATH)
+VITEST := node node_modules/vitest/vitest.mjs
+ESLINT := node node_modules/eslint/bin/eslint.js
+TSC := node node_modules/typescript/bin/tsc
+VITE := node node_modules/vite/bin/vite.js
 
 .PHONY: help setup dev api web emulator test lint types map fetch-osm genesis engine llm-smoke seed-demo restore-demo eval visual fixtures deploy
 
@@ -29,20 +34,20 @@ api: ## api alone on :8000
 	$(PY) uvicorn api.main:app --port 8000 --reload
 
 web: ## web alone on :5173
-	cd $(WEB) && npm run dev
+	cd $(WEB) && node scripts/sync-assets.mjs && $(VITE) --port 5173 --strictPort
 
 emulator: ## Firestore emulator alone on :8080
 	gcloud emulators firestore start --host-port=localhost:8080 --quiet
 
 test: ## pytest + web unit tests
 	$(PY) pytest
-	cd $(WEB) && npm test --silent
+	cd $(WEB) && $(VITEST) run
 
 lint: ## ruff + mypy + eslint + tsc + gitleaks
 	$(PY) ruff check .
 	$(PY) mypy shared world api tools/mapgen tools/llm_smoke.py tools/gen_types.py
-	cd $(WEB) && npx eslint src --max-warnings=0
-	cd $(WEB) && npx tsc --noEmit -p .
+	cd $(WEB) && $(ESLINT) src --max-warnings=0
+	cd $(WEB) && $(TSC) --noEmit -p .
 	gitleaks git . --no-banner --redact --exit-code 1
 	gitleaks git . --pre-commit --no-banner --redact --exit-code 1
 
