@@ -1,0 +1,67 @@
+[
+ {
+  "name": "event_id",
+  "type": "STRING",
+  "mode": "REQUIRED"
+ },
+ {
+  "name": "t",
+  "type": "INT64",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "day",
+  "type": "INT64",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "t_real",
+  "type": "TIMESTAMP",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "kind",
+  "type": "STRING",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "agent_id",
+  "type": "INT64",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "other_id",
+  "type": "INT64",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "product_id",
+  "type": "STRING",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "site_id",
+  "type": "STRING",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "session_id",
+  "type": "STRING",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "rendered",
+  "type": "BOOL",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "private",
+  "type": "BOOL",
+  "mode": "NULLABLE"
+ },
+ {
+  "name": "payload",
+  "type": "JSON",
+  "mode": "NULLABLE"
+ }
+]

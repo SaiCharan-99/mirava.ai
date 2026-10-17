@@ -283,7 +283,7 @@ def chart(spec: dict) -> dict          # ECharts option
 - Tileset: `assets/tiles/city.png`, 16 px per tile, palette from the mockup.
 
 ### 4.2 Checkpoint — `gs://{bucket-worlds}/checkpoints/{t}.msgpack.zst` (local `.data/checkpoints/`)
-`{version, t, world_seed, rng_states, agents: [AgentState], segments, sessions, plans, governor, pending_tasks, products_live}`. Pointer in Firestore `world/state.last_checkpoint`. Genesis: `genesis/v1/` (profiles, relationships, seed memories).
+`{version, t, world_seed, rng_states, agents: [AgentState], segments, sessions, plans, governor, pending_tasks, products_live}`. Pointer in Firestore `world/state.last_checkpoint`; `world/state.last_flushed_t` marks the last published minute (events ≤ it are not re-emitted on replay). In Firestore `agents/{id}.profile.media.feed_sessions` is stored as `[{start, minutes, app}]` (no nested arrays; DECISIONS #67). Genesis: `genesis/v1/` (profiles, relationships, seed memories).
 
 ### 4.3 Highlights — `gs://{bucket-worlds}/highlights/day-{n}.json`
 `{day, moments: [{t, kind, agent_ids, x, y, title, text, ref_event_id, session_id?}], samples: {t0, step_min: 10, positions: [[x,y]×1000] per sample}}`.
@@ -308,6 +308,7 @@ def chart(spec: dict) -> dict          # ECharts option
   "awareness":{"nova-x1":0.34,"pulse-5":0.52}}
 {"type":"clock","t":31726,"speed":1.0}
 ```
+Agent `mode` values: `walk|two_wheeler|car|auto|bus|metro|idle|offmap` (`offmap` = outside the map, not drawn). `act` values: `sleep|home|commute|work|school|college|eat|cafe|gym|park|shop|store_shift|offmap_work|metro|roam`. Phase-2 `evt` items also include `{"k":"activity","a","act","place"(name or null)}`, `{"k":"life_event","a","type"}`, `{"k":"payday","a","amount"}` (DECISIONS #66).
 Notice and thought texts in `evt` are truncated to 140 characters. Full private texts are only served by the API to the profile drawer and Insights.
 
 ---
@@ -318,8 +319,8 @@ Notice and thought texts in `evt` are truncated to 140 characters. Full private 
 | `GET /world/state` | → `{t, day, label, scale, slowed, status, budget}` |
 | `GET /world/stats` | → stats object (as in `/live`) |
 | `GET /world/highlights?day=` | → highlights JSON (§4.3) |
-| `GET /agents?q=&age=&job=&income=&phone_age_gt=&product=&stage=&watched=&sort=&page=` | → `{rows:[{agent_id,name,age,occupation,income_band,phone:{brand,age_years,condition},stages:{product_id:stage},watched}], total}` |
-| `GET /agents/{id}` | → `{profile, state, relationships, beliefs}` |
+| `GET /agents?q=&age=&job=&income=&phone_age_gt=&product=&stage=&watched=&sort=&page=` | → `{rows:[{agent_id,name,age,occupation,income_band,phone:{brand,age_years,condition},stages:{product_id:stage},watched,activity}], total, phone_old_count, watched_count}`; `age=min-max`, `page_size` ≤ 1000, `sort=-phone_age` |
+| `GET /agents/{id}` | → `{profile, state, relationships, beliefs, watched}`; extras (DECISIONS #66): `profile.household_size`, `profile.workplace_name`, `profile.possessions.phone.age_years`, `state.place_name`, `relationships[].other {agent_id,name,age,occupation}` |
 | `GET /agents/{id}/thoughts?limit=` | → `[{t, label, trigger:{channel,site_id?,creative_id?,session_id?}, text, attitude_delta, product_id}]` |
 | `GET /agents/{id}/conversations` | → `[{session_id, with, kind, t, topics, n_messages, rendered}]` |
 | `GET /conversations/{session_id}?as_agent={id}` | → `{conversation, messages, share_plan (only as_agent's), debrief (only as_agent's), store_thoughts (only as_agent's)}` |
@@ -335,7 +336,8 @@ Notice and thought texts in `evt` are truncated to 140 characters. Full private 
 | `POST /insights/poll` | `{question, options, cohort?}` → `{poll_id, estimate_usd}`; `GET /insights/poll/{id}` → result |
 | `POST /insights/interview` | `{agent_id, question, session_id?}` → `{answer, memories_used}` |
 | engine `POST /commands` (IAM) | `{type: launch\|poll\|pause\|resume\|set_speed\|restore, …}` |
-| engine `GET /healthz` | 200 if a tick happened < 120 s ago |
+| engine `GET /health` (alias `/healthz`, `/api/healthz`) | 200 if a tick happened < 120 s ago, else 500. Cloud Run answers `/healthz` itself on run.app URLs, so the watchdog uses **`/health`** (DECISIONS #65) |
+| engine `GET /state` · `GET /stats` · `GET /agents/{id}/state` | world state (+ `engine` diagnostics) · stats frame · live AgentState + current phone |
 
 ---
 

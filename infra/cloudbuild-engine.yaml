@@ -1,0 +1,28 @@
+# Cloud Build: world-engine image → Artifact Registry → Cloud Run `world-engine` (always on: min = max = 1).
+#   gcloud builds submit --config infra/cloudbuild-engine.yaml --region asia-south1 .
+substitutions:
+  _REGION: asia-south1
+  _REPO: mirava
+  _SERVICE: world-engine
+  _SA: mirava-engine
+  _BUCKET_WORLDS: mirava-ai-hack-mirava-worlds
+  _API_SA: mirava-api
+options:
+  logging: CLOUD_LOGGING_ONLY
+steps:
+  - id: image
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "engine/Dockerfile", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/world-engine:$BUILD_ID", "."]
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/world-engine:$BUILD_ID"]
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args: ["run", "deploy", "${_SERVICE}",
+           "--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/world-engine:$BUILD_ID",
+           "--region=${_REGION}", "--service-account=${_SA}@$PROJECT_ID.iam.gserviceaccount.com",
+           "--set-secrets=OPENROUTER_API_KEY=openrouter-api-key:latest",
+           "--set-env-vars=ENV=cloud,LLM_BACKEND=openrouter,DECISION_BACKEND=openrouter,EVENT_SINK=pubsub,BQ_BACKEND=bigquery,BQ_DATASET=mirava,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=${_REGION},GCS_BUCKET_WORLDS=${_BUCKET_WORLDS},WORLD_SECONDS_PER_SIM_DAY=3600,DAILY_CAP_USD=15,ENGINE_ALLOWED_CALLERS=${_API_SA}@$PROJECT_ID.iam.gserviceaccount.com",
+           "--min-instances=1", "--max-instances=1", "--no-cpu-throttling", "--cpu=2", "--memory=4Gi",
+           "--timeout=3600", "--session-affinity", "--allow-unauthenticated"]

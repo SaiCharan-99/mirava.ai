@@ -5,6 +5,8 @@ substitutions:
   _REPO: mirava
   _API_SERVICE: mirava-api
   _API_SA: mirava-api
+  _ENGINE_URL: https://world-engine-kfh7v3hvjq-el.a.run.app
+  _ENGINE_WS: wss://world-engine-kfh7v3hvjq-el.a.run.app
 options:
   logging: CLOUD_LOGGING_ONLY
 steps:
@@ -22,12 +24,12 @@ steps:
            "--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID",
            "--region=${_REGION}", "--service-account=${_API_SA}@$PROJECT_ID.iam.gserviceaccount.com",
            "--set-secrets=OPENROUTER_API_KEY=openrouter-api-key:latest",
-           "--set-env-vars=ENV=cloud,LLM_BACKEND=openrouter,DECISION_BACKEND=openrouter,BQ_BACKEND=bigquery,BQ_DATASET=mirava,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=${_REGION},INTERACTIVE_CAP_USD=5",
+           "--set-env-vars=ENV=cloud,LLM_BACKEND=openrouter,DECISION_BACKEND=openrouter,BQ_BACKEND=bigquery,BQ_DATASET=mirava,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=${_REGION},INTERACTIVE_CAP_USD=5,ENGINE_URL=${_ENGINE_URL},GCS_BUCKET_WORLDS=$PROJECT_ID-mirava-worlds",
            "--allow-unauthenticated", "--min-instances=0", "--max-instances=5"]
   - id: web-build
     name: node:20
     entrypoint: bash
-    args: ["-c", "cd web && npm ci && npm run build"]
+    args: ["-c", "cd web && npm ci && VITE_ENGINE_WS=${_ENGINE_WS} npm run build"]
   - id: web-deploy
     name: node:20
     entrypoint: bash

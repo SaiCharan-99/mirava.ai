@@ -7,6 +7,9 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY shared ./shared
 COPY api ./api
+COPY population ./population
+COPY engine ./engine
+COPY mind ./mind
 COPY world ./world
 COPY config ./config
 COPY assets/maps ./assets/maps
