@@ -58,6 +58,8 @@ class Engine:
         self.status = "starting"
         self.last_checkpoint: dict[str, Any] = {}
         self._stop = asyncio.Event()
+        self.retired = False
+        self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ setup
     def boot(self) -> None:
@@ -93,10 +95,15 @@ class Engine:
         stats = asyncio.create_task(self._stats_loop())
         try:
             while not self._stop.is_set():
+                if self.retired:
+                    self.status = "handed_off"
+                    await asyncio.sleep(5)
+                    continue
                 if not self.lease.held:
                     self.status = "follower"
                     self.world = None
                     if not await asyncio.to_thread(self.lease.acquire):
+                        await asyncio.to_thread(self.lease.request_takeover)
                         await asyncio.sleep(5)
                         continue
                     await asyncio.to_thread(self.boot)
@@ -109,7 +116,10 @@ class Engine:
                     continue
                 self.status = "running"
                 start = time.time()
-                await self.tick()
+                async with self._lock:
+                    if self.world is None:
+                        continue
+                    await self.tick()
                 spent = time.time() - start
                 await asyncio.sleep(max(0.0, self.clock.real_s_per_tick - spent))
         finally:
@@ -157,7 +167,11 @@ class Engine:
     async def _renew_loop(self) -> None:
         while True:
             await asyncio.sleep(20)
-            if self.lease.held:
+            if self.lease.held and await asyncio.to_thread(self.lease.handoff_requested):
+                log.info("newer revision requested the lease; handing off")
+                self.retired = True
+                await self.handoff()
+            elif self.lease.held:
                 ok = await asyncio.to_thread(self.lease.renew)
                 if not ok:
                     log.warning("lease lost; switching to follower")
@@ -168,15 +182,24 @@ class Engine:
             if self.world is not None:
                 await self.hub.send_all(self.world.stats(self.budget()))
 
-    async def shutdown(self) -> None:
-        """Final flush + checkpoint + lease release (SIGTERM on deploy)."""
-        self._stop.set()
+    async def handoff(self) -> None:
+        """Final flush + checkpoint + lease release, then stay idle."""
+        async with self._lock:
+            await self._handoff()
+
+    async def _handoff(self) -> None:
         if self.world is not None and self.lease.held and self.bus is not None:
             await self.bus.flush(upto_t=self.world.t)
             await self.save_checkpoint()
             await self.bus.flush(upto_t=self.world.t)
             self.store.set("world", "state", {"last_flushed_t": self.world.t, "t": self.world.t}, merge=True)
             self.lease.release()
+        self.world = None
+
+    async def shutdown(self) -> None:
+        """SIGTERM on deploy: hand off and stop."""
+        self._stop.set()
+        await self.handoff()
 
     # ------------------------------------------------------------------ views
     def budget(self) -> dict[str, float]:
@@ -185,7 +208,7 @@ class Engine:
 
     def healthy(self) -> bool:
         """A tick happened in the last 120 s (or we are paused / waiting for the lease)."""
-        return time.time() - self.last_tick_real < 120 or self.status in ("paused",)
+        return time.time() - self.last_tick_real < 120 or self.status in ("paused", "follower", "handed_off")
 
     def state(self) -> dict[str, Any]:
         """`GET /world/state` body."""

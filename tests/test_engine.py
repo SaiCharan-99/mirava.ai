@@ -162,3 +162,14 @@ def test_clock_scale():
     assert c.real_s_per_tick == 2.5 and c.sim_min_per_real_s == 0.4
     c.set_speed(2)
     assert c.real_s_per_tick == 1.25
+
+
+def test_lease_revision_handoff():
+    store = MemoryStoreBackend()
+    old = Lease(store, "old", revision="world-engine-00003-abc")
+    new = Lease(store, "new", revision="world-engine-00004-xyz")
+    assert old.acquire() and not new.acquire()
+    assert new.request_takeover() and old.handoff_requested()
+    assert not old.renew()
+    old.release()
+    assert new.acquire() and not new.handoff_requested()
