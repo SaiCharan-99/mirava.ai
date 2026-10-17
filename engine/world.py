@@ -205,7 +205,12 @@ class World:
     def _set_activity(self, a: Agent, t: int, act: str) -> None:
         a.activity = act
         self.bus.new("activity", t, a.id, {"activity": act, "place_id": a.place_id, "mode": a.mode})
-        self.live_evts.append({"k": "activity", "a": a.id, "act": act, "place": a.place_id})
+        self.live_evts.append({"k": "activity", "a": a.id, "act": act, "place": self._pname(a.place_id)})
+
+    def _pname(self, place_id: str | None) -> str | None:
+        """Display name of a non-home place (homes stay anonymous in the ticker)."""
+        p = self.wm.place_by_id.get(place_id or "")
+        return p.name if p is not None and p.kind != "home" else None
 
     def _mode_for(self, a: Agent, dist: float) -> str:
         """Travel mode for a trip of `dist` metres."""
@@ -275,7 +280,7 @@ class World:
                 act = blk["act"]
         self.bus.new("arrive", t, a.id, {"place_id": a.place_id, "activity": act})
         a.activity = act
-        self.live_evts.append({"k": "activity", "a": a.id, "act": act, "place": a.place_id})
+        self.live_evts.append({"k": "activity", "a": a.id, "act": act, "place": self._pname(a.place_id)})
 
     def _roam(self, a: Agent, t: int) -> None:
         """Gig work: hop to a random shop/restaurant/home nearby, then dwell 4–14 min."""

@@ -250,13 +250,30 @@ async def run_genesis(n: int, seed: int, *, store: DocStore, files: Files, sink:
 def agent_doc(p: AgentProfile, st: AgentState, meta: dict[str, Any]) -> dict[str, Any]:
     """Firestore `agents/{id}` document: profile + state summary + list fields for the People table."""
     ph = p.possessions["phone"]
-    return {"agent_id": p.agent_id, "profile": p.model_dump(), "state": st.model_dump(), "watched": False,
+    return {"agent_id": p.agent_id, "profile": fs_profile(p.model_dump()), "state": st.model_dump(), "watched": False,
             "meta": {"household_size": meta["household_size"], "special": meta["special"],
                      "offmap_area": meta.get("offmap_area")},
             "row": {"agent_id": p.agent_id, "name": p.name, "age": p.age, "occupation": p.occupation,
                     "income_band": p.income_band, "special_role": p.special_role,
                     "phone": {"brand": ph["brand"], "tier": ph["tier"], "bought_t": ph["bought_t"],
                               "condition": ph["condition"]}}}
+
+
+def fs_profile(d: dict[str, Any]) -> dict[str, Any]:
+    """Firestore cannot store arrays of arrays: feed sessions become objects."""
+    d = dict(d)
+    d["media"] = {**d["media"], "feed_sessions": [{"start": a, "minutes": b, "app": c}
+                                                  for a, b, c in d["media"]["feed_sessions"]]}
+    return d
+
+
+def from_fs_profile(d: dict[str, Any]) -> dict[str, Any]:
+    """Inverse of `fs_profile`."""
+    d = dict(d)
+    fs = d["media"]["feed_sessions"]
+    if fs and isinstance(fs[0], dict):
+        d["media"] = {**d["media"], "feed_sessions": [[x["start"], x["minutes"], x["app"]] for x in fs]}
+    return d
 
 
 def main() -> None:

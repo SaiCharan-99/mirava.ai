@@ -114,7 +114,7 @@ export function fromDetail(d: AgentDetail, watch: boolean): AgentView {
   const work = p.workplace_name ?? null;
   return {
     id: p.agent_id, name: p.name, age: p.age, job: p.occupation, work, shirt: shirtFor(p.agent_id),
-    act: actLabel(st?.activity ?? "", st?.mode), place: st?.place_id ?? null, special: p.special_role && p.special_role !== "none" ? p.special_role : null,
+    act: actLabel(st?.activity ?? "", st?.mode), place: (st as { place_name?: string } | undefined)?.place_name ?? null, special: p.special_role && p.special_role !== "none" ? p.special_role : null,
     watch, interests: per?.interests ?? [], beliefs,
     phone: {
       brand: String(ph.brand ?? "—"), tier: String(ph.tier ?? ""), age, cond: String(ph.condition ?? "ok"),

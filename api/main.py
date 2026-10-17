@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from population.genesis import from_fs_profile
 from population.possessions import phone_age_years
 from shared import time as simtime
 from shared.settings import get_settings
@@ -155,7 +156,11 @@ def get_agent(agent_id: int) -> dict:
     live = _engine_get(f"/agents/{agent_id}/state")
     state = live or doc.get("state", {})
     t = int(state.get("t", 0))
-    profile = dict(doc["profile"])
+    from world.map import get_map
+
+    pl = get_map().place_by_id.get(state.get("place_id") or "")
+    state = {**state, "place_name": ("Home" if pl.kind == "home" else pl.name) if pl else None}
+    profile = from_fs_profile(doc["profile"])
     meta = doc.get("meta", {})
     ph = dict((live or {}).get("phone") or doc.get("phone") or profile["possessions"]["phone"])
     ph["age_years"] = round(phone_age_years(ph, t), 1)
@@ -163,8 +168,6 @@ def get_agent(agent_id: int) -> dict:
     profile["household_size"] = meta.get("household_size")
     wp = profile.get("workplace_place_id")
     if wp:
-        from world.map import get_map
-
         place = get_map().place_by_id.get(wp)
         profile["workplace_name"] = place.name if place else None
     elif meta.get("offmap_area"):
