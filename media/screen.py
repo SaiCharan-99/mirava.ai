@@ -57,6 +57,12 @@ class FakeScreener:
         return ScreenResult(ok="political" not in flags, flagged=flags, text=neutralise(text or ""))
 
 
+def template_name(s: Settings) -> str:
+    """Full template resource name (MODEL_ARMOR_TEMPLATE may be the full path or just the template id)."""
+    t = s.model_armor_template
+    return t if t.startswith("projects/") else f"projects/{s.gcp_project_id}/locations/{s.gcp_region}/templates/{t}"
+
+
 class ModelArmorScreener(FakeScreener):
     """Model Armor `sanitizeUserPrompt` on the configured template, plus the local rules."""
 
@@ -72,9 +78,9 @@ class ModelArmorScreener(FakeScreener):
 
             creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
             creds.refresh(Request())
-            loc, proj, tpl = self.s.gcp_region, self.s.gcp_project_id, self.s.model_armor_template
-            url = (f"https://modelarmor.{loc}.rep.googleapis.com/v1/projects/{proj}/locations/{loc}/"
-                   f"templates/{tpl}:sanitizeUserPrompt")
+            name = template_name(self.s)
+            loc = name.split("/locations/")[1].split("/")[0]
+            url = f"https://modelarmor.{loc}.rep.googleapis.com/v1/{name}:sanitizeUserPrompt"
             r = httpx.post(url, json={"userPromptData": {"text": text}}, timeout=10,
                            headers={"Authorization": f"Bearer {creds.token}"})
             res = r.json().get("sanitizationResult", {})
