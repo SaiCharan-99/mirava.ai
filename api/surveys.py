@@ -375,7 +375,8 @@ def waves(sid: str) -> dict[str, Any]:
             if str(ws[a]["answer"]) != str(ws[b]["answer"]):
                 changes.append({"question_id": qid, "agent_id": aid, "from_wave": a, "to_wave": b,
                                 "from": ws[a]["answer"], "to": ws[b]["answer"], "t0": ws[a]["t"], "t1": ws[b]["t"],
-                                "why": (store().get("survey_why", f"{sid}-{qid}-{aid}-{b}") or {}).get("why")})
+                                "why": (store().get("survey_why", f"{sid}-{qid}-{aid}-{b}") or {}).get("why"),
+                                "why_event_ids": (store().get("survey_why", f"{sid}-{qid}-{aid}-{b}") or {}).get("event_ids", [])})
     return {"distribution": dist, "changes": changes}
 
 

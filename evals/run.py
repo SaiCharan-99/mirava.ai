@@ -197,7 +197,7 @@ def eval_survey(w: dict[str, Any]) -> dict[str, Any]:
     sv.store = lambda: w["store"]  # type: ignore[assignment]
     asyncio.run(sv.explain_changes("sv-eval-w2"))
     wv = sv.waves("sv-eval-w2")
-    explained = [c for c in wv["changes"] if c.get("why") and c["why"].get("event_ids")]
+    explained = [c for c in wv["changes"] if c.get("why") and c.get("why_event_ids")]
     wave_ok = (len(explained) / len(wv["changes"])) if wv["changes"] else None
     # satisficing
     qorder = {q["question_id"]: i for i, q in enumerate(w["qs"])}
