@@ -13,6 +13,9 @@ COPY population ./population
 COPY engine ./engine
 COPY mind ./mind
 COPY social ./social
+COPY commerce ./commerce
+COPY insights ./insights
+COPY infra/bigquery ./infra/bigquery
 COPY world ./world
 COPY config ./config
 COPY assets/maps ./assets/maps

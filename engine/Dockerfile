@@ -10,6 +10,10 @@ COPY engine ./engine
 COPY population ./population
 COPY mind ./mind
 COPY social ./social
+COPY commerce ./commerce
+COPY insights ./insights
+COPY agents ./agents
+COPY infra/bigquery ./infra/bigquery
 COPY media ./media
 COPY world ./world
 COPY config ./config
