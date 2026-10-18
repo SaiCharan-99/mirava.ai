@@ -25,3 +25,8 @@ artifacts/
 .playwright-mcp/
 ~$*
 docs/
+START_HERE.md
+CLAUDE.md
+PROGRESS.md
+.claude/
+.mcp.json
