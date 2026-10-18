@@ -38,7 +38,6 @@ export function Header() {
       <div className="logo"><div className="logo-mark"><i /></div>mirava.ai</div>
       <div className="crumbs"><span>Agent World</span><span>/</span><b>Indiranagar, Bengaluru</b></div>
       <span className="chip"><span className="dotlive" />Live · {fmtInt(agents || 1000)} agents</span>
-      <span className="sim-badge">SIMULATED DATA</span>
       <div className="hspace" />
       {budget.slowed && <span className="chip amber" data-testid="slowed-chip" style={{ whiteSpace: "nowrap" }}
         title="Background model spend would exceed the daily budget, so sim time runs slower">Slowed to save budget</span>}
