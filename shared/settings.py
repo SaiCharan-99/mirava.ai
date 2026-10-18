@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     llm_backend: Literal["fake", "openrouter", "vertex"] = "fake"
     decision_backend: Literal["fake", "openrouter"] = "fake"
     openrouter_api_key: SecretStr = SecretStr("")
+    openrouter_api_key_fallback: SecretStr = SecretStr("")  # used once the main key is out of credit / over its limit
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_app_title: str = "mirava.ai"
     engine_reasoning_effort: Literal["minimal", "low", "medium", "high"] = "low"

@@ -6,6 +6,7 @@ import asyncio
 import copy
 import hashlib
 import json
+import logging
 import math
 import time
 from collections.abc import Callable
@@ -17,6 +18,8 @@ from pydantic import BaseModel
 
 from shared import models
 from shared.settings import Settings, get_settings
+
+log = logging.getLogger(__name__)
 
 Reasoning = Literal["minimal", "low", "medium", "high"]
 RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
@@ -153,9 +156,24 @@ class OpenRouterClient(_CachingClient):
         self._http = http
         self.max_retries = max_retries
         self.backoff_s = backoff_s
+        self.using_fallback = False
+
+    def _key(self) -> str:
+        """Active key: the main key until it runs out, then the fallback (sticky for this process)."""
+        k = self.s.openrouter_api_key_fallback if self.using_fallback else self.s.openrouter_api_key
+        return k.get_secret_value()
+
+    def _exhausted(self, r: httpx.Response) -> bool:
+        """True when the key is out of credit (402) or over its key limit; switches to the fallback if one exists."""
+        out = r.status_code == 402 or (r.status_code in (401, 403) and "limit" in r.text.lower())
+        if out and not self.using_fallback and self.s.openrouter_api_key_fallback.get_secret_value().strip():
+            self.using_fallback = True
+            log.warning("OpenRouter main key exhausted (HTTP %s); switching to the fallback key", r.status_code)
+            return True
+        return False
 
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.s.openrouter_api_key.get_secret_value()}",
+        return {"Authorization": f"Bearer {self._key()}",
                 "Content-Type": "application/json", "X-Title": self.s.openrouter_app_title,
                 "HTTP-Referer": "https://mirava.ai"}
 
@@ -184,6 +202,10 @@ class OpenRouterClient(_CachingClient):
                 else:
                     if r.status_code < 400:
                         return r.json()
+                    if self._exhausted(r):
+                        r = await client.post(f"{self.base_url}{path}", json=body, headers=self._headers())
+                        if r.status_code < 400:
+                            return r.json()
                     if r.status_code not in RETRY_STATUS or attempt == self.max_retries:
                         raise LLMError(f"OpenRouter {path} HTTP {r.status_code}: {r.text[:300]}")
                 await asyncio.sleep(self.backoff_s * (2 ** attempt))

@@ -99,6 +99,29 @@ async def test_openrouter_no_retry_on_401_and_bad_json():
 
 
 @respx.mock
+async def test_openrouter_switches_to_fallback_key_when_exhausted():
+    seen: list[str] = []
+
+    def reply(req: httpx.Request) -> httpx.Response:
+        seen.append(req.headers["Authorization"])
+        if req.headers["Authorization"].endswith("sk-or-test"):
+            return httpx.Response(402, json={"error": {"message": "Insufficient credits"}})
+        return httpx.Response(200, json=ok_body({"text": "x", "importance": 1, "tags": ["b"], "mood": 0.5}))
+
+    respx.post(f"{BASE}/chat/completions").mock(side_effect=reply)
+    s = settings().model_copy(update={"openrouter_api_key_fallback": SecretStr("sk-or-backup")})
+    c = OpenRouterClient(s, backoff_s=0)
+    res = await c.generate(models.MODEL_LITE, "p", Thought, purpose="t")
+    await c.generate(models.MODEL_LITE, "p2", Thought, purpose="t")
+    assert res.data.tags == ["b"] and c.using_fallback
+    assert seen == ["Bearer sk-or-test", "Bearer sk-or-backup", "Bearer sk-or-backup"]
+    # without a fallback, an exhausted key is a plain error (no retry loop)
+    respx.post(f"{BASE}/chat/completions").mock(return_value=httpx.Response(402, json={"error": "credits"}))
+    with pytest.raises(LLMError):
+        await OpenRouterClient(settings(), backoff_s=0).generate(models.MODEL_LITE, "q", Thought, purpose="t")
+
+
+@respx.mock
 async def test_openrouter_embeddings_and_model_check():
     respx.post(f"{BASE}/embeddings").mock(return_value=httpx.Response(
         200, json={"data": [{"index": 0, "embedding": [3.0, 4.0] + [0.0] * 3070}]}))

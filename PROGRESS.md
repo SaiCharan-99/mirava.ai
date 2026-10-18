@@ -5,8 +5,8 @@ Living document. Every Claude Code session reads it first and updates it last (`
 ## 1. Current status
 | Field | Value |
 |---|---|
-| Current phase | 5 done (⚠️) — next: 6 Hardening, deploy, demo, submission |
-| Phase status | Phase 5 ⚠️ done with open issues (4 eval checks fail, §8) |
+| Current phase | 6 Hardening, deploy, demo, submission (🟨) |
+| Phase status | Phase 6 🟨 in progress (2026-10-18) |
 | Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (134 py + 18 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
 | Last session | 2026-10-18 · phase 5 |
 | Builder | Sai Charan (Claude Code) |
@@ -20,7 +20,7 @@ Living document. Every Claude Code session reads it first and updates it last (`
 | 3 | Memory, think/speak conversations, governor, highlights | ⚠️ | 2026-10-18 | 07/08/09/12 PASS (+ all earlier) | live in cloud; nightly reflection not yet observed live (§8) |
 | 4 | Launch Studio, channels and attention | ⚠️ | 2026-10-18 | 11/18–23 PASS (+ all earlier); 15/16/17/21b review ok | live in cloud; Nova X1 review not yet seen; P-07 not built (§8) |
 | 5 | Stores, buying and Insights (+ Survey Room addendum) | ⚠️ | 2026-10-18 | 24–31 PASS (+ all gated 01–33) | live in cloud; evals 4 checks FAIL (§8) |
-| 6 | Hardening, deploy, demo, submission | ⬜ | | | |
+| 6 | Hardening, deploy, demo, submission | 🟨 | 2026-10-18 | | |
 Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open issues
 
 ## 3. Spec coverage (DEMO + STRETCH; tick only when "done when" is met)
