@@ -114,7 +114,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 07 | Firestore vector index `memories` | 3 | ✅ | 2026-10-18 | composite CICAgOjXh4EK: agent_id ASC + embedding flat 768-d, scope COLLECTION, READY |
 | 12 | Model Armor template | 4 | ✅ | 2026-10-18 | template `mirava-screen` in asia-south1 (RAI medium+, PI/jailbreak HIGH); roles modelarmor.admin (user), modelarmor.user (mirava-api); gcloud needs `CLOUDSDK_API_ENDPOINT_OVERRIDES_MODELARMOR=https://modelarmor.asia-south1.rep.googleapis.com/`; Cloud Run api env MODEL_ARMOR_ENABLED/TEMPLATE set at the phase-4 deploy |
 | 09 | BigQuery views + `ll-analyst-ro` + VECTOR_SEARCH check | 5 | ✅ | 2026-10-18 | mirava-api has serviceAccountTokenCreator on mirava-analyst-ro (dataViewer + jobUser); VECTOR_SEARCH on `mirava.texts` verified (3,135 rows, no index until >5k); INTERACTIVE_CAP_USD=5 on mirava-api-00010-79r + world-engine-00013-gsp; all 16 phase-5 views created in `mirava` (v_first_heard 961 rows) |
-| 13 | Monitoring dashboard + alerts | 6 | ⬜ | | |
+| 13 | Monitoring dashboard + alerts | 6 | ✅ | 2026-10-18 | email channel (saicharangobburu@gmail.com); uptime check world-engine-health (/health, 60 s); log metrics engine_tick_p95_ms, engine_spend_today_usd, engine_rendered_ratio, engine_live_viewers (hourly `metrics` line); alerts: engine stalled (uptime fails 5 min = tick lag > 2 min), api 5xx > 10/5 min, spend > $15; dashboard "mirava world"; re-create: `uv run python -m infra.monitoring.setup mirava-ai-hack <email>` |
 | 14 | Vertex AI (only if `LLM_BACKEND=vertex`) | — | skipped | | |
 
 ## 6. How to run (keep current — copy-paste ready)
