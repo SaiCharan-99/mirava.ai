@@ -110,6 +110,7 @@ class PlannedSite(BaseModel):
 class Plan(BaseModel):
     sites: list[PlannedSite]; reel: dict                 # {creative_id, audience_rule_ids, impressions_day, freq_cap}
     newspaper_days: list[int]; reviewers: list[int]; community_seed: dict; stores: list[str]
+    # reel adds audience_size; newspaper_days are day offsets from the launch day; community_seed = {forum, author, title, day_offset} (DECISIONS #77)
     flight_days: int; generated_day: int
 class Product(BaseModel):
     product_id: str; name: str; brand: str; category: str; price_inr: int
@@ -330,6 +331,9 @@ Notice and thought texts in `evt` are truncated to 140 characters. Full private 
 | `PUT /watchlist` | `{agent_ids}` |
 | `GET/POST /products`, `GET/PATCH /products/{id}` | Product |
 | `POST /products/{id}/uploads` | `{kind, filename}` → `{upload_url, creative_id}` |
+| `POST /products/{id}/creatives` | `{kind, title, text?, transcript?, scenes?, image_uri?}` → `{creative, flagged}` (screened + neutralised; 422 for political content) — DECISIONS #77 |
+| `POST /products/{id}/audience` | `{personas?}` → `{audience:[AudienceRule], total}` (live counts) · `DELETE /products/{id}` (drafts only) — DECISIONS #77 |
+| `PUT /uploads/{key}` | local-only twin of the signed URL (dev) |
 | `POST /products/{id}/understand` | → `{understanding, creatives:[StimulusRecord], graph}` |
 | `POST /products/{id}/plan` | → Plan (reasons included) |
 | `POST /products/{id}/ready` · `POST /products/{id}/launch` | → Product (status) |

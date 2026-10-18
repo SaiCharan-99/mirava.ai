@@ -283,3 +283,7 @@ def put_watchlist(body: Watchlist) -> dict:
 
 
 app.include_router(api)
+
+from api.products import router as products_router  # noqa: E402
+
+app.include_router(products_router)

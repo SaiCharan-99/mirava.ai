@@ -141,3 +141,5 @@
 [  656006ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://mirava-ai-hack.web.app/api/agents/785:0
 [  656008ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://mirava-ai-hack.web.app/api/agents/979:0
 [  656009ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://mirava-ai-hack.web.app/api/agents/580:0
+[24589654ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://mirava-ai-hack.web.app/api/agents/575:0
+[24589661ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://mirava-ai-hack.web.app/api/agents/703:0
