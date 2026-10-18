@@ -11,6 +11,8 @@ VITEST := node node_modules/vitest/vitest.mjs
 ESLINT := node node_modules/eslint/bin/eslint.js
 TSC := node node_modules/typescript/bin/tsc
 VITE := node node_modules/vite/bin/vite.js
+# local dev: fakes + fast clock (overrides .env)
+DEVENV := WORLD_SECONDS_PER_SIM_DAY=120 LLM_BACKEND=fake DECISION_BACKEND=fake BQ_BACKEND=duckdb
 
 .PHONY: help setup dev api web emulator test lint types map fetch-osm genesis engine llm-smoke seed-demo restore-demo eval visual fixtures deploy
 
@@ -22,13 +24,15 @@ setup: ## uv sync + npm ci (web, tools/visual) + playwright chromium
 	cd $(WEB) && npm ci
 	cd $(VISUAL) && npm ci && npx playwright install chromium
 
-dev: ## Firestore emulator + api + web (engine arrives in phase 2), fakes + fast clock
-	@echo "api :8000 · web :5173 · firestore emulator :8080 (Ctrl+C stops all)"
-	WORLD_SECONDS_PER_SIM_DAY=120 LLM_BACKEND=fake DECISION_BACKEND=fake BQ_BACKEND=duckdb \
-	  npx --yes concurrently -k -n emu,api,web -c yellow,cyan,magenta \
-	  "gcloud emulators firestore start --host-port=127.0.0.1:8080 --quiet" \
-	  "$(PY) uvicorn api.main:app --port 8000 --reload" \
-	  "cd $(WEB) && npm run dev"
+dev: ## Firestore emulator + world-engine :8100 + api :8000 + web :5173 (fakes, fast clock); Ctrl+C stops all
+	@echo "emulator :8080 · engine :8100 · api :8000 · web :5173 (Ctrl+C stops all)"
+	trap 'kill 0' EXIT; \
+	gcloud emulators firestore start --host-port=127.0.0.1:8080 --quiet & \
+	sleep 6; \
+	$(DEVENV) $(PY) uvicorn engine.app:app --port 8100 & \
+	$(DEVENV) $(PY) uvicorn api.main:app --port 8000 --reload & \
+	(cd $(WEB) && node scripts/sync-assets.mjs && $(VITE) --port 5173 --strictPort) & \
+	wait
 
 api: ## api alone on :8000
 	$(PY) uvicorn api.main:app --port 8000 --reload
@@ -69,8 +73,8 @@ engine: ## world-engine alone on :8100 (fast clock, fakes)
 llm-smoke: ## one structured call + one embedding via the configured backend
 	$(PY) python -m tools.llm_smoke
 
-seed-demo: ## phase 4+
-	@echo "make seed-demo arrives in phase 4"; exit 1
+seed-demo: ## placeholder products through the API: Nova X1 ready, Pulse 5 + Orbit S live (api + engine running)
+	$(PY) python -m tools.seed_demo
 
 restore-demo: ## phase 6
 	@echo "make restore-demo arrives in phase 6"; exit 1

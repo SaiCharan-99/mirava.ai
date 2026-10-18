@@ -1,6 +1,6 @@
 import { LiveClient, liveUrl, type LiveEvt, type LiveMsg, type LiveProduct } from "./live";
 import { actLabel } from "./agentView";
-import { getAgent } from "./api";
+import { getJSON, type PeoplePage } from "./api";
 import { fmtINR, shortT } from "./time";
 import { simClock, tracks } from "../world/tracks";
 import { useWorld } from "../state/world";
@@ -92,6 +92,14 @@ export function liveDayCounts(t: number, today: number, total: number): number[]
 
 const nameOf = (id: number): string => names.get(id) ?? `Agent ${id}`;
 
+let namesP: Promise<void> | null = null;
+/** All agent names in ONE request (per-agent lookups flooded the api and queued user actions behind them). */
+function loadNames(): Promise<void> {
+  namesP ??= getJSON<PeoplePage>("/agents?page_size=1000").then((r) => { for (const row of r.rows) names.set(row.agent_id, row.name); })
+    .catch(() => { namesP = null; });
+  return namesP;
+}
+
 function productName(pid: string): string {
   return useWorld.getState().products.find((p) => p.id === pid)?.name ?? pid;
 }
@@ -175,11 +183,9 @@ export function applyLive(m: LiveMsg): void {
           const it = tickerFor(e, simClock.now(), nameOf);
           if (it) useWorld.setState((s) => ({ ticker: [it, ...s.ticker].slice(0, 60) }));
         };
-        const need = [id, typeof e.b === "number" ? e.b : null].filter((x): x is number => x !== null && !names.has(x));
-        if (need.length) {
-          Promise.all(need.map((x) => getAgent(x).then((d) => names.set(x, d.profile.name)).catch(() => names.set(x, `Agent ${x}`))))
-            .finally(push);
-        } else push();
+        void id;
+        if (names.size) push();
+        else void loadNames().finally(push);
       }
       break;
     }
