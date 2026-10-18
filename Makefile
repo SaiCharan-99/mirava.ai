@@ -73,7 +73,7 @@ engine: ## world-engine alone on :8100 (fast clock, fakes)
 llm-smoke: ## one structured call + one embedding via the configured backend
 	$(PY) python -m tools.llm_smoke
 
-seed-demo: ## placeholder products through the API: Nova X1 ready, Pulse 5 + Orbit S live (api + engine running)
+seed-demo: ## demo phones through the API: Pixel 10 Pro ready; Pixel 10a, Galaxy S26 Ultra, Galaxy A57, iPhone 17 live (api + engine running)
 	$(PY) python -m tools.seed_demo
 
 restore-demo: ## restore the pre-warmed demo snapshot in place (SNAPSHOT=demo-v1; cloud: ENV=cloud ENGINE_URL=...)

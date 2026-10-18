@@ -3,7 +3,7 @@
 notes:
   - "Everything is simulated: 1,000 synthetic residents of Indiranagar, Bengaluru."
   - "Private thoughts (v_thoughts, store/survey private items, review private opinions) must be labelled 'private thought' when quoted."
-  - "Money is integer rupees (INR). Product ids: e.g. nova-x1, pulse-5, orbit-s. Baseline options: baseline:<tier>."
+  - "Money is integer rupees (INR). Product ids: e.g. pixel-10-pro, pixel-10a, galaxy-s26-ultra, galaxy-a57, iphone-17. Baseline options: baseline:<tier>."
   - "Stages: unaware → aware → curious → researching → inquiring → deciding → purchased | postponed | rejected."
 views:
   agents_latest:
@@ -25,7 +25,7 @@ views:
     desc: "Current belief of each agent about each subject (product:<id>, brand:<x>, category:phone)."
     columns:
       agent_id: "agent id"
-      subject: "e.g. product:pulse-5"
+      subject: "e.g. product:pixel-10a"
       product_id: "product id when the subject is a product, else NULL"
       awareness: "unaware | heard | aware | familiar"
       attitude: "−1 (very negative) … +1 (very positive)"

@@ -352,8 +352,8 @@ class Assistant:
             lines.append("There isn't enough data in the simulated world yet to answer that.")
         md = " ".join(lines)
         sugg = ["Which hoarding gets noticed most and does facing matter?",
-                "What do people privately think but not say about Pulse 5?",
-                "Who is most likely to buy Pulse 5, by age and income?"]
+                "What do people privately think but not say about the Pixel 10a?",
+                "Who is most likely to buy the Pixel 10a, by age and income?"]
         return {"answer_md": md, "numbers": nums[:8], "charts": charts[:1], "quotes": quotes[:4], "sql": [],
                 "caveats": ["Small simulated samples; differences of a few agents are noise.",
                             "Offline mode: deterministic template answer (no model)."],

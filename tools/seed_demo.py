@@ -1,4 +1,4 @@
-"""`make seed-demo`: three fictional placeholder phones through the products API — Nova X1 ready, Pulse 5 and Orbit S live.
+"""`make seed-demo`: five demo phones through the products API — Pixel 10 Pro ready; Pixel 10a, Galaxy S26 Ultra, Galaxy A57 and iPhone 17 live.
 
 Needs api (:8000) and world-engine (:8100) running with a genesis world. Idempotent: existing products are kept.
 """
@@ -12,33 +12,50 @@ import time
 import httpx
 
 PRODUCTS = [
-    {"name": "Nova X1", "brand": "Arcline", "price_inr": 89999, "launch_offer": "No-cost EMI from ₹7,500/month",
-     "features": ["200MP main camera with multi-frame night mode", "5,000 mAh battery · 45 W charging", "6.7\" 120 Hz LTPO display", "7 years of OS updates · titanium frame"],
-     "claims": ["The best camera ever put in a phone.", "All-day battery, guaranteed.", "7 years of OS updates."],
+    {"name": "Pixel 10 Pro", "brand": "Google", "price_inr": 109999, "launch_offer": "No-cost EMI from ₹9,167/month",
+     "features": ["Tensor G5 with on-device Gemini", "50MP main + 48MP 5× telephoto", "6.3\" 120 Hz LTPO display", "7 years of OS updates"],
+     "claims": ["The most helpful Pixel yet.", "Night photos without a flash.", "7 years of updates."],
      "target_personas": ["Mobile photographers", "Young tech professionals", "Upgraders with phones > 4 yrs"],
-     "strategy": {"key_message": "See the night.", "intensity": "medium", "flight_days": 21},
-     "content": {"hoarding": "SEE THE NIGHT.", "bus_shelter": "Night shots that don't need a flash.",
-                 "reel": ("After dark, Bengaluru changes. Most phones give up here. Nova X1 doesn't. 200MP. Night mode built in.",
-                          ["Wide shot: 100 Feet Road at dusk", "A hand raises Nova X1 at a street-food stall", "Photo appears: crisp, no flash", "Montage: metro, rooftop, rain on glass", "Product + price card"]),
-                 "newspaper": "The best camera ever put in a phone.", "store_display": "Try night mode here →",
-                 "reviewer_kit": "Spec sheet: 200MP sensor, 5,000 mAh, 9–11 h mixed use, 7 years of updates. Embargo: launch day."},
+     "strategy": {"key_message": "Ask more of your phone.", "intensity": "medium", "flight_days": 21},
+     "content": {"hoarding": "ASK MORE OF YOUR PHONE.", "bus_shelter": "Pixel 10 Pro · night photos, no flash.",
+                 "reel": ("After dark, Indiranagar changes. Pixel 10 Pro sees it all. Tap, shoot, ask Gemini.",
+                          ["100 Feet Road at dusk", "A street-food stall at night", "Photo appears: crisp, no flash", "Gemini answers a question on screen", "Product + price card"]),
+                 "newspaper": "The most helpful Pixel yet.", "store_display": "Try the night camera here →",
+                 "reviewer_kit": "Spec sheet: Tensor G5, 50MP + 48MP 5× tele, 6.3\" LTPO, 7 years of updates. Embargo: launch day."},
      "launch": False},
-    {"name": "Pulse 5", "brand": "Kestrel", "price_inr": 24999, "launch_offer": "Exchange bonus ₹3,000",
-     "features": ["6,000 mAh battery · two-day life", "50MP camera", "6.5\" 90 Hz display"],
-     "claims": ["Two days on one charge.", "The fastest phone in its class."],
+    {"name": "Pixel 10a", "brand": "Google", "price_inr": 49999, "launch_offer": "Exchange bonus ₹4,000",
+     "features": ["Tensor G4", "48MP camera with Night Sight", "6.3\" 120 Hz display", "5,100 mAh battery"],
+     "claims": ["Pixel smarts, a-series price.", "All-day battery."],
      "target_personas": ["Students and budget buyers", "Upgraders with phones > 4 yrs"],
-     "strategy": {"key_message": "Two days. One charge.", "intensity": "medium", "flight_days": 21},
-     "content": {"hoarding": "TWO DAYS. ONE CHARGE.", "bus_shelter": "Pulse 5 · from ₹24,999",
-                 "reel": ("Morning to midnight, then the next day too. Pulse 5 keeps going.", ["Alarm at 6 am", "Metro commute", "Late-night gaming", "Next morning: 38% left"]),
-                 "newspaper": "The fastest phone in its class.", "store_display": "Feel the battery — try it here"},
+     "strategy": {"key_message": "Pixel smarts. Friendly price.", "intensity": "medium", "flight_days": 21},
+     "content": {"hoarding": "PIXEL SMARTS. FRIENDLY PRICE.", "bus_shelter": "Pixel 10a · from ₹49,999",
+                 "reel": ("Night Sight, Gemini and all-day battery, without the flagship price.", ["Metro commute", "Late-night photo", "Battery at 9 pm: 41%"]),
+                 "newspaper": "Pixel smarts, a-series price.", "store_display": "Try Night Sight on the Pixel 10a"},
      "launch": True},
-    {"name": "Orbit S", "brand": "Lumen", "price_inr": 49999, "launch_offer": "Free earbuds at launch",
-     "features": ["6.9 mm thin", "AMOLED 120 Hz", "32MP selfie camera"],
-     "claims": ["Thin is the new smart.", "Never needs a case."],
-     "target_personas": ["Style-conscious young professionals", "Fashion and design lovers"],
-     "strategy": {"key_message": "Thin is the new smart.", "intensity": "low", "flight_days": 21},
-     "content": {"hoarding": "THIN IS THE NEW SMART.", "reel": ("Slide it in a pocket and forget it's there.", ["Rooftop café", "Jacket pocket", "Mirror selfie"]),
-                 "store_display": "Hold the thinnest Orbit yet"},
+    {"name": "Galaxy S26 Ultra", "brand": "Samsung", "price_inr": 129999, "launch_offer": "Free storage upgrade at launch",
+     "features": ["200MP main camera, 5× telephoto", "Built-in S Pen", "6.9\" 120 Hz AMOLED", "Galaxy AI features"],
+     "claims": ["Zoom in on the night.", "The S Pen, built in."],
+     "target_personas": ["Business professionals", "Mobile photographers", "Premium upgraders"],
+     "strategy": {"key_message": "Zoom in on the night.", "intensity": "high", "flight_days": 21},
+     "content": {"hoarding": "ZOOM IN ON THE NIGHT.", "reel": ("200MP, 5× zoom and an S Pen that lives inside.", ["Rooftop skyline zoom", "S Pen note in a meeting", "Product + price card"]),
+                 "newspaper": "The S Pen, built in.", "store_display": "Try the 5× zoom here"},
+     "launch": True},
+    {"name": "Galaxy A57", "brand": "Samsung", "price_inr": 42999, "launch_offer": "Bank offer ₹3,000 off",
+     "features": ["50MP OIS camera", "6.7\" 120 Hz Super AMOLED", "5,000 mAh battery", "6 years of OS updates"],
+     "claims": ["Awesome, every day.", "Six years of updates."],
+     "target_personas": ["Students and young workers", "Families on a budget"],
+     "strategy": {"key_message": "Awesome, every day.", "intensity": "medium", "flight_days": 21},
+     "content": {"hoarding": "AWESOME, EVERY DAY.", "bus_shelter": "Galaxy A57 · from ₹42,999",
+                 "reel": ("A big bright screen and a camera that keeps up with your day.", ["College canteen", "Bus ride", "Evening selfie"]),
+                 "store_display": "Feel the Galaxy A57 screen"},
+     "launch": True},
+    {"name": "iPhone 17", "brand": "Apple", "price_inr": 82900, "launch_offer": "Instant cashback ₹5,000 on cards",
+     "features": ["A19 chip", "48MP Fusion camera", "6.3\" ProMotion display", "Centre Stage front camera"],
+     "claims": ["Brighter, smoother, faster.", "Selfies that frame themselves."],
+     "target_personas": ["Style-conscious young professionals", "Upgraders with phones > 4 yrs"],
+     "strategy": {"key_message": "Brighter. Smoother. Faster.", "intensity": "medium", "flight_days": 21},
+     "content": {"hoarding": "BRIGHTER. SMOOTHER. FASTER.", "reel": ("ProMotion, a 48MP camera and selfies that frame themselves.", ["Café table", "Group selfie widens", "Product + price card"]),
+                 "newspaper": "Brighter, smoother, faster.", "store_display": "Try Centre Stage selfies here"},
      "launch": True},
 ]
 TITLES = {"hoarding": "Hoarding poster", "bus_shelter": "Bus-shelter poster", "reel": "Reel", "newspaper": "Newspaper ad",
@@ -53,13 +70,17 @@ def ok(r: httpx.Response) -> dict:
 
 
 def seed(api: str) -> None:
-    """Create (Nova X1 first → --p1), understand, plan and ready each product; launch the live ones one at a time."""
+    """Create (Pixel 10 Pro first → --p1), understand, plan and ready each product; launch the live ones one at a time."""
     c = httpx.Client(base_url=api, timeout=120)
     existing = {p["product_id"]: p for p in ok(c.get("/api/products"))}
     for spec in PRODUCTS:
         pid = spec["name"].lower().replace(" ", "-")
         if pid in existing:
             print(f"· {spec['name']}: exists ({existing[pid]['status']})")
+            if spec["launch"] and existing[pid]["status"] == "ready":
+                ok(c.post(f"/api/products/{pid}/plan"))     # re-plan: sites may now be held by live products
+                ok(c.post(f"/api/products/{pid}/ready"))
+                _launch(c, pid, spec["name"])
             continue
         body = {k: spec[k] for k in ("name", "brand", "price_inr", "launch_offer", "features", "claims", "target_personas", "strategy")}
         ok(c.post("/api/products", json={**body, "category": "Smartphone"}))
@@ -76,12 +97,22 @@ def seed(api: str) -> None:
         ok(c.post(f"/api/products/{pid}/ready"))
         print(f"✓ {spec['name']}: ready · {len(plan['sites'])} sites · reel audience {plan['reel'].get('audience_size')}")
         if spec["launch"]:
-            ok(c.post(f"/api/products/{pid}/launch"))
-            for _ in range(60):                      # one at a time: wait for the engine to stamp launched_at_t
-                if ok(c.get(f"/api/products/{pid}")).get("launched_at_t") is not None:
-                    break
-                time.sleep(1)
-            print(f"  🚀 launched {spec['name']}")
+            _launch(c, pid, spec["name"])
+
+
+def _launch(c: httpx.Client, pid: str, name: str) -> None:
+    """Launch one product; waits while another launch holds the lock, then for the engine's launched_at_t."""
+    for _ in range(90):
+        r = c.post(f"/api/products/{pid}/launch")
+        if r.status_code != 409:
+            ok(r)
+            break
+        time.sleep(2)
+    for _ in range(60):                              # one at a time: wait for the engine to stamp launched_at_t
+        if ok(c.get(f"/api/products/{pid}")).get("launched_at_t") is not None:
+            break
+        time.sleep(1)
+    print(f"  🚀 launched {name}")
 
 
 def main() -> None:

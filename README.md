@@ -76,7 +76,7 @@ Models: Gemini 3 only, via OpenRouter (`google/gemini-3.1-pro-preview`, `google/
 uv sync && (cd web && npm install) && (cd tools/visual && npm ci && npx playwright install chromium)
 make genesis      # once, emulator running (fake LLM)
 make dev          # Firestore emulator (Java 21+) + world-engine :8100 + api :8000 + web :5173 (fakes, 120 s/day)
-make seed-demo    # Nova X1 ready, Pulse 5 + Orbit S live
+make seed-demo    # Pixel 10 Pro ready; Pixel 10a, Galaxy S26 Ultra, Galaxy A57, iPhone 17 live
 make test && make lint
 ```
 Open http://localhost:5173 (visual-test mode: http://localhost:5173/world?visualTest=1). For real models, put `OPENROUTER_API_KEY` in `.env` (git-ignored) and set `LLM_BACKEND=openrouter`.

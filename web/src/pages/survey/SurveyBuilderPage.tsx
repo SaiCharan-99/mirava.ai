@@ -6,9 +6,9 @@ import { isVisualTest, withMode } from "../../lib/visualTest";
 import { createSurvey, launchSurvey, lintQuestions, type CreateOut, type QType, type QuestionDef } from "../../lib/survey";
 
 const DEFAULT_QS: QuestionDef[] = [
-  { question_id: "q1", text: "What matters most to you in the Pulse 5?", type: "single", options: ["Battery life", "Price", "Camera", "Brand trust"], discuss: true },
-  { question_id: "q2", text: "How likely are you to buy the Pulse 5 in the next 3 months?", type: "scale", scale: { min: 1, max: 5, low_label: "not at all", high_label: "certainly" }, discuss: true },
-  { question_id: "q3", text: "What would make you switch to the Pulse 5?", type: "open", discuss: true },
+  { question_id: "q1", text: "What matters most to you in the Pixel 10a?", type: "single", options: ["Battery life", "Price", "Camera", "Brand trust"], discuss: true },
+  { question_id: "q2", text: "How likely are you to buy the Pixel 10a in the next 3 months?", type: "scale", scale: { min: 1, max: 5, low_label: "not at all", high_label: "certainly" }, discuss: true },
+  { question_id: "q3", text: "What would make you switch to the Pixel 10a?", type: "open", discuss: true },
 ];
 const STAGES = ["", "aware", "curious", "researching", "inquiring"];
 
@@ -16,10 +16,10 @@ const STAGES = ["", "aware", "curious", "researching", "inquiring"];
 export function SurveyBuilderPage() {
   const nav = useNavigate();
   const [params] = useSearchParams();
-  const [title, setTitle] = useState(params.get("title") ?? "Pulse 5 — price and battery");
+  const [title, setTitle] = useState(params.get("title") ?? "Pixel 10a — price and camera");
   const [mode, setMode] = useState<"focus_group" | "survey">("focus_group");
-  const [product, setProduct] = useState(params.get("product") ?? "pulse-5");
-  const [topic, setTopic] = useState("Pulse 5");
+  const [product, setProduct] = useState(params.get("product") ?? "pixel-10a");
+  const [topic, setTopic] = useState("Pixel 10a");
   const [qs, setQs] = useState<QuestionDef[]>(DEFAULT_QS);
   const [ageMin, setAgeMin] = useState(""), [ageMax, setAgeMax] = useState("");
   const [income, setIncome] = useState(""), [occupation, setOccupation] = useState("");
@@ -77,7 +77,7 @@ export function SurveyBuilderPage() {
           <div className="card"><div className="filters">
             <div style={{ flex: 2 }}><label>Title</label><input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
             <div><label>Mode</label><div className="seg"><button className={mode === "focus_group" ? "on" : ""} onClick={() => setMode("focus_group")}>Focus group</button><button className={mode === "survey" ? "on" : ""} onClick={() => setMode("survey")}>Survey</button></div></div>
-            <div><label>Product</label><select value={product} onChange={(e) => setProduct(e.target.value)}><option value="">(topic only)</option>{(products.length ? products : [{ product_id: "pulse-5", name: "Pulse 5", status: "live" }]).map((p) => <option key={p.product_id} value={p.product_id}>{p.name}</option>)}</select></div>
+            <div><label>Product</label><select value={product} onChange={(e) => setProduct(e.target.value)}><option value="">(topic only)</option>{(products.length ? products : [{ product_id: "pixel-10a", name: "Pixel 10a", status: "live" }]).map((p) => <option key={p.product_id} value={p.product_id}>{p.name}</option>)}</select></div>
             <div><label>Topic</label><input value={topic} onChange={(e) => setTopic(e.target.value)} /></div>
           </div></div>
           <div className="card" data-testid="survey-questions"><div className="row between"><h3 style={{ margin: 0 }}>Questions ({qs.length}/10)</h3>
