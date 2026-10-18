@@ -212,6 +212,8 @@ async def test_engine_social_day(tmp_path):
     assert h["day"] == 1 and 0 < len(h["moments"]) <= 40 and len(h["samples"]["positions"]) == 144
     assert [m["t"] for m in h["moments"]] == sorted(m["t"] for m in h["moments"])
     assert all(m["text"] for m in h["moments"] if m["kind"] == "conversation")
+    hours = [m["t"] // 60 for m in h["moments"]]
+    assert len(set(hours)) >= min(len(hours), 8)
     convs_docs = e.store.list("conversations")
     assert convs_docs and all(set(d["private"]) <= {str(p) for p in d["participants"]} for d in convs_docs)
     e2, sink2 = await _social_day(tmp_path / "b", 1440 + 200)

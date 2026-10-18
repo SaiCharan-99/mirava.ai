@@ -10,6 +10,7 @@ from shared import time as simtime
 from shared.schemas.events import Event
 
 TOP_N = 40
+PER_HOUR = 3
 SAMPLE_EVERY = 10
 
 
@@ -57,7 +58,16 @@ class HighlightRecorder:
 
     def finish_day(self, day: int) -> dict[str, Any]:
         """Highlights JSON for `day` (INTERFACES §4.3); resets for the next day."""
-        top = sorted(self.moments, key=lambda m: (-m["_score"], m["t"], m["ref_event_id"]))[:TOP_N]
+        ranked = sorted(self.moments, key=lambda m: (-m["_score"], m["t"], m["ref_event_id"]))
+        per_hour: dict[int, int] = {}
+        top: list[dict[str, Any]] = []
+        for m in ranked:                       # spread across the day first …
+            h = m["t"] // 60
+            if per_hour.get(h, 0) < PER_HOUR and len(top) < TOP_N:
+                per_hour[h] = per_hour.get(h, 0) + 1
+                top.append(m)
+        chosen = {id(m) for m in top}
+        top += [m for m in ranked if id(m) not in chosen][: TOP_N - len(top)]   # … then fill by score
         moments = [{k: v for k, v in m.items() if k != "_score"} for m in sorted(top, key=lambda m: m["t"])]
         out = {"day": day, "moments": moments,
                "samples": {"t0": (day - 1) * 1440, "step_min": SAMPLE_EVERY, "positions": self.samples}}

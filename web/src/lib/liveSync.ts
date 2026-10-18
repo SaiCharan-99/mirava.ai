@@ -63,6 +63,13 @@ function toProduct(p: LiveProduct): FixtureProduct {
   return { id: p.id, name: p.name, brand: "", price: 0, hex: p.color, status: "live", launched: p.launched_at_t, sites: [], stores: [], reel: 0, reviewers: 0 };
 }
 
+/** Day timeline in live mode: one bar per real sim day so far; past days use the average (per-day counts arrive later). */
+export function liveDayCounts(t: number, today: number, total: number): number[] {
+  const n = Math.floor(t / 1440) + 1;
+  const past = n > 1 ? Math.max(1, Math.round((total - today) / (n - 1))) : 0;
+  return Array.from({ length: n }, (_, i) => (i === n - 1 ? today : past));
+}
+
 const nameOf = (id: number): string => names.get(id) ?? `Agent ${id}`;
 
 /** Apply one frame to the store, the tracks and the sim clock. */
@@ -73,7 +80,8 @@ export function applyLive(m: LiveMsg): void {
       simClock.rate = m.scale.sim_min_per_real_s;
       simClock.set(m.t);
       tracks.reset(m.agents, m.segments);
-      useWorld.setState({ source: "live", t: Math.floor(m.t), ticker: [], products: m.products.map(toProduct), hourOverride: null });
+      useWorld.setState({ source: "live", t: Math.floor(m.t), ticker: [], products: m.products.map(toProduct), hourOverride: null,
+        dayCounts: liveDayCounts(m.t, 0, 0) });
       break;
     case "seg":
       tracks.push(m.items);
@@ -83,7 +91,8 @@ export function applyLive(m: LiveMsg): void {
       if (Math.floor(m.t) !== st.t) useWorld.setState({ t: Math.floor(m.t) });
       break;
     case "stats":
-      useWorld.setState({ stats: { ...st.stats, ...m.counts }, ...(m.budget ? { budget: m.budget } : {}) });
+      useWorld.setState({ stats: { ...st.stats, ...m.counts }, ...(m.budget ? { budget: m.budget } : {}),
+        dayCounts: liveDayCounts(m.t, m.counts.conversations_today ?? 0, m.counts.conversations_total ?? 0) });
       break;
     case "evt": {
       for (const e of m.items) {
