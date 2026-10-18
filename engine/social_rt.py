@@ -12,20 +12,20 @@ from engine.events import EventBus
 from engine.governor import BudgetGovernor
 from engine.tasks import TaskQueue
 from engine.world import World
-from mind.decision import DecisionAdapter, DecisionRequest, DecisionResult
+from mind.decision import DecisionAdapter, DecisionRequest, DecisionResult, FakeDecision
 from mind.memory import embed_cached
 from mind.reflect import THRESHOLD, day_importance, reflect
 from shared import time as simtime
 from shared.llm import LLMClient
 from shared.schemas.events import Event
 from shared.store import DocStore
-from social.conversation import Outcome, Participant, run_conversation, unrendered
+from social.conversation import Outcome, Participant, run_conversation, template_memories, unrendered
 from social.gate import Side, gate
 from social.sessions import SessionRegistry
 
 log = logging.getLogger("engine.social")
 WM_MAX = 20
-CONV_DELAY = 6               # sim minutes until a conversation's result is applied
+CONV_DELAY = 10              # sim minutes until a conversation's result is applied (~25 s real at 1 day/h)
 REFLECT_DELAY = 30
 REFLECT_AT = 3 * 60
 FREE = {"cafe": 1.0, "eat": 0.9, "park": 1.0, "home": 0.8, "gym": 0.5, "shop": 0.6, "roam": 0.2}
@@ -73,6 +73,7 @@ class SocialRuntime:
         self.store = store
         self.llm = llm
         self.decider = MicroBatcher(decider)
+        self.gate_decider = FakeDecision()          # talk/skip is rule-based: no I/O inside the tick (DECISIONS #75)
         self.gov = governor
         self.rel: dict[tuple[int, int], dict[str, Any]] = {}
         for r in relationships:
@@ -131,7 +132,7 @@ class SocialRuntime:
         pair = (min(ia, ib), max(ia, ib))
         rel = self.rel.get(pair)
         place = w.wm.place_by_id.get(w.agents[ia].place_id or "")
-        g = await gate(self.side(w, ia), self.side(w, ib), rel, place.kind if place else None, t, self.decider, self.gov)
+        g = await gate(self.side(w, ia), self.side(w, ib), rel, place.kind if place else None, t, self.gate_decider, self.gov)
         bus.new("gate", t, pair[0], g.payload(), other_id=pair[1], rendered=g.rendered)
         if not g.talk:
             return
@@ -145,7 +146,8 @@ class SocialRuntime:
         w.live_evts.append({"k": "talk", "a": ia, "b": ib, "session_id": sid, "topic": g.topics[0] if g.topics else "",
                             "rendered": g.rendered, "place": w._pname(w.agents[ia].place_id)})
         if not g.rendered:
-            out = await unrendered(sid, pa, pb, g, t, self.store)
+            out = await unrendered(sid, pa, pb, g, t, None)
+            self._background(asyncio.to_thread(template_memories, self.store, sid, pa, pb, g, t))
             self._emit(w, bus, out, t, g.priority_class)
             return
         rel_label = REL_LABEL.get((rel or {}).get("kind", ""), "strangers")

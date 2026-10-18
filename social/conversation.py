@@ -47,17 +47,25 @@ class Outcome:
 
 
 
-async def unrendered(sid: str, a: Participant, b: Participant, g: GateResult, t: int, store: DocStore) -> Outcome:
-    """T-07: interaction event + template memory for each side (no model call)."""
-    o = Outcome(sid, rendered=False, minutes=5)
+def template_memories(store: DocStore, sid: str, a: Participant, b: Participant, g: GateResult, t: int) -> None:
+    """T-07 template memory for each side of an unrendered chat (sync; the engine runs it off the tick)."""
     topic = g.topics[0] if g.topics else "small talk"
-    o.ev("interaction", a.agent_id, {"topic": topic, "minutes": o.minutes, "conv_kind": g.kind}, b.agent_id)
     for me, other in ((a, b), (b, a)):
-        await MemoryStore(me.agent_id, store).add(MemoryEntry(
+        MemoryStore(me.agent_id, store).add_many([MemoryEntry(
             mid=f"int-{sid}-{me.agent_id}", agent_id=me.agent_id, t=t, kind="conversation",
             text=f"Chatted briefly with {other.name} about {topic}.", importance=2,
             source={"channel": "conversation", "person_id": other.agent_id, "session_id": sid},
-            entities=[other.name], event_refs=[]))
+            entities=[other.name], event_refs=[])])
+
+
+async def unrendered(sid: str, a: Participant, b: Participant, g: GateResult, t: int,
+                     store: DocStore | None) -> Outcome:
+    """T-07: interaction event (+ template memories when a store is given; no model call)."""
+    o = Outcome(sid, rendered=False, minutes=5)
+    topic = g.topics[0] if g.topics else "small talk"
+    o.ev("interaction", a.agent_id, {"topic": topic, "minutes": o.minutes, "conv_kind": g.kind}, b.agent_id)
+    if store is not None:
+        template_memories(store, sid, a, b, g, t)
     return o
 
 

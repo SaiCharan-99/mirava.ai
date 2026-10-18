@@ -75,7 +75,10 @@ class BudgetGovernor:
         self._roll_real_day()
         pc = priority_class if priority_class in CLASSES else "P5"
         budget = self.sim_day_budget()
-        ok = (self.used[pc] < int(self.cfg["class_caps"][pc])
+        cap = int(self.cfg["class_caps"][pc])
+        if pc not in HIGH:                         # spread lower classes through the sim day
+            cap = min(cap, max(1, int(cap * (self.hour_frac + float(self.cfg["pace_slack"])))))
+        ok = (self.used[pc] < cap
               and (pc == "P0" or self.spent_sim_day + est_cost_usd <= budget * float(self.cfg["reserve"][pc]))
               and self.spent_today + est_cost_usd <= float(self.cfg["daily_cap_usd"]) * (1.1 if pc == "P0" else 1.0))
         if ok and pc not in HIGH:
