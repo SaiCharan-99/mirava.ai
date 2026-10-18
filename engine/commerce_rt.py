@@ -319,8 +319,8 @@ class CommerceRuntime:
             return
         pid = v["pid"]
         pr = self.pairs.get(f"{aid}|{pid}")
-        if pr is None or pr.stage != "inquiring":
-            return
+        if pr is None or pr.stage != "inquiring" or self.media is None or pid not in self.media.live:
+            return                                         # product withdrawn (doc deleted) → visit dropped
         m = simtime.minute_of_day(t)
         seller = on_shift(st, self.staff.get(st.store_id, []), m)
         if seller is None or not is_open(st, m):

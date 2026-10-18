@@ -103,6 +103,25 @@ async def commands(request: Request) -> dict:
     return _eng().command(await request.json())
 
 
+@app.get("/debug/stacks")
+async def debug_stacks(request: Request) -> dict:
+    """IAM-only: every asyncio task's and thread's current stack (diagnosing a stalled tick)."""
+    if not _authorised(request):
+        raise HTTPException(403, "forbidden")
+    import asyncio as _a
+    import io
+    import sys
+    import traceback
+
+    tasks = []
+    for t in _a.all_tasks():
+        buf = io.StringIO()
+        t.print_stack(limit=12, file=buf)
+        tasks.append(buf.getvalue())
+    threads = {str(k): "".join(traceback.format_stack(f, limit=12)) for k, f in sys._current_frames().items()}
+    return {"tasks": tasks, "threads": threads}
+
+
 @app.post("/analytics/query")
 async def analytics_query(request: Request) -> dict:
     """Local only (BQ_BACKEND=duckdb): run guarded read-only SQL on the engine's DuckDB (it holds the file lock)."""
