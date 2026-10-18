@@ -113,7 +113,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 16 | Cloud Scheduler watchdog | 2 | ✅ | 2026-10-18 | world-engine-watchdog, */5, GET /health, asia-south1 |
 | 07 | Firestore vector index `memories` | 3 | ✅ | 2026-10-18 | composite CICAgOjXh4EK: agent_id ASC + embedding flat 768-d, scope COLLECTION, READY |
 | 12 | Model Armor template | 4 | ✅ | 2026-10-18 | template `mirava-screen` in asia-south1 (RAI medium+, PI/jailbreak HIGH); roles modelarmor.admin (user), modelarmor.user (mirava-api); gcloud needs `CLOUDSDK_API_ENDPOINT_OVERRIDES_MODELARMOR=https://modelarmor.asia-south1.rep.googleapis.com/`; Cloud Run api env MODEL_ARMOR_ENABLED/TEMPLATE set at the phase-4 deploy |
-| 09 | BigQuery views + `ll-analyst-ro` + VECTOR_SEARCH check | 5 | ⬜ | | |
+| 09 | BigQuery views + `ll-analyst-ro` + VECTOR_SEARCH check | 5 | 🟨 | 2026-10-18 | mirava-api has serviceAccountTokenCreator on mirava-analyst-ro (dataViewer + jobUser); VECTOR_SEARCH on `mirava.texts` verified (3,135 rows, no index until >5k); INTERACTIVE_CAP_USD=5 on mirava-api-00010-79r + world-engine-00013-gsp; **phase-5 views pending** (created after Part A SQL) |
 | 13 | Monitoring dashboard + alerts | 6 | ⬜ | | |
 | 14 | Vertex AI (only if `LLM_BACKEND=vertex`) | — | skipped | | |
 
