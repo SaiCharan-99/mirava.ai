@@ -5,10 +5,10 @@ Living document. Every Claude Code session reads it first and updates it last (`
 ## 1. Current status
 | Field | Value |
 |---|---|
-| Current phase | 5 — Stores, buying and Insights + Survey Room (in progress) |
-| Phase status | Phase 4 ⚠️ done with open issues · phase 5 🟨 |
-| Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (97 py + 18 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
-| Last session | 2026-10-18 · phase 4 |
+| Current phase | 5 done (⚠️) — next: 6 Hardening, deploy, demo, submission |
+| Phase status | Phase 5 ⚠️ done with open issues (4 eval checks fail, §8) |
+| Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (134 py + 18 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
+| Last session | 2026-10-18 · phase 5 |
 | Builder | Sai Charan (Claude Code) |
 | Deadline | 18 Oct 2026 |
 
@@ -19,7 +19,7 @@ Living document. Every Claude Code session reads it first and updates it last (`
 | 2 | Population & the always-on world engine | ✅ | 2026-10-18 | 03/04/05/06/10/32 PASS; 13/14 review | world-engine live on Cloud Run |
 | 3 | Memory, think/speak conversations, governor, highlights | ⚠️ | 2026-10-18 | 07/08/09/12 PASS (+ all earlier) | live in cloud; nightly reflection not yet observed live (§8) |
 | 4 | Launch Studio, channels and attention | ⚠️ | 2026-10-18 | 11/18–23 PASS (+ all earlier); 15/16/17/21b review ok | live in cloud; Nova X1 review not yet seen; P-07 not built (§8) |
-| 5 | Stores, buying and Insights (+ Survey Room addendum) | 🟨 | 2026-10-18 | | |
+| 5 | Stores, buying and Insights (+ Survey Room addendum) | ⚠️ | 2026-10-18 | 24–31 PASS (+ all gated 01–33) | live in cloud; evals 4 checks FAIL (§8) |
 | 6 | Hardening, deploy, demo, submission | ⬜ | | | |
 Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open issues
 
@@ -31,12 +31,12 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | Engine | 2, 3 | ☑ E-01 ☑ E-02 ☑ E-03 ☑ E-04 ☑ E-05 ☑ E-06 ☑ E-07 |
 | Memory | 3 | ☑ M-01 ☑ M-02 ☑ M-03 ☑ M-04 ☐ M-05 (built + tested; not yet observed live) ☑ M-06 ☑ M-07 |
 | Attention | 4 | ☑ A-01 ☑ A-02 ☑ A-03 ☑ A-04 ☑ A-05 ☑ A-06 |
-| Channels | 3, 4 | ☑ C-01 ☑ C-02 ☑ C-03 ☑ C-04 ☑ C-05 ☑ C-06 ☐ C-07 (built; Sources share in phase 5) ☑ C-08 |
-| Talk | 3, 5 | ☑ T-01 ☑ T-02 ☐ T-03 ☑ T-04 ☑ T-05 ☑ T-06 ☑ T-07 |
-| Shopping | 5 | ☐ S-01 ☐ S-02 ☐ S-03 ☐ S-04 ☐ S-05 ☐ S-06 |
-| Launch Studio | 4 | ☑ L-01 ☑ L-02 ☑ L-03 ☑ L-04 ☑ L-05 ☑ L-06 ☑ L-07 ☐ L-08 (launch marker on Insights charts in phase 5) |
-| Insights | 5 | ☐ I-01 ☐ I-02 ☐ I-03 ☐ I-04 ☐ I-05 ☐ I-06 ☐ I-07 ☐ I-08 ☐ I-09 |
-| UI | 1, 1, 6, 1–4, 1–6, 2, 2–3, 4, 5 | ☑ U-01 ☑ U-02 ☑ U-03 ☑ U-04 ☑ U-05 ☑ U-06 ☐ U-07 ☑ U-08 ☐ U-09 |
+| Channels | 3, 4 | ☑ C-01 ☑ C-02 ☑ C-03 ☑ C-04 ☑ C-05 ☑ C-06 ☑ C-07 ☑ C-08 |
+| Talk | 3, 5 | ☑ T-01 ☑ T-02 ☑ T-03 ☑ T-04 ☑ T-05 ☑ T-06 ☑ T-07 |
+| Shopping | 5 | ☑ S-01 ☑ S-02 ☑ S-03 ☑ S-04 ☑ S-05 ☑ S-06 |
+| Launch Studio | 4 | ☑ L-01 ☑ L-02 ☑ L-03 ☑ L-04 ☑ L-05 ☑ L-06 ☑ L-07 ☑ L-08 |
+| Insights | 5 | ☑ I-01 ☑ I-02 ☑ I-03 ☑ I-04 ☑ I-05 ☑ I-06 ☑ I-07 ☑ I-08 ☑ I-09 (assistant offline planner misses SQL on 1/10 benchmark Qs) |
+| UI | 1, 1, 6, 1–4, 1–6, 2, 2–3, 4, 5 | ☑ U-01 ☑ U-02 ☑ U-03 ☑ U-04 ☑ U-05 ☑ U-06 ☑ U-07 ☑ U-08 ☐ U-09 |
 | Platform | 1, 1–2, 4, 6, 6 | ☑ X-01 ☑ X-02 ☐ X-03 ☐ X-04 ☐ X-05 ☐ X-06 |
 
 ## 4. Visual check status (`tools/visual`, latest run)
@@ -66,14 +66,14 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | 21b-launch-graph | 4 | 5.3% | 6.9% | ok | REVIEW (select + neighbours + details; ok by eye) |
 | 22-launch-plan | 4 | 3.3% | 0.3% | ok | PASS |
 | 23-launch-ready | 4 | 2.2% | 0.2% | ok | PASS |
-| 24-insights-ask | 5 |  | | | |
-| 25-insights-overview | 5 |  | | | |
-| 26-insights-sources | 5 |  | | | |
-| 27-insights-hoardings | 5 |  | | | |
-| 28-insights-segments | 5 |  | | | |
-| 29-insights-conversations | 5 |  | | | |
-| 30-insights-polls | 5 |  | | | |
-| 31-insights-interview | 5 |  | | | |
+| 24-insights-ask | 5 | 4.2% | 0.3% | ok | PASS |
+| 25-insights-overview | 5 | 1.8% | 0.3% | ok | PASS |
+| 26-insights-sources | 5 | 1.8% | 0.2% | ok | PASS |
+| 27-insights-hoardings | 5 | 3.5% | 0.4% | ok | PASS |
+| 28-insights-segments | 5 | 2.3% | 0.2% | ok | PASS |
+| 29-insights-conversations | 5 | 3.8% | 0.2% | ok | PASS |
+| 30-insights-polls | 5 | 2.8% | 0.4% | ok | PASS |
+| 31-insights-interview | 5 | 2.5% | 0.2% | ok | PASS |
 | 32-people | 2 | 4.9% | 0.4% | ok | PASS |
 | 33-guide | 1 | 1.8% | 0.2% | ok | PASS |
 | 34-people-light | 6 |  | | | |
@@ -84,11 +84,11 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | GCP project / region | mirava-ai-hack (760833706192) / asia-south1 |
 | Web URL (Firebase Hosting) | https://mirava-ai-hack.web.app |
 | API URL (Cloud Run `mirava-api`) | https://mirava-api-kfh7v3hvjq-el.a.run.app (public path: https://mirava-ai-hack.web.app/api/healthz) |
-| world-engine URL / revision | https://world-engine-kfh7v3hvjq-el.a.run.app (wss …/live, GET /health) · world-engine-00012-fpw (phase 4) · mirava-api-00008-prw (1 GiB, Model Armor on) |
+| world-engine URL / revision | https://world-engine-kfh7v3hvjq-el.a.run.app (wss …/live, GET /health) · world-engine-00012-fpw (phase 4) · mirava-api-00008-prw (1 GiB, Model Armor on) · phase 5: world-engine-00015-tvk, mirava-api-00012-7c9 |
 | OSM extract date / map stats | Overpass 2026-10-17T17:07Z · 299×305 tiles (8 m) · 3,501 nodes / 4,455 edges (all reachable) · 12,179 places · 60 sites · 4 stores |
 | Genesis version / seed | v1 / 4271 · 1,000 agents, 435 households, 7,012 relationships (avg degree 14.0, 0 isolated), 950 Gemini bios + 50 template ($0.52) · gs://mirava-ai-hack-mirava-worlds/genesis/v1/ |
 | Firestore vector index | `memories` composite CICAgOjXh4EK (agent_id + embedding 768-d flat) |
-| BigQuery views | agents_latest, v_messages, v_conversations, v_exposures, v_site_daily (`python -m infra.bigquery.init mirava-ai-hack mirava`) |
+| BigQuery views | agents_latest, v_messages, v_conversations, v_exposures, v_site_daily + phase 5: beliefs_daily, beliefs_latest, v_thoughts, v_inquiries, v_purchases, v_posts, v_reviews, v_first_heard, v_paths, v_funnel_daily, v_surveys, v_survey_participants, v_survey_messages, v_survey_answers, v_survey_shift, v_survey_waves (`python -m infra.bigquery.init mirava-ai-hack mirava`) |
 | Live products (ids, launched at) | cloud: pulse-5 @ t=14030, orbit-s @ t=14047 (Day 10); nova-x1 ready in the dock · local emulator: all three live (Nova X1 @ t=108593) |
 | Demo snapshot name | _phase 6_ |
 
@@ -113,7 +113,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 16 | Cloud Scheduler watchdog | 2 | ✅ | 2026-10-18 | world-engine-watchdog, */5, GET /health, asia-south1 |
 | 07 | Firestore vector index `memories` | 3 | ✅ | 2026-10-18 | composite CICAgOjXh4EK: agent_id ASC + embedding flat 768-d, scope COLLECTION, READY |
 | 12 | Model Armor template | 4 | ✅ | 2026-10-18 | template `mirava-screen` in asia-south1 (RAI medium+, PI/jailbreak HIGH); roles modelarmor.admin (user), modelarmor.user (mirava-api); gcloud needs `CLOUDSDK_API_ENDPOINT_OVERRIDES_MODELARMOR=https://modelarmor.asia-south1.rep.googleapis.com/`; Cloud Run api env MODEL_ARMOR_ENABLED/TEMPLATE set at the phase-4 deploy |
-| 09 | BigQuery views + `ll-analyst-ro` + VECTOR_SEARCH check | 5 | 🟨 | 2026-10-18 | mirava-api has serviceAccountTokenCreator on mirava-analyst-ro (dataViewer + jobUser); VECTOR_SEARCH on `mirava.texts` verified (3,135 rows, no index until >5k); INTERACTIVE_CAP_USD=5 on mirava-api-00010-79r + world-engine-00013-gsp; **phase-5 views pending** (created after Part A SQL) |
+| 09 | BigQuery views + `ll-analyst-ro` + VECTOR_SEARCH check | 5 | ✅ | 2026-10-18 | mirava-api has serviceAccountTokenCreator on mirava-analyst-ro (dataViewer + jobUser); VECTOR_SEARCH on `mirava.texts` verified (3,135 rows, no index until >5k); INTERACTIVE_CAP_USD=5 on mirava-api-00010-79r + world-engine-00013-gsp; all 16 phase-5 views created in `mirava` (v_first_heard 961 rows) |
 | 13 | Monitoring dashboard + alerts | 6 | ⬜ | | |
 | 14 | Vertex AI (only if `LLM_BACKEND=vertex`) | — | skipped | | |
 
@@ -140,6 +140,9 @@ uv run python -m infra.bigquery.init mirava-ai-hack mirava                      
 # phase 4: visual capture against another port: cd tools/visual && node capture.mjs --target app --phase 4 --base http://localhost:5174
 # v_site_daily locally: the engine holds .data/mirava.duckdb — stop it, query (read_only), restart (resumes from checkpoint)
 # Model Armor gcloud: CLOUDSDK_API_ENDPOINT_OVERRIDES_MODELARMOR=https://modelarmor.asia-south1.rep.googleapis.com/ gcloud model-armor templates list --location=asia-south1
+# phase 5: evals (fake backend, ~70 min on this PC; output only at the end): uv run python -m evals.run --agents 200 --days 1   → evals/RESULTS.md
+# phase 5: run a survey locally: make dev && make seed-demo, open http://localhost:5173/insights/polls → "Survey Room" → build questions → Estimate → Launch; watch the Research Lounge pin (P-0186) on /world; the room opens at /insights/polls/survey/<id>
+# phase 5: survey screenshots: cd tools/visual && node survey-shots.mjs  (→ artifacts/visual/survey-room/)
 Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirava-ai-hack.web.app
 
 ## 7. Contract changes (to docs/INTERFACES.md)
@@ -151,6 +154,11 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - [phase 1] `indiranagar.tmj` gains object layer `lights` and documents `labels` object types (INTERFACES §4.1) — needed for night lighting — DECISIONS #60.
 
 ## 8. Known issues / tech debt
+- [phase 5] [minor] Evals (evals/RESULTS.md, 200 agents · 1 day, fake backend): faithfulness 100%, verbatim 100% PASS; FAIL: `first_heard` answer has no SQL (offline rule planner skips run_sql), `purchases` has no numbers (no purchases in a 1-day world), experience dominance 2/3 (n=3 too small), wave changes explained 24/28 (4 with no own events between waves → "no clear cause"). Fix: planner route for first_heard, run evals with --days 2, treat "no events" changes as explained-by-noise or seed fewer flips.
+- [phase 5] [minor] Survey late arrivals become no-shows (do not join the next question as B3.8 says).
+- [phase 5] [minor] Insights assistant is an own structured tool loop, not ADK (DECISIONS #92); offline rule planner in fake mode.
+- [phase 5] [minor] Ask assistant cost is not booked to the engine's interactive budget (only polls/surveys are).
+- [phase 5] [minor] evals take ~70 min on this PC and print nothing until the end.
 - [phase 4] [fixed] Cloud plan reasons were templates (prompt placeholder `{sites}` vs `{facts}` → KeyError swallowed); fixed + regression test, Nova X1 re-planned. Gemini reasons are repetitive in wording — tighten the prompt (phase 6).
 - [phase 4] [minor] Target OTS/day in cloud plans is low (4–12) — the cloud world has ~9 days of highlight samples at 10-min resolution. Re-plan after more history.
 - [phase 4] [minor] P-07 (category bootstrap, stretch) not built.
@@ -210,7 +218,19 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - Planner edge cases: no highlights yet → commute-path traffic fallback (few OTS); sites held by live products excluded; Gemini reasons only when lengths match (else templates, logged).
 - Bugs fixed this phase: duplicate Phaser canvas under StrictMode (visible map was a frozen frame), `clientOf` stale worldView, ticker per-agent name lookups starving the Launch POST, engine ID-token audience empty (403), api 512 MiB OOM in the planner, Dockerfiles missing media/agents/social.
 
-**Next session (phase 5) must:**
+**Phase 5 handoff**
+- Commerce: 3-sim-day local run → 27 store inquiries (turn-by-turn, think→decide→speak), 3 need-driven purchases (≈9 inquiries/sim day).
+- Survey Room: venue P-0186 "Research Lounge" (config/survey.yaml); max 100 participants, tables of 6–10; estimate calibrated at 6 think + 4 speak + 3 moderator calls per question per table + 1 ballot per participant per question (≈ $0.0015 per participant per question on Flash-Lite); eval focus group: 39 attended, 15% shifted, r(E, msgs) = 0.65.
+- Insights: 8 tabs PASS visually; Ask uses run_sql (sqlglot guard, views only, analyst SA impersonation in cloud), semantic_search (VECTOR_SEARCH), likely_buyers, poll, interview; faithfulness check drops/regenerates unmatched numbers.
+- Cloud: phase-5 views created; mirava-api impersonates mirava-analyst-ro; INTERACTIVE_CAP_USD=5 on both services; revisions world-engine-00015-tvk, mirava-api-00012-7c9.
+- OpenRouter key: limit $10, used $4.79, remaining $5.21 (2026-10-18) — raise before the demo.
+
+**Next session (phase 6) must:**
+1. `/start-phase 6`; `make test`/`make lint`; fix the 4 failing eval checks (§8) and re-run `uv run python -m evals.run --agents 200 --days 2`.
+2. Check the OpenRouter key limit (remaining ~$5) and `/gcp-setup 13` (monitoring).
+3. Demo snapshot + `make restore-demo`, then the full `/visual-check` 01–34.
+
+**(phase 4) Next session (phase 5) must:**
 1. `/start-phase 5`; `make test`/`make lint`; check `GET https://world-engine-kfh7v3hvjq-el.a.run.app/state` is running on revision ≥ 00012 and that a Nova X1/Pulse 5 review appeared (`reviews` collection).
 2. `/gcp-setup 09` (BigQuery views + `mirava-analyst-ro` + VECTOR_SEARCH check) before the Insights assistant.
 3. Build stores/inquiries on `engine/media_rt.py` (store displays) + `commerce/`; Insights Hoardings tab reads `v_site_daily`; Sources uses `belief.first_heard` (C-07, L-08 launch markers).
@@ -231,6 +251,14 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 3. Walk through `/gcp-setup` 07 (cloud Firestore), 08, 09, 10, 05 (world-engine), 16 before deploying the engine.
 
 ## 10. Session log (newest first)
+### 2026-10-18 16:30 · Phase 5 · ⚠️
+- Built: commerce (need, consideration, stores, purchase) + engine/commerce_rt, store inquiry T-03, 16 BQ/DuckDB views + dictionary, insights tools/assistant/faithfulness/likely_buyers/polls, interviewer, 8 Insights tabs, profile Conversations (store visits + focus groups, own private thoughts), Survey Room (recruit, travel, tables, discussion, absorption, private ballots, waves, 3D/2D room, world pin), evals.
+- Tests: test_commerce, test_insights, test_survey (+ all earlier); views on DuckDB pass.
+- Visual check: 24–31 PASS + all gated 01–33; Survey Room screenshots in artifacts/visual/survey-room/.
+- Deployed: world-engine-00015-tvk, mirava-api-00012-7c9, Hosting; views in BigQuery.
+- Cloud setup: §5b 09 ✅.
+- Contract changes: §7 → addendum (DECISIONS #86–96).
+- Open issues: §8 (4 eval checks fail).
 ### 2026-10-18 12:00 · Phase 4 · ⚠️
 - Built: products API (CRUD, screened creatives, signed uploads, audience, understanding, plan, ready, launch), media (screen/Model Armor, audience, attention, traffic, planner, graph), agents/understanding, mind/ad_thought, social/community, engine/media_rt (launch, hoardings, feeds, newspaper, store displays, reviewers, community, baseline ads), BQ views v_exposures/v_site_daily, web Launch Studio + GraphView + PlanCanvas + dock launch + firework + lenses, `make seed-demo`, `make dev` with engine.
 - Tests: py (Launch Studio 14 + media 13 incl. geometry, calibration, planner determinism/exclusion, reels ≥70% audience, injection suite, launch→thought/memory/belief, review/community, view totals) + 18 vitest.
