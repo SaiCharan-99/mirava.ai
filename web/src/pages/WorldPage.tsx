@@ -12,6 +12,36 @@ import { initials } from "../lib/agentView";
 import { worldRef } from "../world/ref";
 import { backToLive, jumpTo, openHighlights } from "../lib/highlights";
 import { hhmm } from "../lib/time";
+import { isVisualTest } from "../lib/visualTest";
+import { studioApi } from "../lib/studio";
+import { toast } from "../lib/toast";
+import { useState } from "react";
+
+const STAGES = ["aware", "curious", "researching", "inquiring", "deciding", "purchased", "postponed", "rejected"];
+const STAGE_COL: Record<string, string> = { aware: "#94a3b8", curious: "#60a5fa", researching: "#a78bfa", inquiring: "#f5b041", deciding: "#fb923c", purchased: "#4ade80", postponed: "#64748b", rejected: "#f87171" };
+
+function LensExtras() {
+  const lens = useWorld((s) => s.lens);
+  const lp = useWorld((s) => s.lensProduct);
+  const setLp = useWorld((s) => s.setLensProduct);
+  const live = useWorld((s) => s.products).filter((p) => p.status === "live");
+  const prodLens = lens === "aware" || lens === "sentiment";
+  return (
+    <>
+      <div className="seg glass" style={prodLens ? undefined : { display: "none" }}>
+        {live.map((p) => (
+          <button key={p.id} className={lp === p.id ? "on" : ""} onClick={() => setLp(p.id)}>
+            <span className="pdot" style={{ background: p.hex, width: 8, height: 8, marginRight: 5 }} />{p.name}</button>
+        ))}
+      </div>
+      <div className="glass" style={{ padding: "8px 10px", fontSize: 11, ...(lens === "activity" ? { display: "none" } : {}) }}>
+        {lens === "aware" ? <div className="legend" style={{ flexDirection: "column", gap: 4 }}>{STAGES.map((s) => <span key={s}><i style={{ background: STAGE_COL[s] }} />{s}</span>)}<span><i style={{ background: "#334155" }} />unaware (dimmed)</span></div>
+          : lens === "sentiment" ? <div className="legend" style={{ flexDirection: "column", gap: 4 }}><span><i style={{ background: "#4ade80" }} />positive</span><span><i style={{ background: "#f5b041" }} />neutral</span><span><i style={{ background: "#f87171" }} />negative</span></div>
+            : <div style={{ maxWidth: 200 }}>Cones show where each board can be seen (facing + range). Colour = product. See <a href={withMode("/insights/hoardings")}>Insights → Hoardings</a> for notice rates.</div>}
+      </div>
+    </>
+  );
+}
 
 /** One watched agent in the side panel (mockup renderSide "watching"). */
 function WatchItem({ id }: { id: number }) {
@@ -70,6 +100,7 @@ function Tools() {
           <button key={k} data-lens={k} className={lens === k ? "on" : ""} onClick={() => setLens(k)}>{l}</button>
         ))}
       </div>
+      <LensExtras />
       <div className="row" style={{ gap: 6 }}>
         <button className="zoombtn" onClick={() => camera({ kind: "in" })}>+</button>
         <button className="zoombtn" onClick={() => camera({ kind: "out" })}>−</button>
@@ -81,7 +112,22 @@ function Tools() {
 
 function Dock() {
   const products = useWorld((s) => s.products);
+  const fx = useWorld((s) => s.fx);
+  const [busy, setBusy] = useState<string | null>(null);
   const ready = products.filter((p) => p.status === "ready");
+  const launch = async (id: string) => {
+    if (isVisualTest) return window.__ll.launchFx(id, 0.45);
+    if (busy || fx) return toast("One launch at a time — wait for the current one to land");
+    setBusy(id);
+    try {
+      await studioApi.launch(id);
+      toast("Launch sent — the world-engine activates the plan at the next sim minute");
+    } catch (e) {
+      toast(`Launch failed: ${(e as Error).message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <div className="dock glass" data-testid="launch-dock">
       <div className="row between"><b className="small">Ready to launch</b><span className="xs muted">one at a time</span></div>
@@ -90,7 +136,7 @@ function Dock() {
           <span className="pdot" style={{ background: p.hex }} />
           <div><b>{p.name}</b><div className="xs muted">{p.sites.length} hoardings · reels to ~{p.reel} · {p.stores.length} stores · {p.reviewers} reviewers</div></div>
           <button className="btn primary sm" style={{ background: p.hex, borderColor: p.hex, color: "#1a0d02" }}
-            title="Launching arrives in phase 4">🚀 Launch</button>
+            disabled={busy === p.id} onClick={() => void launch(p.id)}>{busy === p.id ? "Launching…" : "🚀 Launch"}</button>
         </div>
       )) : <div className="xs muted">No products ready. <a href={withMode("/launch")}>Open Launch Studio</a></div>}
     </div>
@@ -148,7 +194,8 @@ function SideBody() {
   const n = agents.length || 1;
   const card = (p: FixtureProduct) => {
     const live = p.status === "live";
-    const aw = agents.filter((a) => a.beliefs[p.id] && a.beliefs[p.id].stage !== "unaware").length;
+    const liveAw = useWorld.getState().source === "live" ? useWorld.getState().awareShare[p.id] : undefined;
+    const aw = liveAw !== undefined ? liveAw * n : agents.filter((a) => a.beliefs[p.id] && a.beliefs[p.id].stage !== "unaware").length;
     const cu = agents.filter((a) => a.beliefs[p.id] && CURIOUS_PLUS.includes(a.beliefs[p.id].stage)).length;
     return (
       <div className="item" key={p.id}>

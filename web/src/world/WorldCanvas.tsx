@@ -9,24 +9,29 @@ import { worldRef } from "./ref";
 export function WorldCanvas() {
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!host.current) return;
+    const el = host.current;
+    if (!el) return;
+    el.replaceChildren(); // a previous (StrictMode) mount may have left its canvas behind
+    let alive = true;
     const scene = new WorldScene();
     scene.onView = (v) => {
       worldRef.view = v;
       worldRef.listeners.forEach((fn) => fn(v));
     };
     scene.onReady = () => {
+      if (!alive) return;
       worldRef.scene = scene;
       const s = useWorld.getState();
       scene.setHour(s.hourOverride ?? minuteOfDay(s.t) / 60);
       const pf = worldRef.pendingFocus ?? s.profile?.id ?? null;
       worldRef.pendingFocus = null;
-      if (pf !== null) scene.focusAgent(pf);
+      if (worldRef.pendingFit) { worldRef.pendingFit = false; scene.fit(); }
+      else if (pf !== null) scene.focusAgent(pf);
       else if (s.hover) scene.focusAgent(s.hover.id);
     };
     const game = new Phaser.Game({
-      type: Phaser.AUTO, parent: host.current, pixelArt: true, backgroundColor: "#0a0d12",
-      scale: { mode: Phaser.Scale.RESIZE, width: host.current.clientWidth || 800, height: host.current.clientHeight || 600 },
+      type: Phaser.AUTO, parent: el, pixelArt: true, backgroundColor: "#0a0d12",
+      scale: { mode: Phaser.Scale.RESIZE, width: el.clientWidth || 800, height: el.clientHeight || 600 },
       scene, banner: false, disableContextMenu: true,
       fps: { target: 60 }, input: { mouse: { preventDefaultWheel: true } },
     });
@@ -44,10 +49,13 @@ export function WorldCanvas() {
       }
     });
     return () => {
+      alive = false;
       unsub();
       useWorld.getState().setHover(null);
-      worldRef.scene = null;
+      if (worldRef.scene === scene) worldRef.scene = null;
       game.destroy(true);
+      game.canvas?.remove();
+      el.replaceChildren();
     };
   }, []);
   return <div ref={host} className="phaser-host" data-testid="world-canvas" />;

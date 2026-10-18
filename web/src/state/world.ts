@@ -19,6 +19,16 @@ export type ProfileTab = "overview" | "relations" | "possessions" | "thoughts" |
 export interface HlMoment { t: number; kind?: string; agent_ids: number[]; x?: number; y?: number; title: string; text?: string; session_id?: string | null }
 export interface Highlights { day: number; total: number; moments: HlMoment[] }
 
+/** What a hoarding site shows: a product id or a baseline brand id (`cr`), and the face in use. */
+export interface SiteShow { cr: string; facing?: number; flipAt?: number }
+/** Launch firework state (`launch-fx` overlay): progress frozen (visual test) or started at t0 (performance.now()). */
+export interface LaunchFx { pid: string; hex: string; name: string; sites: string[]; stores: string[]; audience: number[]; t0: number; frozen: number | null }
+
+/** What a hoarding site shows: a product id or a baseline brand id (`cr`), and the face in use. */
+export interface SiteShow { cr: string; facing?: number; flipAt?: number }
+/** Launch firework state (`launch-fx` overlay): progress frozen (visual test) or started at t0 (performance.now()). */
+export interface LaunchFx { pid: string; hex: string; name: string; sites: string[]; stores: string[]; audience: number[]; t0: number; frozen: number | null }
+
 export interface HoverInfo { id: number; sx: number; sy: number; pinned?: boolean }
 
 export interface WorldStore {
@@ -31,6 +41,14 @@ export interface WorldStore {
   setHighlights: (h: Highlights | null) => void;
   ticker: TickerItem[];
   products: FixtureProduct[];
+  siteAssign: Record<string, SiteShow>;
+  /** Live lens data: product id → agent id → attitude (agents present are aware). */
+  aware: Record<string, Record<number, number>>;
+  lensProduct: string | null;
+  /** stats.awareness: product id → share of agents aware. */
+  awareShare: Record<string, number>;
+  fx: LaunchFx | null;
+  setLensProduct: (pid: string) => void;
   dayCounts: number[];
   fixtures: Fixtures | null;
   lens: Lens;
@@ -67,6 +85,12 @@ export const useWorld = create<WorldStore>((set, get) => ({
   setHighlights: (hl) => set({ hl, ...(hl ? { sideTab: "now" as SideTab } : {}) }),
   ticker: [],
   products: [],
+  siteAssign: {},
+  aware: {},
+  lensProduct: null,
+  awareShare: {},
+  fx: null,
+  setLensProduct: (lensProduct) => set({ lensProduct }),
   dayCounts: [],
   fixtures: null,
   lens: "activity",
@@ -105,6 +129,8 @@ export const useWorld = create<WorldStore>((set, get) => ({
       budget: { used_usd: 6.4, cap_usd: 15 },
       ticker: f.ticker,
       products: f.products,
+      siteAssign: (f as Fixtures & { siteAssign?: Record<string, SiteShow> }).siteAssign ?? {},
+      lensProduct: f.products.find((p) => p.status === "live")?.id ?? null,
       dayCounts: fixtureDayCounts(f.t, f.stats.convToday),
     }),
 }));

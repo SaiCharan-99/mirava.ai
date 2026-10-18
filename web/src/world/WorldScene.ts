@@ -24,7 +24,10 @@ interface TiledObject {
   id: number; name: string; type: string; x: number; y: number; rotation: number;
   properties?: { name: string; value: unknown }[];
 }
-export interface SiteLite { site_id: string; kind: string; x: number; y: number; facings: number[]; width_m: number; lit: boolean }
+export interface SiteLite { site_id: string; kind: string; x: number; y: number; facings: number[]; width_m: number; lit: boolean; cone_half_angle_deg?: number; max_distance_m?: number }
+/** Baseline (ambient) brand board colours (config/baseline_ads.yaml ids; mockup creatives). */
+export const BASELINE_BG: Record<string, string> = { zesto: "#b91c1c", kosha: "#1d4ed8", reelo: "#7c2d12", threadly: "#9d174d" };
+const STAGE_COL: Record<string, string> = { aware: "#94a3b8", curious: "#60a5fa", researching: "#a78bfa", inquiring: "#f5b041", deciding: "#fb923c", purchased: "#4ade80", postponed: "#64748b", rejected: "#f87171" };
 export interface ViewInfo { x: number; y: number; w: number; h: number; mapW: number; mapH: number; z: number }
 
 /** Phaser scene rendering indiranagar.tmj with labels, site boards, lighting and camera controls (INTERFACES §6.5). */
@@ -41,6 +44,9 @@ export class WorldScene extends Phaser.Scene {
   onView: ((v: ViewInfo) => void) | null = null;
   onReady: (() => void) | null = null;
   private agentsG!: Phaser.GameObjects.Graphics;
+  private sitesG!: Phaser.GameObjects.Graphics;
+  private sites: SiteLite[] = [];
+  private flipping = false;
   private drawn: Drawn[] = [];
   private downAt: { x: number; y: number } | null = null;
 
@@ -60,7 +66,13 @@ export class WorldScene extends Phaser.Scene {
     for (const name of ["ground", "landuse", "roads", "rail", "buildings", "decor"]) map.createLayer(name, ts, 0, 0);
     this.mapW = map.widthInPixels;
     this.mapH = map.heightInPixels;
-    this.drawSites(this.cache.json.get("sites") as SiteLite[]);
+    this.sites = (this.cache.json.get("sites") as SiteLite[]) ?? [];
+    this.sitesG = this.add.graphics().setDepth(10);
+    this.drawSites();
+    const unsub = useWorld.subscribe((st, prev) => {
+      if (st.siteAssign !== prev.siteAssign || st.lens !== prev.lens || st.products !== prev.products) this.drawSites();
+    });
+    this.events.once("destroy", unsub);
     this.agentsG = this.add.graphics().setDepth(15);
     this.night = this.add.rectangle(-200, -200, this.mapW + 400, this.mapH + 400, 0x080e28, 0).setOrigin(0).setDepth(20);
     this.makeGlowTexture();
@@ -94,6 +106,7 @@ export class WorldScene extends Phaser.Scene {
 
   update(): void {
     this.drawAgents();
+    if (this.flipping) this.drawSites();
     const inv = 1 / this.cameras.main.zoom;
     const showRoad = this.z >= 0.8;
     const showPlace = this.z >= 1.5;
@@ -226,11 +239,13 @@ export class WorldScene extends Phaser.Scene {
   /** Viewport (client) coordinates of a Tiled-pixel point. */
   clientOf(x: number, y: number): { x: number; y: number } {
     const cam = this.cameras.main;
-    cam.preRender();
     const r = this.game.canvas.getBoundingClientRect();
-    const v = cam.worldView;
-    return { x: r.left + (x - v.x) * cam.zoom, y: r.top + (y - v.y) * cam.zoom };
+    const kx = r.width / (this.game.canvas.width || r.width), ky = r.height / (this.game.canvas.height || r.height);
+    const sx = (x - cam.scrollX - cam.originX * cam.width) * cam.zoom + cam.originX * cam.width;
+    const sy = (y - cam.scrollY - cam.originY * cam.height) * cam.zoom + cam.originY * cam.height;
+    return { x: r.left + sx * kx, y: r.top + sy * ky };
   }
+
 
   /** Centre on an agent at view zoom 3 (`__ll.focus`). */
   focusAgent(id: number, z = 3): boolean {
@@ -267,13 +282,17 @@ export class WorldScene extends Phaser.Scene {
     const v = this.cameras.main.worldView;
     const frozen = simClock.frozen;
     const now = performance.now();
-    const r = (c: number, x: number, y: number, w: number, h: number, a = 1) => g.fillStyle(c, a).fillRect(x * U, y * U, w * U, h * U);
+    let dimA = 1;
+    const r = (c: number, x: number, y: number, w: number, h: number, a = 1) => g.fillStyle(c, a * dimA).fillRect(x * U, y * U, w * U, h * U);
     for (const a of this.drawn) {
       if (a.x < v.x - 60 || a.y < v.y - 60 || a.x > v.right + 60 || a.y > v.bottom + 60) continue;
       const x = a.x / U;
       const y = a.y / U;
       const L = a.look;
       if (a.mode === "idle" && a.sleeping) continue;
+      const ring = this.lensRing(a.id);
+      dimA = ring === null ? 0.28 : 1;
+      if (ring !== undefined && ring !== null) g.lineStyle(0.7 * U, hex(ring), 1).strokeCircle(a.x, a.y - 3 * U, 4.6 * U);
       if (a.moving && a.mode !== "walk") {
         r(0x000000, x - 3, y, 6, 1.2, 0.3);
         const hz = a.h % 180 > 45 && a.h % 180 < 135;
@@ -302,6 +321,27 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  /** Aware/Sentiment lens ring colour for an agent: colour = aware, null = unaware (dimmed), undefined = no lens. */
+  private lensRing(id: number): string | null | undefined {
+    const st = useWorld.getState();
+    if (st.lens !== "aware" && st.lens !== "sentiment") return undefined;
+    const pid = st.lensProduct;
+    if (!pid) return null;
+    let stage: string | undefined;
+    let att = 0;
+    if (st.source === "live") {
+      const m = st.aware[pid];
+      if (m && id in m) { stage = "aware"; att = m[id]; }
+    } else {
+      const fa = st.fixtures?.agents[id % Math.max(1, st.fixtures.agents.length)];
+      const b = fa?.beliefs[pid];
+      if (b && b.stage !== "unaware") { stage = b.stage; att = b.att; }
+    }
+    if (!stage) return null;
+    if (st.lens === "aware") return STAGE_COL[stage] ?? "#94a3b8";
+    return att > 0.15 ? "#4ade80" : att < -0.1 ? "#f87171" : "#f5b041";
+  }
+
   private makeGlowTexture(): void {
     if (this.textures.exists("glow")) return;
     const c = document.createElement("canvas");
@@ -315,13 +355,48 @@ export class WorldScene extends Phaser.Scene {
     this.textures.addCanvas("glow", c);
   }
 
-  /** Site boards with a facing mark (the face points towards its audience). */
-  private drawSites(sites: SiteLite[]): void {
-    const g = this.add.graphics().setDepth(10);
-    for (const s of sites ?? []) {
+  /** Board colour of what a site shows (product colour, baseline brand, or blank). */
+  private boardColour(cr: string | undefined): number {
+    if (!cr) return 0x334155;
+    const p = useWorld.getState().products.find((x) => x.id === cr);
+    if (p) return hex(p.hex);
+    return BASELINE_BG[cr] ? hex(BASELINE_BG[cr]) : 0x334155;
+  }
+
+  /** Site boards (coloured by their creative, flashing when a launch flips them), facing marks and, in the Hoardings
+   * lens, visibility cones coloured by product. */
+  private drawSites(): void {
+    const g = this.sitesG;
+    if (!g) return;
+    g.clear();
+    const st = useWorld.getState();
+    const now = performance.now();
+    let flipping = false;
+    if (st.lens === "hoardings") {
+      for (const s of this.sites) {
+        const as = st.siteAssign[s.site_id];
+        if (!as) continue;
+        const f = as.facing ?? s.facings[0] ?? 0;
+        const col = this.boardColour(as.cr);
+        const half = Phaser.Math.DegToRad(s.cone_half_angle_deg ?? 50);
+        const fr = Phaser.Math.DegToRad(f) - Math.PI / 2;
+        const range = (s.max_distance_m ?? 60) * PX_PER_M * BOARD_SCALE * 0.6; // exaggerated like the boards, as in the mockup
+        g.fillStyle(col, 0.27).lineStyle(1.2, col, 0.85);
+        g.beginPath();
+        g.moveTo(s.x * PX_PER_M, s.y * PX_PER_M);
+        g.arc(s.x * PX_PER_M, s.y * PX_PER_M, range, fr - half, fr + half, false);
+        g.closePath();
+        g.fillPath();
+        g.strokePath();
+      }
+    }
+    for (const s of this.sites) {
       const x = s.x * PX_PER_M;
       const y = s.y * PX_PER_M;
-      const f = s.facings[0] ?? 0;
+      const as = st.siteAssign[s.site_id];
+      const f = as?.facing ?? s.facings[0] ?? 0;
+      const pending = !!as?.flipAt && now < as.flipAt;
+      const cr = pending ? (as as { prev?: string }).prev : as?.cr;
       const w = Math.max(6, s.width_m) * PX_PER_M * BOARD_SCALE * 0.5;
       const h = 3.2 * PX_PER_M * BOARD_SCALE * 0.5;
       const rad = Phaser.Math.DegToRad(f); // board's long side is perpendicular to its facing
@@ -330,12 +405,18 @@ export class WorldScene extends Phaser.Scene {
       g.rotateCanvas(rad);
       g.fillStyle(0x000000, 0.35).fillRect(-w + 3, -h + 3, w * 2, h * 2);
       g.fillStyle(0x111827, 1).fillRect(-w - 1.6, -h - 1.6, w * 2 + 3.2, h * 2 + 3.2);
-      g.fillStyle(s.kind === "bus_shelter" ? 0x64748b : 0x334155, 1).fillRect(-w, -h, w * 2, h * 2);
+      g.fillStyle(cr ? this.boardColour(cr) : s.kind === "bus_shelter" ? 0x64748b : 0x334155, 1).fillRect(-w, -h, w * 2, h * 2);
+      if (as?.flipAt && now >= as.flipAt && now < as.flipAt + 900) g.fillStyle(0xffffff, 1 - (now - as.flipAt) / 900).fillRect(-w - 4, -h - 4, w * 2 + 8, h * 2 + 8);
       g.restore();
-      for (const face of s.facings) {
+      if (as?.flipAt && now < as.flipAt + 900) flipping = true;
+      const faces = as?.facing !== undefined ? [as.facing] : s.facings;
+      const prod = st.products.find((p) => p.id === cr);
+      for (const face of faces) {
         const r = Phaser.Math.DegToRad(face);
-        g.fillStyle(0xcbd5e1, 1).fillCircle(x + Math.sin(r) * (h + 6), y - Math.cos(r) * (h + 6), 2.6);
+        g.fillStyle(prod ? hex(prod.hex) : 0xcbd5e1, 1).fillCircle(x + Math.sin(r) * (h + 6), y - Math.cos(r) * (h + 6), 2.6);
       }
     }
+    this.flipping = flipping;
   }
+
 }

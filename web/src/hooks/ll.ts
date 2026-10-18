@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useWorld, type Lens, type ProfileTab } from "../state/world";
 import { worldRef } from "../world/ref";
 import { openHighlights } from "../lib/highlights";
+import { playLaunchFx } from "../world/launchFx";
+import { graphRef } from "../components/GraphView";
 
 
 /** The visual-test / automation API (INTERFACES §6.4). Stubs are marked and listed in PROGRESS.md §9. */
@@ -22,8 +24,6 @@ export interface LLHooks {
 declare global {
   interface Window { __ll: LLHooks }
 }
-
-const stub = (name: string) => () => console.info(`[__ll] ${name}: arrives in a later phase`);
 
 export function makeHooks(): LLHooks {
   const st = useWorld.getState;
@@ -59,12 +59,32 @@ export function makeHooks(): LLHooks {
     },
     overview: () => {
       if (worldRef.scene) worldRef.scene.fit();
-      else st().camera({ kind: "fit" });
+      else worldRef.pendingFit = true; // applied when the scene is ready
     },
     highlights: (day) => void openHighlights(day),
-    launchFx: stub("launchFx"),
-    graphSelect: stub("graphSelect"),
-    graphHover: stub("graphHover"),
+    launchFx: (pid, progress) => {
+      const s = st();
+      const p = s.products.find((x) => x.id === pid);
+      if (!p) return;
+      if (progress >= 0.65) {
+        const assign = { ...s.siteAssign };
+        for (const [sid, f] of p.sites) assign[sid] = { cr: p.id, facing: f };
+        useWorld.setState({ siteAssign: assign });
+      }
+      const aud = (s.fixtures?.agents ?? []).slice(0, 90).map((a) => a.id);
+      playLaunchFx({ pid, hex: p.hex, name: p.name, sites: p.sites.map(([sid]) => sid), stores: p.stores, audience: aud,
+        frozen: Math.max(0, Math.min(1, progress)) });
+    },
+    graphSelect: (id) => {
+      const kg = graphRef.kg;
+      const n = kg?.byId[id];
+      if (kg && n) { kg.select(n); kg.focus(n); }
+    },
+    graphHover: (id) => {
+      const kg = graphRef.kg;
+      const n = kg?.byId[id];
+      if (kg && n) kg.setHover(n, null);
+    },
   };
 }
 

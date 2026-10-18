@@ -26,7 +26,7 @@ async function tileColours(): Promise<[number, number, number][]> {
 }
 
 /** One pixel per tile: the top-most non-empty layer wins. */
-function buildBase(): Promise<HTMLCanvasElement> {
+export function buildBase(): Promise<HTMLCanvasElement> {
   baseImage ??= (async () => {
     const [tmj, cols] = await Promise.all([fetch("/assets/maps/indiranagar.tmj").then((r) => r.json()), tileColours()]);
     const W = tmj.width as number, H = tmj.height as number;

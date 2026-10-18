@@ -5,6 +5,9 @@ import { fmtINR, shortT } from "./time";
 import { simClock, tracks } from "../world/tracks";
 import { useWorld } from "../state/world";
 import type { FixtureProduct, TickerItem } from "../visual-fixtures/types";
+import { studioApi, toWorldProduct, fromApi, useStudio } from "./studio";
+import { playLaunchFx } from "../world/launchFx";
+import type { SiteShow } from "../state/world";
 
 const names = new Map<number, string>();
 const talks = new Map<string, { topic: string; place: string }>();
@@ -32,8 +35,25 @@ export function tickerFor(e: LiveEvt, t: number, nameOf: (id: number) => string)
       html = `<span class="who">💰 ${who}</span> got paid ${typeof e.amount === "number" ? fmtINR(e.amount) : ""}`;
       break;
     case "notice":
+      if (String(e.product ?? "").startsWith("baseline:")) return null;
       cls = "prod";
-      html = `<span class="who">💭 ${who}</span> noticed <b>${esc(String(e.product ?? "an ad"))}</b>${e.thought ? `<div class="muted">“${esc(String(e.thought))}”</div>` : ""}`;
+      html = `<span class="who">💭 ${who}</span> noticed <b>${esc(productName(String(e.product ?? "")) || "an ad")}</b>${e.thought ? `<div class="muted">“${esc(String(e.thought))}”</div>` : ""}`;
+      break;
+    case "launch": {
+      cls = "launch";
+      const sm = (e.summary ?? {}) as { sites?: number; stores?: number; reel_audience?: number; reviewers?: number };
+      html = `<span class="who">🚀 ${esc(String(e.name ?? e.product ?? ""))} launched</span> · ${sm.sites ?? 0} hoardings · ${sm.stores ?? 0} stores · reels to ~${sm.reel_audience ?? 0} agents · ${sm.reviewers ?? 0} reviewers`;
+      break;
+    }
+    case "review":
+      cls = "prod";
+      html = `<span class="who">⭐ ${who}</span> published a review: <b>${esc(String(e.title ?? ""))}</b>`;
+      break;
+    case "post":
+      html = `<span class="who">📰 ${who}</span> posted “${esc(String(e.title ?? ""))}”`;
+      break;
+    case "comment":
+      html = `<span class="who">💬 ${who}</span> commented<div class="muted">“${esc(String(e.text ?? ""))}”</div>`;
       break;
     case "purchase":
       cls = "prod";
@@ -72,6 +92,50 @@ export function liveDayCounts(t: number, today: number, total: number): number[]
 
 const nameOf = (id: number): string => names.get(id) ?? `Agent ${id}`;
 
+function productName(pid: string): string {
+  return useWorld.getState().products.find((p) => p.id === pid)?.name ?? pid;
+}
+
+/** hello.sites / launch → what each board shows. */
+export function siteMap(items: unknown[]): Record<string, SiteShow> {
+  const out: Record<string, SiteShow> = {};
+  for (const it of items as { site_id?: string; product_id?: string }[]) {
+    if (!it?.site_id || !it.product_id) continue;
+    out[it.site_id] = { cr: it.product_id.replace(/^baseline:/, "") };
+  }
+  return out;
+}
+
+/** Products (all statuses) from the API → world store; the live hello only lists launched ones. */
+export async function refreshProducts(): Promise<void> {
+  try {
+    const list = await studioApi.list();
+    useStudio.setState({ products: list.map(fromApi), loaded: true });
+    const prods = list.map((p) => toWorldProduct(fromApi(p)));
+    const st = useWorld.getState();
+    useWorld.setState({ products: prods, lensProduct: st.lensProduct && prods.some((p) => p.id === st.lensProduct) ? st.lensProduct
+      : prods.find((p) => p.status === "live")?.id ?? null });
+  } catch {
+    /* api unreachable: keep what /live gave us */
+  }
+}
+
+/** A `launch` evt: firework, boards flip to the creative, product goes live (all viewers at once). */
+function onLaunch(e: LiveEvt): void {
+  const pid = String(e.product ?? "");
+  const sites = (e.sites as { site_id: string; facing: number }[] | undefined) ?? [];
+  const now = performance.now();
+  const st = useWorld.getState();
+  const assign = { ...st.siteAssign };
+  for (const s of sites) assign[s.site_id] = { cr: pid, facing: s.facing, flipAt: now + 1500 + Math.random() * 900, prev: assign[s.site_id]?.cr } as SiteShow;
+  const storeNames = ((e.stores as string[] | undefined) ?? []).map((id) => ({ "ST-DIGITAL-BAZAAR": "Digital Bazaar", "ST-ELECTROHUB": "ElectroHub", "ST-PHONEWORLD": "PhoneWorld" } as Record<string, string>)[id] ?? id);
+  const products = st.products.map((p) => (p.id === pid ? { ...p, status: "live" as const, launched: simClock.now() } : p));
+  useWorld.setState({ siteAssign: assign, products, lensProduct: pid, aware: { ...st.aware, [pid]: st.aware[pid] ?? {} } });
+  playLaunchFx({ pid, hex: String(e.color ?? products.find((p) => p.id === pid)?.hex ?? "#2dd4bf"), name: String(e.name ?? pid),
+    sites: sites.map((s) => s.site_id), stores: storeNames, audience: (e.audience as number[] | undefined) ?? [], frozen: null });
+  setTimeout(() => void refreshProducts(), 3000);
+}
+
 /** Apply one frame to the store, the tracks and the sim clock. */
 export function applyLive(m: LiveMsg): void {
   const st = useWorld.getState();
@@ -81,7 +145,8 @@ export function applyLive(m: LiveMsg): void {
       simClock.set(m.t);
       tracks.reset(m.agents, m.segments);
       useWorld.setState({ source: "live", t: Math.floor(m.t), ticker: [], products: m.products.map(toProduct), hourOverride: null,
-        dayCounts: liveDayCounts(m.t, 0, 0) });
+        siteAssign: siteMap(m.sites), dayCounts: liveDayCounts(m.t, 0, 0) });
+      void refreshProducts();
       break;
     case "seg":
       tracks.push(m.items);
@@ -91,7 +156,7 @@ export function applyLive(m: LiveMsg): void {
       if (Math.floor(m.t) !== st.t) useWorld.setState({ t: Math.floor(m.t) });
       break;
     case "stats":
-      useWorld.setState({ stats: { ...st.stats, ...m.counts }, ...(m.budget ? { budget: m.budget } : {}),
+      useWorld.setState({ stats: { ...st.stats, ...m.counts }, ...(m.budget ? { budget: m.budget } : {}), ...(m.awareness ? { awareShare: m.awareness } : {}),
         dayCounts: liveDayCounts(m.t, m.counts.conversations_today ?? 0, m.counts.conversations_total ?? 0) });
       break;
     case "evt": {
@@ -99,6 +164,11 @@ export function applyLive(m: LiveMsg): void {
         if (e.k === "activity" && typeof e.a === "number") {
           const tr = tracks.byId.get(e.a);
           if (tr && typeof e.act === "string") tr.act = e.act;
+        }
+        if (e.k === "launch") onLaunch(e);
+        if (e.k === "notice" && typeof e.a === "number" && typeof e.product === "string" && !e.product.startsWith("baseline:")) {
+          const pid = e.product, aid = e.a;
+          useWorld.setState((s) => ({ aware: { ...s.aware, [pid]: { ...(s.aware[pid] ?? {}), [aid]: (s.aware[pid]?.[aid] ?? 0) + 0.05 } } }));
         }
         const id = typeof e.a === "number" ? e.a : null;
         const push = () => {
