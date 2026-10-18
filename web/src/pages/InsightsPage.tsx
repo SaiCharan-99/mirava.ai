@@ -419,7 +419,7 @@ export function InsightsPage() {
   return (
     <div className="page">
       <PageTitle title="Insights" sub="Ask anything about what the world has seen, thought, said and bought. Answers come only from logged data."
-        right={<>{tab === "polls" && <SurveyEntry />}<span className="chip">{chip}</span><span className="sim-badge">SIMULATED</span></>} />
+        right={<>{tab === "polls" && <span style={{ position: "relative", width: 0, height: 0, marginRight: -9 }}><span style={{ position: "absolute", right: "-180px", bottom: 22 }}><SurveyEntry /></span></span>}<span className="chip">{chip}</span><span className="sim-badge">SIMULATED</span></>} />
       <div className="tabs" data-testid="insights-tabs">{ITABS.map(([k, l]) => (
         <button key={k} data-testid={`insights-tab-${k}`} className={tab === k ? "on" : ""} onClick={() => nav(withMode(`/insights/${k}`))}>{l}</button>
       ))}</div>
