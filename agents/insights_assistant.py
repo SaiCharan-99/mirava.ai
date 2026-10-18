@@ -291,14 +291,16 @@ class Assistant:
                                                                product_id=pid, private=True, k=6)),
                     Call(tool="semantic_search", args=ToolArgs(text=f"{p['name'] if p else 'phone'}",
                                                                kinds=["message"], k=6))]
-        if any(w in ql for w in ("segment", "likely", "who will buy", "buyers")) and pid:
-            return [Call(tool="likely_buyers", args=ToolArgs(product_id=pid, group_by=["age_band", "income_band"]))]
-        if any(w in ql for w in ("first heard", "source", "channel", "path")):
+        if any(w in ql for w in ("first hear", "source", "channel", "path")):
             return [Call(tool="run_sql", args=ToolArgs(sql="SELECT product_id, channel, COUNT(*) AS agents FROM "
                                                            "v_first_heard GROUP BY product_id, channel ORDER BY agents DESC"))]
+        if any(w in ql for w in ("segment", "likely", "who will buy", "buyers")) and pid:
+            return [Call(tool="likely_buyers", args=ToolArgs(product_id=pid, group_by=["age_band", "income_band"]))]
         if any(w in ql for w in ("bought", "purchase", "sales", "baseline")):
-            return [Call(tool="run_sql", args=ToolArgs(sql="SELECT option, method, COUNT(*) AS purchases FROM v_purchases "
-                                                           "GROUP BY option, method ORDER BY purchases DESC"))]
+            return [Call(tool="run_sql", args=ToolArgs(sql=(
+                "SELECT 'our products' AS choice, (SELECT COUNT(*) FROM v_purchases WHERE is_ours) AS purchases "
+                "UNION ALL SELECT 'baseline market' AS choice, (SELECT COUNT(*) FROM v_purchases WHERE NOT is_ours) "
+                "AS purchases")))]
         if any(w in ql for w in ("store", "inquir", "salesperson")):
             return [Call(tool="run_sql", args=ToolArgs(sql="SELECT product_id, outcome, COUNT(*) AS inquiries, "
                                                            "AVG(satisfaction) AS satisfaction FROM v_inquiries "

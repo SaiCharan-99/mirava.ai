@@ -143,3 +143,15 @@ def test_poll_determinism():
     r2 = asyncio.run(d.decide_batch(reqs))
     assert [x.choice for x in r1] == [x.choice for x in r2]
     assert poll_context is not None
+
+
+def test_offline_planner_routes_benchmark_questions():
+    """Regression: 'first hear' must run SQL on v_first_heard; purchases always return a count (even 0)."""
+    from agents.insights_assistant import Assistant
+
+    a = Assistant.__new__(Assistant)
+    a.products = [{"product_id": "pulse-5", "name": "Pulse 5", "price_inr": 18999}]
+    fh = a._rule_plan("Where did Pulse 5 buyers first hear about it?")
+    assert fh[0].tool == "run_sql" and "v_first_heard" in (fh[0].args.sql or "")
+    pu = a._rule_plan("How many people bought a phone, and did they choose ours or the baseline market?")
+    assert pu[0].tool == "run_sql" and "UNION ALL" in (pu[0].args.sql or "")

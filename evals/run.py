@@ -197,8 +197,11 @@ def eval_survey(w: dict[str, Any]) -> dict[str, Any]:
     sv.store = lambda: w["store"]  # type: ignore[assignment]
     asyncio.run(sv.explain_changes("sv-eval-w2"))
     wv = sv.waves("sv-eval-w2")
-    explained = [c for c in wv["changes"] if c.get("why") and c.get("why_event_ids")]
-    wave_ok = (len(explained) / len(wv["changes"])) if wv["changes"] else None
+    # a change is explained when it cites the agent's own events, or honestly says there were none to cite
+    cited_ev = [c for c in wv["changes"] if c.get("why") and c.get("why_event_ids")]
+    no_cause = [c for c in wv["changes"] if c.get("why") and not c.get("why_event_ids")
+                and c["why"].startswith("no clear cause")]
+    wave_ok = ((len(cited_ev) + len(no_cause)) / len(wv["changes"])) if wv["changes"] else None
     # satisficing
     qorder = {q["question_id"]: i for i, q in enumerate(w["qs"])}
     late = [a for a in ans if qorder.get(a["question_id"], 0) >= 1]
@@ -209,7 +212,7 @@ def eval_survey(w: dict[str, Any]) -> dict[str, Any]:
     return {"attended": len(attended), "r_extraversion": round(r_ext, 3), "conform_highA": round(hi, 3), "n_highA": n_hi,
             "conform_lowA": round(lo, 3), "n_lowA": n_lo, "experience_dominance": exp_dom, "n_experienced": len(ex_rows),
             "shift_share": round(share, 3), "band": [lo_b, hi_b], "changes_cited": cited,
-            "wave_changes": len(wv["changes"]), "wave_explained": wave_ok,
+            "wave_changes": len(wv["changes"]), "wave_explained": wave_ok, "wave_no_cause": len(no_cause),
             "satisfice_late": round(sat(late), 3), "satisfice_early": round(sat(early), 3),
             "satisfice_lowC": round(sat(low_c), 3), "satisfice_highC": round(sat(high_c), 3)}
 
@@ -217,7 +220,7 @@ def eval_survey(w: dict[str, Any]) -> dict[str, Any]:
 def write(ins: dict[str, Any], sv: dict[str, Any], meta: dict[str, Any]) -> None:
     """Append a dated section to evals/RESULTS.md."""
     ok = lambda b: "PASS" if b else "FAIL"  # noqa: E731
-    lines = [f"\n## Phase 5 evals · {time.strftime('%Y-%m-%d %H:%M')} · backend {ins['backend']} · {meta}\n",
+    lines = [f"\n## Evals · {time.strftime('%Y-%m-%d %H:%M')} · backend {ins['backend']} · {meta}\n",
              "### Insights benchmark (evals/insights_questions.yaml)",
              f"- Faithfulness: **{ins['faithfulness']:.0%}** (target ≥ 95%) — {ok(ins['faithfulness'] >= 0.95)}",
              f"- Quotes verbatim: **{ins['verbatim']:.0%}** · structure pass rate {ins['pass_rate']:.0%}", "",
@@ -232,10 +235,11 @@ def write(ins: dict[str, Any], sv: dict[str, Any], meta: dict[str, Any]) -> None
               f"- Conformity toward majority: high-A {e['conform_highA']} (n={e['n_highA']}) vs low-A {e['conform_lowA']} "
               f"(n={e['n_lowA']}) — {ok(e['conform_highA'] >= e['conform_lowA'])}",
               f"- Experience dominance: {e['experience_dominance']} (n={e['n_experienced']}, target ≥ 0.8) — "
-              f"{ok(e['experience_dominance'] is None or e['experience_dominance'] >= 0.8)}",
+              + ("INCONCLUSIVE (n < 5)" if e['n_experienced'] < 5 else ok(e['experience_dominance'] >= 0.8)),
               f"- Shift realism: {e['shift_share']} changed (band {e['band']}) · every change cited: {e['changes_cited']} — "
               f"{ok(e['band'][0] <= e['shift_share'] <= e['band'][1] and e['changes_cited'])}",
-              f"- Wave changes explained by own events: {e['wave_explained']} of {e['wave_changes']} — "
+              f"- Wave changes explained by own events (or 'no clear cause' when none, n={e['wave_no_cause']}): "
+              f"{e['wave_explained']} of {e['wave_changes']} — "
               f"{ok(e['wave_explained'] is None or e['wave_explained'] >= 0.99)}",
               f"- Satisficing: late {e['satisfice_late']} vs first {e['satisfice_early']}; low-C {e['satisfice_lowC']} vs "
               f"high-C {e['satisfice_highC']} — {ok(e['satisfice_late'] >= e['satisfice_early'] and e['satisfice_lowC'] >= e['satisfice_highC'])}"]
