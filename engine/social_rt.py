@@ -83,6 +83,7 @@ class SocialRuntime:
         self.sessions = SessionRegistry()
         self.queue = TaskQueue()
         self.wm: dict[int, list[dict[str, Any]]] = {}
+        self.salient_products: dict[int, list[str]] = {}   # product ids recently noticed (C-07 word of mouth)
         self.watched = watched or set()
         self.embed_texts = embed_texts
         self._pclass: dict[str, str] = {}
@@ -114,6 +115,7 @@ class SocialRuntime:
         prof = w.profiles[aid]
         tags = [e["tag"] for e in self.wm.get(aid, []) if e.get("tag")]
         return Side(aid, list(prof.persona.interests), salient=list(dict.fromkeys(tags))[-3:],
+                    products_salient=list(self.salient_products.get(aid, [])),
                     free=FREE.get(w.agents[aid].activity, 0.3), watched=aid in self.watched)
 
     async def tick(self, w: World, bus: EventBus) -> None:
@@ -300,12 +302,14 @@ class SocialRuntime:
         """Checkpoint form (open sessions, working memory, cool-downs, governor)."""
         return {"sessions": self.sessions.to_dict(), "wm": {str(k): v for k, v in self.wm.items()},
                 "last_met": [[a, b, t] for (a, b), t in self.tracker.last_met.items()], "governor": self.gov.to_dict(),
+                "salient_products": {str(k): v for k, v in self.salient_products.items()},
                 "stats": self.stats}
 
     def load(self, d: dict[str, Any]) -> None:
         """Restore from to_dict (in-flight conversations are dropped; their sessions expire)."""
         self.sessions = SessionRegistry.from_dict(d.get("sessions") or {})
         self.wm = {int(k): v for k, v in (d.get("wm") or {}).items()}
+        self.salient_products = {int(k): v for k, v in (d.get("salient_products") or {}).items()}
         self.tracker.last_met = {(a, b): t for a, b, t in d.get("last_met", [])}
         self.gov.load(d.get("governor") or {})
         self.stats.update(d.get("stats") or {})

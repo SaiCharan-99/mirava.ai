@@ -16,7 +16,7 @@ def hello(world: World, clock: Clock, budget: dict[str, float]) -> dict[str, Any
     """Snapshot for a new viewer."""
     return {"type": "hello", "t": world.t, "scale": {"sim_min_per_real_s": clock.sim_min_per_real_s},
             "slowed": clock.slowed, "agents": world.wire_agents(), "segments": world.wire_segments(),
-            "bubbles": [], "products": world.products_live, "sites": [], "stats": world.stats(budget)}
+            "bubbles": [], "products": world.products_live, "sites": world.sites_live, "stats": world.stats(budget)}
 
 
 def tick_frames(world: World, clock: Clock) -> list[dict[str, Any]]:

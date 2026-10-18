@@ -139,6 +139,7 @@ uv run python -m infra.bigquery.init mirava-ai-hack mirava                      
 Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirava-ai-hack.web.app
 
 ## 7. Contract changes (to docs/INTERFACES.md)
+- [phase 4] media runtime, `attend` signature, exposure payload extras, live evts notice/launch/review/post/comment, views v_exposures/v_site_daily — DECISIONS #80–82.
 - [phase 4] products API extras (`/creatives`, `/audience`, DELETE, local `PUT /uploads`), plan field notes — DECISIONS #77–79.
 - [phase 3] async `mind.context.build(..., store, llm)`, `MemoryStore(agent_id, store, llm, on_event)`, `DocStore.nearest` — DECISIONS #72.
 - [phase 2] engine health `/health`; engine `/state`, `/stats`, `/agents/{id}/state`; live modes/acts + phase-2 evt kinds; extra fields on `/agents` and `/agents/{id}`; Firestore feed_sessions as objects; `world/state.last_flushed_t` — DECISIONS #65–67.

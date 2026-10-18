@@ -259,6 +259,10 @@ class BudgetGovernor(Protocol):
 def ots(site: Site, facing: float, x: float, y: float, heading: float) -> OTS | None   # distance, angle, in_cone
 def attend(agent: AgentState, profile: AgentProfile, stim: StimulusRecord, ots: OTS, ctx: AttentionCtx,
            rng: Generator) -> Literal["pass","glance","notice"]
+# phase 4 (DECISIONS #80): implemented as attend(site, ots, stim, ctx: AttentionCtx, rng); agent/profile features are
+#   precomputed into AttentionCtx (mode, dwell_s, lit_night, clutter, on_phone, fatigue, relevance, attitude,
+#   familiarity, need, n_seen, n_noticed); ots(..., still=False, minute_of_day=None) adds the lit-at-night rule.
+#   Also attend_feed → scroll|partial|full and attend_print(size, page, …). Coefficients: config/attention.yaml.
 
 # media/planner.py
 def plan_product(product: Product, world_day: int) -> Plan          # deterministic for (product, world_day)

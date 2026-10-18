@@ -1,0 +1,18 @@
+# Attention model (A-02, architecture §9.2). All coefficients are labelled ASSUMPTIONS, tunable.
+# p_glance = σ(a0 + a1·log(area/dist²) + a2·dwell_s + a3·lit_night + a4·salience − a5·clutter − a6·on_phone
+#              − a7·fatigue − a8·driving)
+# p_notice|glance = σ(b0 + b1·relevance + b2·novelty + b3·attitude + b4·clarity + b5·familiarity + b6·need − wear_out)
+assumed: true
+glance: {a0: 0.2, a1: 0.30, a2: 0.012, a3: 0.25, a4: 0.9, a5: 0.12, a6: 1.2, a7: 0.6, a8: 0.7}
+notice: {b0: -3.3, b1: 1.6, b2: 0.8, b3: 0.5, b4: 0.6, b5: 0.3, b6: 0.8}
+view_half_angle_deg: 55          # looking roughly forward
+view_half_angle_still_deg: 80    # wider when stationary
+pass_gap_min: 4                  # a new pass needs this many minutes outside the cone
+novelty_half_life: 4             # exposures until novelty halves
+wear_out_after_notices: 8
+wear_out_penalty: 1.2
+speed_m_s: {walk: 1.4, two_wheeler: 7.0, car: 7.0, auto: 6.0, bus: 5.0, metro: 0.0, idle: 0.0}
+night: [1140, 360]               # 19:00 – 06:00: unlit boards give no OTS
+# feeds and print (A-04)
+feed: {c0: -2.3, hook: 1.4, interest: 1.2, fatigue_per_item: 0.12, full_share_of_watch: 0.45}
+print: {c0: -1.0, size: {full: 0.6, half: 0.3, quarter: 0.0}, page: {front: 0.5, p3: 0.2, inside: 0.0}}

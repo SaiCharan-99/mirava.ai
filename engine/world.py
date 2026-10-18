@@ -93,6 +93,8 @@ class World:
         self.new_segs: list[dict[str, Any]] = []      # segments started this tick (for /live)
         self.live_evts: list[dict[str, Any]] = []     # evt items this tick (for /live)
         self.products_live: list[dict[str, Any]] = []
+        self.sites_live: list[dict[str, Any]] = []      # site → creative assignments (hello.sites)
+        self.awareness: dict[str, float] = {}          # product id → share of agents aware (stats)
         self.sessions: dict[str, Any] = {}
 
     # ------------------------------------------------------------------ state
@@ -408,4 +410,4 @@ class World:
         """`stats` frame body (W-09)."""
         return {"type": "stats", "t": self.t,
                 "counts": {**self.counts, **self.counters, "products_live": len(self.products_live)},
-                "budget": budget or {"used_usd": 0.0, "cap_usd": 15.0}, "awareness": {}}
+                "budget": budget or {"used_usd": 0.0, "cap_usd": 15.0}, "awareness": dict(self.awareness)}

@@ -45,7 +45,7 @@ test: ## pytest + web unit tests
 
 lint: ## ruff + mypy + eslint + tsc + gitleaks
 	$(PY) ruff check .
-	$(PY) mypy shared world api population engine mind social tools/mapgen tools/llm_smoke.py tools/gen_types.py
+	$(PY) mypy shared world api population engine mind social media agents tools/mapgen tools/llm_smoke.py tools/gen_types.py
 	cd $(WEB) && $(ESLINT) src --max-warnings=0
 	cd $(WEB) && $(TSC) --noEmit -p .
 	gitleaks git . --no-banner --redact --exit-code 1

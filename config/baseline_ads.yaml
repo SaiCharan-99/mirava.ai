@@ -1,0 +1,14 @@
+# Baseline (ambient) ads (C-08): fictional brands only. Simulated; stimulus values are assumptions.
+assumed: true
+site_share: 0.5          # share of sites not held by a launched product that show a baseline ad on a given day
+feed_share: 0.25         # share of feed items that are baseline ads
+thought_sample: 0.05     # share of baseline notices that log a (template) thought
+brands:
+  - {id: zesto, name: Zesto, category: food delivery, interests: [food, cooking, coffee], salience: 0.62, clarity: 0.8,
+     hook: "Hot food in 10 minutes", description: "A bright red poster for Zesto food delivery promising meals in 10 minutes. A big timer graphic sits beside a steaming biryani bowl."}
+  - {id: kosha, name: Kosha Bank, category: bank, interests: [finance, startups], salience: 0.45, clarity: 0.7,
+     hook: "Zero-fee savings account", description: "A calm blue Kosha Bank ad for a zero-fee savings account. A smiling couple holds a phone showing a banking app."}
+  - {id: reelo, name: Reelo, category: streaming, interests: [movies, tv_serials, anime, music], salience: 0.58, clarity: 0.75,
+     hook: "New Kannada originals every Friday", description: "A dark poster for the Reelo streaming app with stills from new Kannada originals. The tagline promises a new release every Friday."}
+  - {id: threadly, name: Threadly, category: fashion, interests: [fashion, shopping, design], salience: 0.55, clarity: 0.7,
+     hook: "Festive edit, 40% off", description: "A pink Threadly fashion ad showing a festive collection on models. A large 40% off badge sits in the corner."}

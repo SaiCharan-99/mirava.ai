@@ -44,6 +44,7 @@ class DuckDBShim:
         sql = sql.replace("`", "")
         if dataset:
             sql = re.sub(rf"\b(?:[\w-]+\.)?{re.escape(dataset)}\.", "", sql)
+        sql = re.sub(r"\bJSON_VALUE\(", "json_extract_string(", sql)   # BigQuery JSON_VALUE returns unquoted text
         sql = re.sub(r"\bFLOAT64\b", "DOUBLE", sql)
         return re.sub(r"\bINT64\b", "BIGINT", sql)
 

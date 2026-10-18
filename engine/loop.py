@@ -14,6 +14,7 @@ from engine.governor import BudgetGovernor
 from engine.highlights import HighlightRecorder, day_of_end, encode, key_for
 from engine.lease import Lease
 from engine.live import LiveHub
+from engine.media_rt import MediaRuntime
 from engine.social_rt import SocialRuntime
 from engine.world import World
 from mind.decision import get_decider
@@ -47,7 +48,8 @@ class Engine:
     """Owns the World while holding the lease; otherwise waits read-only."""
 
     def __init__(self, settings: Settings, store: DocStore, files: Files, sink: Sink,
-                 wm: WorldMap | None = None, llm: LLMClient | None = None, social: bool = True) -> None:
+                 wm: WorldMap | None = None, llm: LLMClient | None = None, social: bool = True,
+                 media: bool = True) -> None:
         self.s = settings
         self.store = store
         self.files = files
@@ -60,6 +62,8 @@ class Engine:
         self.gov = BudgetGovernor()
         self.social_enabled = social
         self.social: SocialRuntime | None = None
+        self.media_enabled = media
+        self.media: MediaRuntime | None = None
         self.highlights: HighlightRecorder | None = None
         self._first_line: dict[str, str] = {}
         self.hub = LiveHub()
@@ -96,6 +100,10 @@ class Engine:
                                         g["relationships"], watched=watched)
             if ck is not None and ck.get("social"):
                 self.social.load(ck["social"])
+        if self.media_enabled:
+            self.media = MediaRuntime(self.store, self.llm, self.gov, w, social=self.social)
+            if ck is not None and ck.get("media"):
+                self.media.load(ck["media"])
         self.highlights = HighlightRecorder({p.agent_id: p.name.split()[0] for p in g["profiles"]})
         if ck is not None and ck.get("highlights"):
             self.highlights.load(ck["highlights"])
@@ -159,6 +167,8 @@ class Engine:
         w.step()
         if self.social is not None:
             await self.social.tick(w, bus)
+        if self.media is not None:
+            await self.media.tick(w, bus)
         if self.highlights is not None:
             self.highlights.sample(w.t, [w.position(a, float(w.t))[:2] for a in w.agents])
             done = day_of_end(w.t)
@@ -170,7 +180,8 @@ class Engine:
             gs = self.gov.on_sim_hour(w.t)
             self.clock.slowed = self.gov.slowed
             self.clock.budget_factor = self.gov.speed_factor
-            bus.new("budget", w.t, None, {**vars(gs), **({"social": self.social.stats} if self.social else {})})
+            bus.new("budget", w.t, None, {**vars(gs), **({"social": self.social.stats} if self.social else {}),
+                                          **({"media": self.media.stats} if self.media else {})})
         self.tick_ms.append((time.perf_counter() - t0) * 1000)
         self.tick_ms = self.tick_ms[-600:]
         self.last_tick_real = time.time()
@@ -192,6 +203,8 @@ class Engine:
         state = w.to_checkpoint()
         if self.social is not None:
             state["social"] = self.social.to_dict()
+        if self.media is not None:
+            state["media"] = self.media.to_dict()
         if self.highlights is not None:
             state["highlights"] = self.highlights.to_dict()
         info = await asyncio.to_thread(checkpoint.save, self.files, self.bucket, self.store, state)
@@ -287,6 +300,10 @@ class Engine:
             self.clock.paused = False
         elif kind == "set_speed":
             self.clock.set_speed(float(cmd.get("speed", 1.0)))
+        elif kind == "launch":
+            if self.media is None:
+                return {"ok": False, "error": "media runtime not running"}
+            self.media.request_launch(str(cmd.get("product_id", "")))
         else:
             return {"ok": False, "error": f"unsupported command {kind!r} in this phase"}
         if self.bus is not None and self.world is not None:
