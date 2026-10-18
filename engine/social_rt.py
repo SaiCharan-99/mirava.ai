@@ -278,7 +278,7 @@ class SocialRuntime:
         for (kind, aid, eid, text, t), v in zip(rows, vecs, strict=True):
             bus.emit_text({"text_id": f"{eid or kind}:{aid}:{t}", "event_id": eid, "t": t, "day": simtime.day_of(t),
                            "kind": kind, "agent_id": aid, "product_id": None, "session_id": session_id,
-                           "private": kind != "message", "text": text, "embedding": v})
+                           "private": kind != "message", "text": text, "embedding": v or []})
 
     def _nightly(self, w: World, bus: EventBus, t: int) -> None:
         """03:00: reflect for agents with day importance ≥ 12 (governor P3), then roll working memory."""
