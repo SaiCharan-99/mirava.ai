@@ -2,9 +2,9 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useWorld, type ProfileTab } from "../state/world";
 import { useWatch } from "../state/watch";
 import { useAgentView } from "./agentHooks";
+import { ConversationsTab, MemoryTab, ThoughtsTab } from "./ProfileMind";
 import { STAGE_COL, initials, type AgentView } from "../lib/agentView";
-import { fmtINR, shortT } from "../lib/time";
-import { isVisualTest } from "../lib/visualTest";
+import { fmtINR } from "../lib/time";
 import { worldRef } from "../world/ref";
 import type { FixtureProduct } from "../visual-fixtures/types";
 
@@ -140,25 +140,6 @@ function Possessions({ a }: { a: AgentView }) {
   );
 }
 
-/** Thoughts tab: fixture thoughts in visual-test mode, else a phase-3 notice. */
-function Later({ a, tab }: { a: AgentView; tab: ProfileTab }) {
-  const fx = useWorld((s) => s.fixtures);
-  if (isVisualTest && tab === "thoughts" && fx) {
-    const th = (a.id === fx.featured.id ? fx.featured.thoughts : (fx.agents.find((x) => x.id === a.id)?.thoughts ?? [])) as
-      { t?: number; trig?: string; out?: string; txt?: string }[];
-    return (
-      <>
-        <p className="small muted" style={{ marginTop: 0 }}>Private thoughts — never shared with other agents unless {a.name.split(" ")[0]} says them out loud.</p>
-        <div className="list">{th.length ? th.map((x, i) => (
-          <div className="thought" key={i}><div className="meta"><span>{x.t !== undefined ? shortT(x.t) : ""} · {x.trig}</span><span className="privtag">PRIVATE</span></div>
-            {x.txt ? `“${x.txt}”` : <span className="muted">{x.out} · passed by without a thought</span>}</div>
-        )) : <div className="item muted small">No thoughts about products yet.</div>}</div>
-      </>
-    );
-  }
-  return <div className="item small muted">{TABS.find(([k]) => k === tab)?.[1]} — available in phase 3.</div>;
-}
-
 /** `profile-drawer` (U-04): always mounted, off-canvas when closed, 420 px. */
 export function ProfileDrawer() {
   const profile = useWorld((s) => s.profile);
@@ -194,7 +175,8 @@ export function ProfileDrawer() {
         </div>
         <div className="db" data-testid="profile-body">
           {tab === "overview" ? <Overview a={a} /> : tab === "relations" ? <Relations a={a} open={open} />
-            : tab === "possessions" ? <Possessions a={a} /> : <Later a={a} tab={tab} />}
+            : tab === "possessions" ? <Possessions a={a} /> : tab === "thoughts" ? <ThoughtsTab a={a} />
+            : tab === "conversations" ? <ConversationsTab a={a} /> : <MemoryTab a={a} />}
         </div>
       </>}
     </div>

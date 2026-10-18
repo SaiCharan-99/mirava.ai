@@ -10,6 +10,8 @@ import { useAgentView } from "../components/agentHooks";
 import { useWatch } from "../state/watch";
 import { initials } from "../lib/agentView";
 import { worldRef } from "../world/ref";
+import { backToLive, jumpTo, openHighlights } from "../lib/highlights";
+import { hhmm } from "../lib/time";
 
 /** One watched agent in the side panel (mockup renderSide "watching"). */
 function WatchItem({ id }: { id: number }) {
@@ -111,6 +113,22 @@ function SideBody() {
   const ticker = useWorld((s) => s.ticker);
   const products = useWorld((s) => s.products);
   const fx = useWorld((s) => s.fixtures);
+  const hl = useWorld((s) => s.hl);
+  const openP = useWorld((s) => s.openProfile);
+  if (tab === "now" && hl) {
+    return (
+      <>
+        <h3>Highlights · Day {hl.day}</h3>
+        <div className="ticker" data-testid="highlights-list">
+          {hl.moments.length ? hl.moments.map((m, i) => (
+            <div key={i} className="tick" style={{ cursor: "pointer" }}
+              onClick={() => { jumpTo(m); if (m.agent_ids[0] !== undefined) openP(m.agent_ids[0], m.session_id ? "conversations" : undefined); }}>
+              <div className="t">{hhmm(m.t)}</div>{m.title}{m.text ? <div className="muted">“{m.text}”</div> : null}</div>
+          )) : <div className="item muted small">No highlights for this day yet.</div>}
+        </div>
+      </>
+    );
+  }
   if (tab === "now") {
     return (
       <>
@@ -154,20 +172,23 @@ function DayBar() {
   const t = useWorld((s) => s.t);
   const vals = useWorld((s) => s.dayCounts);
   const products = useWorld((s) => s.products);
+  const hl = useWorld((s) => s.hl);
   const today = vals.length - 1;
   const mx = Math.max(1, ...vals);
   return (
     <div className="daybar" data-testid="day-timeline">
       <div><div className="xs muted">WORLD TIME</div>
         <div className="row" style={{ gap: 8 }}><b className="mono">{fmt(t)}</b>
-          <span className="chip green" style={{ padding: "1px 7px" }}><span className="dotlive" />Live</span></div></div>
+          {hl ? <span className="chip amber" style={{ padding: "1px 7px" }}>Highlights · Day {hl.day}</span>
+            : <span className="chip green" style={{ padding: "1px 7px" }}><span className="dotlive" />Live</span>}</div></div>
       <div>
         <div className="days">
           {vals.map((v, i) => {
             const lm = products.filter((p) => p.launched !== null && Math.floor(p.launched / 1440) === i);
             return (
-              <div key={i} className={`d ${i === today ? "cur" : ""}`} style={{ height: `${Math.max(14, (v / mx) * 100)}%` }}
-                title={`Day ${i + 1} · ${v} conversations`}>
+              <div key={i} className={`d ${i === today ? "cur" : ""} ${hl?.day === i + 1 ? "sel" : ""}`} style={{ height: `${Math.max(14, (v / mx) * 100)}%` }}
+                title={`Day ${i + 1} · ${v} conversations`} data-testid={`day-${i + 1}`}
+                onClick={() => (i === today ? backToLive() : void openHighlights(i + 1))}>
                 {lm.map((p, j) => <span key={p.id} className="lm" style={{ background: p.hex, top: -8 - j * 7 }} />)}
               </div>
             );
@@ -178,6 +199,17 @@ function DayBar() {
       <div className="row" style={{ gap: 8 }}><span className="legend">
         <span><i style={{ background: "var(--teal)" }} />today</span>
         <span><i style={{ background: "var(--panel3)" }} />past day · click for highlights</span></span></div>
+    </div>
+  );
+}
+
+function HlBanner() {
+  const hl = useWorld((s) => s.hl);
+  if (!hl) return null;
+  return (
+    <div className="banner glass" data-testid="highlights-banner">
+      <b>Highlights · Day {hl.day}</b> · {hl.total} moments · replaying the top ones{" "}
+      <button className="btn sm" style={{ marginLeft: 10 }} onClick={backToLive}>Back to live</button>
     </div>
   );
 }
@@ -193,6 +225,7 @@ export function WorldPage() {
         <canvas className="fxcanvas" data-testid="launch-fx" />
         <Stats />
         <Tools />
+        <HlBanner />
         <Dock />
         <Minimap />
         <div className="attrib">Indiranagar from OpenStreetMap · © OpenStreetMap contributors (ODbL)</div>

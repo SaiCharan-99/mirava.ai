@@ -7,6 +7,7 @@ import { useWorld } from "../state/world";
 import type { FixtureProduct, TickerItem } from "../visual-fixtures/types";
 
 const names = new Map<number, string>();
+const talks = new Map<string, { topic: string; place: string }>();
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -38,9 +39,20 @@ export function tickerFor(e: LiveEvt, t: number, nameOf: (id: number) => string)
       cls = "prod";
       html = `<span class="who">🛍️ ${who}</span> bought <b>${esc(String(e.product ?? ""))}</b>`;
       break;
-    case "bubble":
-      html = `<span class="who">💬 ${who}</span> ${esc(String(e.text ?? ""))}`;
+    case "bubble": {
+      const b = typeof e.b === "number" ? esc(nameOf(e.b)) : "";
+      const info = talks.get(String(e.session_id ?? ""));
+      const topic = info?.topic ? ` talked about <b>${esc(info.topic.replace(/^product:/, ""))}</b>` : " talked";
+      const place = info?.place ? ` · ${esc(info.place)}` : "";
+      if (String(info?.topic ?? "").startsWith("product:")) cls = "prod";
+      html = `<span class="who">💬 ${who}${b ? ` &amp; ${b}` : ""}</span>${topic}${place}<div class="muted">“${esc(String(e.text ?? ""))}”</div>`;
+      talks.delete(String(e.session_id ?? ""));
       break;
+    }
+    case "talk":
+      talks.set(String(e.session_id ?? ""), { topic: String(e.topic ?? ""), place: typeof e.place === "string" ? e.place : "" });
+      if (talks.size > 500) talks.delete(talks.keys().next().value as string);
+      return null;
     default:
       return null;
   }
@@ -84,8 +96,10 @@ export function applyLive(m: LiveMsg): void {
           const it = tickerFor(e, simClock.now(), nameOf);
           if (it) useWorld.setState((s) => ({ ticker: [it, ...s.ticker].slice(0, 60) }));
         };
-        if (id !== null && !names.has(id)) {
-          getAgent(id).then((d) => names.set(id, d.profile.name)).catch(() => names.set(id, `Agent ${id}`)).finally(push);
+        const need = [id, typeof e.b === "number" ? e.b : null].filter((x): x is number => x !== null && !names.has(x));
+        if (need.length) {
+          Promise.all(need.map((x) => getAgent(x).then((d) => names.set(x, d.profile.name)).catch(() => names.set(x, `Agent ${x}`))))
+            .finally(push);
         } else push();
       }
       break;

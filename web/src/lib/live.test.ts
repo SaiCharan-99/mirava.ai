@@ -96,3 +96,16 @@ describe("people filters", () => {
     expect(actLabel("cafe")).toBe("At a café");
   });
 });
+
+describe("conversation ticker", () => {
+  it("joins talk topic/place with the bubble line", async () => {
+    const { tickerFor } = await import("./liveSync");
+    const nm = (id: number) => ["Meera Iyer", "Arjun Rao"][id] ?? `Agent ${id}`;
+    expect(tickerFor({ k: "talk", a: 0, b: 1, session_id: "s1", topic: "product:pulse-5", place: "Brew & Byte" }, 10, nm)).toBeNull();
+    const it = tickerFor({ k: "bubble", a: 0, b: 1, session_id: "s1", text: "Hey!" }, 12, nm)!;
+    expect(it.html).toContain("Meera Iyer &amp; Arjun Rao");
+    expect(it.html).toContain("<b>pulse-5</b>");
+    expect(it.html).toContain("Brew &#38; Byte");
+    expect(it.cls).toBe("prod");
+  });
+});

@@ -15,6 +15,10 @@ export interface WorldStats {
 export type Lens = "activity" | "aware" | "sentiment" | "hoardings";
 export type SideTab = "now" | "watching" | "products";
 export type ProfileTab = "overview" | "relations" | "possessions" | "thoughts" | "conversations" | "memory";
+/** One highlight moment (INTERFACES §4.3); fixtures supply only t/title/agent. */
+export interface HlMoment { t: number; kind?: string; agent_ids: number[]; x?: number; y?: number; title: string; text?: string; session_id?: string | null }
+export interface Highlights { day: number; total: number; moments: HlMoment[] }
+
 export interface HoverInfo { id: number; sx: number; sy: number; pinned?: boolean }
 
 export interface WorldStore {
@@ -22,7 +26,9 @@ export interface WorldStore {
   source: "fixtures" | "live";
   t: number;
   stats: WorldStats;
-  budget: { used_usd: number; cap_usd: number };
+  budget: { used_usd: number; cap_usd: number; slowed?: boolean };
+  hl: Highlights | null;
+  setHighlights: (h: Highlights | null) => void;
   ticker: TickerItem[];
   products: FixtureProduct[];
   dayCounts: number[];
@@ -57,6 +63,8 @@ export const useWorld = create<WorldStore>((set, get) => ({
   t: 0,
   stats: { agents: 0, households: 0, relationships: 0, conversations_today: 0, conversations_total: 0, thoughts_today: 0, products_live: 0 },
   budget: { used_usd: 0, cap_usd: 15 },
+  hl: null,
+  setHighlights: (hl) => set({ hl, ...(hl ? { sideTab: "now" as SideTab } : {}) }),
   ticker: [],
   products: [],
   dayCounts: [],

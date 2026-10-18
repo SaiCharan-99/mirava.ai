@@ -7,7 +7,7 @@ export interface LiveCounts {
   agents: number; households: number; relationships: number; conversations_today: number;
   conversations_total: number; thoughts_today: number; products_live: number;
 }
-export interface LiveStats { t: number; counts: LiveCounts; budget?: { used_usd: number; cap_usd: number }; awareness?: Record<string, number> }
+export interface LiveStats { t: number; counts: LiveCounts; budget?: { used_usd: number; cap_usd: number; slowed?: boolean }; awareness?: Record<string, number> }
 export type LiveEvt = { k: string; a?: number; b?: number; text?: string; product?: string | null; [key: string]: unknown };
 
 export type LiveMsg =

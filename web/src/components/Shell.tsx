@@ -40,6 +40,8 @@ export function Header() {
       <span className="chip"><span className="dotlive" />Live · {fmtInt(agents || 1000)} agents</span>
       <span className="sim-badge">SIMULATED DATA</span>
       <div className="hspace" />
+      {budget.slowed && <span className="chip amber" data-testid="slowed-chip" style={{ whiteSpace: "nowrap" }}
+        title="Background model spend would exceed the daily budget, so sim time runs slower">Slowed to save budget</span>}
       <div className="row" data-testid="header-clock" style={{ gap: 8 }} title="1 sim day = 1 real hour">
         <span className="clock" style={{ fontSize: 14, whiteSpace: "nowrap" }}>{fmt(t)}</span>
       </div>

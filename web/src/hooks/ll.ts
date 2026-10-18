@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useWorld, type Lens, type ProfileTab } from "../state/world";
 import { worldRef } from "../world/ref";
+import { openHighlights } from "../lib/highlights";
 
 
 /** The visual-test / automation API (INTERFACES §6.4). Stubs are marked and listed in PROGRESS.md §9. */
@@ -60,7 +61,7 @@ export function makeHooks(): LLHooks {
       if (worldRef.scene) worldRef.scene.fit();
       else st().camera({ kind: "fit" });
     },
-    highlights: stub("highlights"),
+    highlights: (day) => void openHighlights(day),
     launchFx: stub("launchFx"),
     graphSelect: stub("graphSelect"),
     graphHover: stub("graphHover"),
