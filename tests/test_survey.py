@@ -202,7 +202,7 @@ def test_ballot_context_only_own_retained_messages():
         if pu == "survey_ballot":
             q = next(q["question_id"] for q in QS if q["text"] in p)
             keep = heard.get((o, q), set())
-            for mid, txt in msgs.items():
+            for mid, _txt in msgs.items():
                 if f"[{mid}]" in p:
                     assert mid in keep
             q_of[o] = q

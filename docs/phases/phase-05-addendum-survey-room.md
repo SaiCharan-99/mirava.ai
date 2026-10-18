@@ -2,9 +2,28 @@
 
 Added in phase 5 (2026-10-18). This file copies Part B of the phase-5 session prompt verbatim. It is ADDITIVE to the frozen design docs (`architecture.md`, `specs.md`, `INTERFACES.md`, `techstack.md`, mockup, references): nothing here renames or reshapes an existing contract. Decisions: `docs/DECISIONS.md` rows 86+. Progress: `PROGRESS.md` §7 "Contract changes".
 
-## Contract additions (kept up to date)
-| Kind | Name(s) | Where | Status |
-|---|---|---|---|
+## Contract additions (final names, phase 5)
+| Kind | Name(s) | Where |
+|---|---|---|
+| Schemas | Question (+Scale), Survey, InterestFilter, Participant (rsvp adds `waitlist`), Table, PreStance, SurveyMessage, HeardItem, SurveyAnswer, QuestionResult, SurveyResult; `MAX_PARTICIPANTS = 100` | `shared/schemas/survey.py` |
+| Config | `config/survey.yaml` — venue `P-0186` shown as "Research Lounge", timings, floor/absorption/conformity weights, token sizes for the estimate | config |
+| Session kind | `focus_group` (one session per table, held from selection to the end) | SessionRegistry |
+| Event kinds | survey_created, survey_invite, survey_rsvp*, survey_prestance*, survey_thought*, survey_decision*, survey_heard*, survey_answer, survey_summary, survey_completed (* in `PRIVATE_KINDS`) | `shared/schemas/events.py` |
+| Reused kinds | `arrive` (place_id = venue), `message` (conv_kind="focus_group", speaker = agent id or "moderator", message_id, question_id, table_id) | EventBus |
+| Text kinds | survey_thought (private), survey_answer, survey_summary (+ `message`) | `texts` |
+| Views | v_surveys, v_survey_participants, v_survey_messages, v_survey_answers, v_survey_shift, v_survey_waves | `infra/bigquery/views/` (+ DuckDB), `insights/dictionary.yaml` |
+| API | POST /surveys · POST /surveys/lint · POST /surveys/{id}/launch (402 over budget, 422 none eligible) · GET /surveys · GET /surveys/{id}?include_private=1 · GET /surveys/{id}/transcript?table= · GET /surveys/{id}/agents/{agent_id} · POST /surveys/{id}/rerun · POST /surveys/{id}/cancel · POST /surveys/{id}/explain ("why it changed") | `api/surveys.py` |
+| API extras | `GET /conversations/{sid}?as_agent=` adds `store_thoughts`, `survey_items`, `survey_id`, `inquiry` (own private items only) | `api/main.py` |
+| Engine | commands `survey_launch`, `survey_cancel`; `GET /state` adds `surveys` and `interactive {used_usd, cap_usd}`; local-only `POST /analytics/query` | `engine/loop.py`, `engine/app.py` |
+| Live | evt `{"k":"survey", survey_id, status, venue, arrived, expected, name, x, y}`, evt `{"k":"survey_trip","a"}`; client → server `{"type":"sub"|"unsub","survey_id"}`; frames `survey`, `survey_msg`, `survey_ballot` (+`note` in survey mode), `survey_result` | `engine/live.py`, `engine/survey/runtime.py` |
+| Routes | /insights/polls/survey/new, /insights/polls/survey/:surveyId | `web/src/App.tsx` |
+| testids | survey-builder, survey-questions, survey-audience, survey-estimate, survey-launch, survey-room, survey-canvas, survey-tables, survey-transcript, survey-results, survey-playback, survey-agent-card (+ survey-entry, survey-room-button, survey-pin) | web |
+| `__ll` hook | `surveyRoom(surveyId, phase, progress)` | `web/src/hooks/ll.ts` |
+| Fixture | `web/src/visual-fixtures/survey-fixture.json` ← `uv run python -m tools.survey_fixture` | tools |
+| Insights tool | `survey_results(survey_ref, question_id?)` | `insights/tools.py`, `insights/surveys.py` |
+| Web deps | three 0.169.0, @react-three/fiber 8.17.10, @react-three/drei 9.114.0, @types/three 0.169.0 (exact) | `web/package.json` |
+
+---|---|---|---|
 | Schemas | Question, Survey, Participant, Table, PreStance, SurveyMessage, HeardItem, SurveyAnswer, SurveyResult | `shared/schemas/survey.py` | planned |
 | Config | `config/survey.yaml` (venue, timings, weights) | config | planned |
 | Session kind | `focus_group` | SessionRegistry | planned |

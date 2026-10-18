@@ -89,7 +89,9 @@ def select(accepted: list[int], pool: list[int], max_n: int, profiles: list[Any]
     for a in pool:
         bands[age_band(profiles[a].age)] = bands.get(age_band(profiles[a].age), 0) + 1
     quota = {b: max(1, math.ceil(max_n * n / max(1, len(pool)))) for b, n in bands.items()}
-    chosen, wait, used = [], [], dict.fromkeys(quota, 0)
+    chosen: list[int] = []
+    wait: list[int] = []
+    used = dict.fromkeys(quota, 0)
     for a in accepted:
         b = age_band(profiles[a].age)
         if len(chosen) < max_n and used.get(b, 0) < quota.get(b, 1):

@@ -304,7 +304,7 @@ class SurveyRuntime:
             if self.social is not None else []
         age = phone_age_years(ph, w.t) if "bought_t" in ph else 0.0
         return Person(agent_id=aid, name=prof.name.split()[0], age=prof.age, occupation=prof.occupation,
-                      income_band=prof.income_band, big5=dict(prof.persona.big5), style=prof.persona.speaking_style,
+                      income_band=prof.income_band, big5={str(k): float(v) for k, v in prof.persona.big5.items()}, style=prof.persona.speaking_style,
                       card=prof.persona_card, phone=f"{ph.get('brand')} {ph.get('tier')}, {age:.1f} years, "
                                                      f"{ph.get('condition')}",
                       attitude=pr.attitude if pr else 0.0, experience=exp, memories=mem)

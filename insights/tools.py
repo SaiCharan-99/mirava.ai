@@ -21,7 +21,6 @@ from insights.sqlguard import MAX_ROWS, SQLRejected, check, qualify
 from shared.settings import Settings, get_settings
 
 MAX_BYTES = 2 * 1024**3       # maximum_bytes_billed per Insights query (2 GiB)
-AGENT_COLS = set()            # filled lazily from the dictionary
 
 
 class Runner(Protocol):
@@ -71,7 +70,7 @@ class BigQueryRunner:
         self.client = bigquery.Client(project=s.gcp_project_id, credentials=creds)
 
     def _params(self, params: dict | None) -> list[Any]:
-        out = []
+        out: list[Any] = []
         for k, v in (params or {}).items():
             if isinstance(v, list):
                 out.append(self.bq.ArrayQueryParameter(k, "INT64" if v and isinstance(v[0], int) else "STRING", v))
@@ -273,7 +272,7 @@ class Tools:
         names = self._names([int(r["agent_id"]) for r in rows if r.get("agent_id") is not None])
         out = []
         for r in rows:
-            row = {"text_id": r["text_id"], "agent_id": r.get("agent_id"), "name": names.get(r.get("agent_id")),
+            row = {"text_id": r["text_id"], "agent_id": r.get("agent_id"), "name": names.get(int(r["agent_id"])) if r.get("agent_id") is not None else None,
                    "kind": r["kind"], "t": r["t"], "text": r["text"], "private": bool(r["private"]),
                    "product_id": r.get("product_id"), "score": round(float(r.get("score", 0.0)), 4)}
             self.ledger.texts[row["text_id"]] = row

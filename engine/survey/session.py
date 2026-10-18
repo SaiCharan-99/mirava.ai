@@ -470,7 +470,7 @@ class TableRunner:
                                       ("novelty", nov > 0.5), ("agreement", agree), ("disagreement", not agree),
                                       ("primacy", pos < 0.2), ("recency", pos > 0.8)) if v]
                 scored.append(HeardItem(message_id=m["message_id"], salience=round(max(0.0, min(1.0, sal)), 3),
-                                        why=why or ["recency"]))
+                                        why=why or ["recency"]))  # type: ignore[arg-type]
             c = float(p.big5.get("C", 0.5))
             fatigue = qi / max(1, len(self.s["questions"]))
             k = int(round(k_lo + (k_hi - k_lo) * max(0.0, min(1.0, c - 0.4 * fatigue))))
@@ -521,7 +521,7 @@ class TableRunner:
             by = [m for m in out.influenced_by if m in {h.message_id for h in heard}]
         if not q.valid(ans):
             ans = to_answer(q, 0, [0], "No strong view.", order)
-        changed = bool(pre) and key(ans) != key(pre.answer)
+        changed = pre is not None and key(ans) != key(pre.answer)
         if not changed and infl in ("persuaded", "conformed"):
             infl = "reinforced" if by else "unchanged"
         if changed and infl in ("unchanged", "reinforced"):
@@ -530,7 +530,7 @@ class TableRunner:
         gap = spoken is not None and spoken != bucket(q, ans)
         a = SurveyAnswer(agent_id=p.agent_id, question_id=q.question_id, answer=ans, confidence=round(conf, 2),
                          reason=" ".join(reason.split()[:40]) or "It just fits me.", changed_from_prestance=changed,
-                         influence_type=infl, influenced_by=by, public_private_gap=gap, effort=effort)
+                         influence_type=infl, influenced_by=by, public_private_gap=gap, effort=effort)  # type: ignore[arg-type]
         self.answers.append(a)
         txt = f"{a.reason}" + (f" Answer: {a.answer}" if q.type == "open" else "")
         self._emit("survey_answer", p.agent_id, {**a.model_dump(), "majority": maj, "susceptibility": sus,

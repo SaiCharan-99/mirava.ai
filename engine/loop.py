@@ -243,7 +243,7 @@ class Engine:
         for a in w.agents:
             st = w.agent_state(a.id).model_dump()
             ph = w.phones[a.id]
-            row = {"activity": a.activity, "phone": {
+            row: dict[str, Any] = {"activity": a.activity, "phone": {
                 "brand": ph["brand"], "tier": ph["tier"], "bought_t": ph["bought_t"], "condition": ph["condition"]}}
             if self.commerce is not None:
                 row["stages"] = self.commerce.stages_of(a.id)

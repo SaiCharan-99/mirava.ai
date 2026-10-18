@@ -62,7 +62,7 @@ async def run_poll(w: World, bus: EventBus, decider: DecisionAdapter, gov: Budge
     gov.record(actual, "interactive")
     dist = {o: 0 for o in opts}
     seg: dict[str, dict[str, int]] = {}
-    quotes = []
+    quotes: list[dict[str, Any]] = []
     t = w.t
     for req, r in zip(reqs, results, strict=True):
         choice = r.choice if r.choice in dist else opts[0]
