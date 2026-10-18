@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from shared.llm import FakeGemini, LLMClient
 from shared.schemas.product import Plan, PlannedSite, Product
 from shared.schemas.world import Site, Store
 
+log = logging.getLogger("media.planner")
 PROMPT = Path(__file__).resolve().parents[1] / "shared" / "prompts" / "site_reason.md"
 K_BY_INTENSITY = {"low": 4, "medium": 8, "high": 12}
 REVIEWERS_BY_INTENSITY = {"low": 2, "medium": 4, "high": 6}
@@ -143,6 +145,6 @@ async def write_reasons(plan: Plan, product: Product, sites: dict[str, Site], ll
             for ps, r in zip(plan.sites, rs, strict=True):
                 if r.strip():
                     ps.reason = r.strip()[:240]
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception:  # noqa: BLE001 — templates stay, but say why
+        log.warning("site reasons fell back to templates", exc_info=True)
     return plan
