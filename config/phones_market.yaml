@@ -25,3 +25,9 @@ hazards:
   broken: {base: 0.00030, age_slope: 0.30}
   slow:   {base: 0.00030, age_slope: 0.60}
 lifestyle_hazard_multiplier: {student_life: 1.5, fitness_focused: 1.3, social_butterfly: 1.2}
+# Baseline market (S-06): generic current models of the real brands agents know, by tier (simulated; no real model names).
+baseline_market:
+  - {id: "baseline:budget", label: "a current budget phone of a familiar brand", tier: budget, price_inr: 11000, appeal: 0.45}
+  - {id: "baseline:mid", label: "a current mid-range phone of a familiar brand", tier: mid, price_inr: 22000, appeal: 0.55}
+  - {id: "baseline:premium", label: "a current premium phone of a familiar brand", tier: premium, price_inr: 45000, appeal: 0.6}
+  - {id: "baseline:flagship", label: "a current flagship of a familiar brand", tier: flagship, price_inr: 95000, appeal: 0.65}

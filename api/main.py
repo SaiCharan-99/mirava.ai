@@ -122,7 +122,7 @@ def _row(d: dict, t: int, watched: set[int]) -> dict:
             "phone": {"brand": ph.get("brand"), "tier": ph.get("tier"), "condition": ph.get("condition"),
                       "age_years": round(phone_age_years(ph, t), 1) if "bought_t" in ph else None},
             "_age2": round(phone_age_years(ph, t), 2) if "bought_t" in ph else 0.0,
-            "stages": {}, "watched": d["agent_id"] in watched,
+            "stages": r.get("stages") or {}, "need": r.get("need"), "watched": d["agent_id"] in watched,
             "activity": r.get("activity") or (d.get("state") or {}).get("activity")}
 
 
@@ -149,6 +149,10 @@ def list_agents(q: str = "", age: str = "", job: str = "", income: str = "", pho
         rows = [r for r in rows if r["_age2"] > phone_age_gt]
     if watched:
         rows = [r for r in rows if r["watched"]]
+    if stage:
+        rows = [r for r in rows if (r["stages"].get(product) == stage if product else stage in r["stages"].values())]
+    elif product:
+        rows = [r for r in rows if product in r["stages"]]
     key = sort.lstrip("-")
     getter = {"phone_age": lambda r: r["_age2"]}.get(key, lambda r: r.get(key) or 0)
     rows.sort(key=getter, reverse=sort.startswith("-"))
@@ -223,7 +227,8 @@ def conversation(session_id: str, as_agent: int = Query(...)) -> dict:
     mine = (doc.get("private") or {}).get(str(as_agent), {})
     names = _names()
     return {"conversation": doc["conversation"], "messages": doc.get("messages", []),
-            "share_plan": mine.get("share_plan"), "debrief": mine.get("debrief"), "store_thoughts": [],
+            "share_plan": mine.get("share_plan"), "debrief": mine.get("debrief"),
+            "store_thoughts": mine.get("store_thoughts") or [], "inquiry": doc.get("inquiry"),
             "names": {str(p): names.get(p) for p in doc.get("participants", [])}}
 
 
@@ -287,3 +292,7 @@ app.include_router(api)
 from api.products import router as products_router  # noqa: E402
 
 app.include_router(products_router)
+
+from api.insights import router as insights_router  # noqa: E402
+
+app.include_router(insights_router)

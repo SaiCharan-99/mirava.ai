@@ -3,7 +3,7 @@ import { Header, Sidebar } from "./components/Shell";
 import { WorldPage } from "./pages/WorldPage";
 import { PeoplePage } from "./pages/PeoplePage";
 import { GuidePage } from "./pages/GuidePage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { InsightsPage } from "./pages/InsightsPage";
 import { LaunchListPage, StudioPage } from "./pages/LaunchPages";
 import { GlobeIntro, hasWebGL, introSeen } from "./globe/GlobeIntro";
 import { isVisualTest, withMode } from "./lib/visualTest";
@@ -32,8 +32,7 @@ export function App() {
             <Route path="/launch" element={<LaunchListPage />} />
             <Route path="/launch/:productId/:step" element={<StudioPage />} />
             <Route path="/launch/:productId" element={<StudioPage />} />
-            <Route path="/insights/:tab" element={<PlaceholderPage title="Insights" phase={5}
-              sub="Ask anything about the world, plus dashboards over everything it has logged." />} />
+            <Route path="/insights/:tab" element={<InsightsPage />} />
             <Route path="/insights" element={<Navigate to={withMode("/insights/ask")} replace />} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/guide" element={<GuidePage />} />

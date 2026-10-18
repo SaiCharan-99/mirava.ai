@@ -9,6 +9,7 @@ from typing import Any
 
 from engine import checkpoint
 from engine.clock import Clock
+from engine.commerce_rt import CommerceRuntime
 from engine.events import EventBus, Sink
 from engine.governor import BudgetGovernor
 from engine.highlights import HighlightRecorder, day_of_end, encode, key_for
@@ -49,7 +50,7 @@ class Engine:
 
     def __init__(self, settings: Settings, store: DocStore, files: Files, sink: Sink,
                  wm: WorldMap | None = None, llm: LLMClient | None = None, social: bool = True,
-                 media: bool = True) -> None:
+                 media: bool = True, commerce: bool = True) -> None:
         self.s = settings
         self.store = store
         self.files = files
@@ -64,6 +65,8 @@ class Engine:
         self.social: SocialRuntime | None = None
         self.media_enabled = media
         self.media: MediaRuntime | None = None
+        self.commerce_enabled = commerce and media
+        self.commerce: CommerceRuntime | None = None
         self.highlights: HighlightRecorder | None = None
         self._first_line: dict[str, str] = {}
         self.hub = LiveHub()
@@ -77,6 +80,7 @@ class Engine:
         self._stop = asyncio.Event()
         self.retired = False
         self._lock = asyncio.Lock()
+        self._tasks: set[asyncio.Future] = set()
 
     # ------------------------------------------------------------------ setup
     def boot(self) -> None:
@@ -104,6 +108,13 @@ class Engine:
             self.media = MediaRuntime(self.store, self.llm, self.gov, w, social=self.social)
             if ck is not None and ck.get("media"):
                 self.media.load(ck["media"])
+        if self.commerce_enabled and self.media is not None:
+            self.commerce = CommerceRuntime(self.store, self.llm, get_decider(self.llm, self.s), self.gov, w,
+                                            media=self.media, social=self.social)
+            if ck is not None and ck.get("commerce"):
+                self.commerce.load(ck["commerce"])
+            else:
+                self.commerce.seed_from_media(w.t)
         self.highlights = HighlightRecorder({p.agent_id: p.name.split()[0] for p in g["profiles"]})
         if ck is not None and ck.get("highlights"):
             self.highlights.load(ck["highlights"])
@@ -115,6 +126,8 @@ class Engine:
         self.bus.suppress_until_t = -1          # replay done: everything from here on is new
         if self.social is not None:
             self.bus.listeners.append(self.social.on_event)
+        if self.commerce is not None:
+            self.bus.listeners.append(self.commerce.on_event)
         self.bus.listeners.append(self._highlight_event)
         self.world = w
         self.bus.new("engine_start", w.t, None, {"holder": self.lease.holder, "resumed_from": ck["t"] if ck else None,
@@ -169,6 +182,8 @@ class Engine:
             await self.social.tick(w, bus)
         if self.media is not None:
             await self.media.tick(w, bus)
+        if self.commerce is not None:
+            await self.commerce.tick(w, bus)
         if self.highlights is not None:
             self.highlights.sample(w.t, [w.position(a, float(w.t))[:2] for a in w.agents])
             done = day_of_end(w.t)
@@ -181,7 +196,8 @@ class Engine:
             self.clock.slowed = self.gov.slowed
             self.clock.budget_factor = self.gov.speed_factor
             bus.new("budget", w.t, None, {**vars(gs), **({"social": self.social.stats} if self.social else {}),
-                                          **({"media": self.media.stats} if self.media else {})})
+                                          **({"media": self.media.stats} if self.media else {}),
+                                          **({"commerce": self.commerce.stats} if self.commerce else {})})
         self.tick_ms.append((time.perf_counter() - t0) * 1000)
         self.tick_ms = self.tick_ms[-600:]
         self.last_tick_real = time.time()
@@ -205,6 +221,8 @@ class Engine:
             state["social"] = self.social.to_dict()
         if self.media is not None:
             state["media"] = self.media.to_dict()
+        if self.commerce is not None:
+            state["commerce"] = self.commerce.to_dict()
         if self.highlights is not None:
             state["highlights"] = self.highlights.to_dict()
         info = await asyncio.to_thread(checkpoint.save, self.files, self.bucket, self.store, state)
@@ -212,8 +230,12 @@ class Engine:
         for a in w.agents:
             st = w.agent_state(a.id).model_dump()
             ph = w.phones[a.id]
-            docs[str(a.id)] = {"state": st, "phone": ph, "row": {"activity": a.activity, "phone": {
-                "brand": ph["brand"], "tier": ph["tier"], "bought_t": ph["bought_t"], "condition": ph["condition"]}}}
+            row = {"activity": a.activity, "phone": {
+                "brand": ph["brand"], "tier": ph["tier"], "bought_t": ph["bought_t"], "condition": ph["condition"]}}
+            if self.commerce is not None:
+                row["stages"] = self.commerce.stages_of(a.id)
+                row["need"] = self.commerce.need(w, a.id)
+            docs[str(a.id)] = {"state": st, "phone": ph, "row": row}
         await asyncio.to_thread(self.store.set_many, "agents", docs, True)
         info["seconds"] = round(time.perf_counter() - t0, 2)
         self.last_checkpoint = {**info, "t": w.t}
@@ -300,6 +322,16 @@ class Engine:
             self.clock.paused = False
         elif kind == "set_speed":
             self.clock.set_speed(float(cmd.get("speed", 1.0)))
+        elif kind == "poll":
+            if self.world is None or self.bus is None:
+                return {"ok": False, "error": "engine not running"}
+            from engine.poll_rt import run_poll
+
+            fut = asyncio.ensure_future(run_poll(self.world, self.bus, get_decider(self.llm, self.s), self.gov,
+                                                 self.store, cmd, commerce=self.commerce, social=self.social,
+                                                 llm=self.llm))
+            self._tasks.add(fut)
+            fut.add_done_callback(self._tasks.discard)
         elif kind == "launch":
             if self.media is None:
                 return {"ok": False, "error": "media runtime not running"}

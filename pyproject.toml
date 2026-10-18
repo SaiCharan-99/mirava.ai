@@ -19,6 +19,7 @@ dependencies = [
   "msgpack>=1.2.3",
   "zstandard>=0.25.0",
   "google-cloud-pubsub>=2.43.0",
+  "sqlglot>=30.23.0",
 ]
 
 [dependency-groups]

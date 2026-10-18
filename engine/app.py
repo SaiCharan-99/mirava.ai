@@ -103,6 +103,30 @@ async def commands(request: Request) -> dict:
     return _eng().command(await request.json())
 
 
+@app.post("/analytics/query")
+async def analytics_query(request: Request) -> dict:
+    """Local only (BQ_BACKEND=duckdb): run guarded read-only SQL on the engine's DuckDB (it holds the file lock)."""
+    s = get_settings()
+    if s.bq_backend != "duckdb" or s.env != "local":
+        raise HTTPException(404, "not available")
+    e = _eng()
+    db = getattr(e.sink, "db", None)
+    if db is None:
+        raise HTTPException(503, "no local analytics")
+    body = await request.json()
+    sql = str(body.get("sql", ""))
+    if body.get("texts"):
+        rows = db.query(f"SELECT text_id, event_id, t, day, kind, agent_id, product_id, session_id, private, text, "
+                        f"embedding FROM texts WHERE {body['texts']}", body.get("params") or {})
+    else:
+        from insights.sqlguard import check
+
+        rows = db.query(sql if body.get("trusted") else check(sql, s.bq_dataset), body.get("params") or {})
+    import json as _json
+
+    return {"rows": _json.loads(_json.dumps(rows, default=str))}
+
+
 @app.websocket("/live")
 async def live(ws: WebSocket) -> None:
     """Public read-only stream."""

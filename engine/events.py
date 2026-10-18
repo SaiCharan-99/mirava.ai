@@ -44,12 +44,27 @@ class DuckDBSink:
 
         s = settings or get_settings()
         self.db = DuckDBShim(s.duckdb_path, s.bq_dataset)
+        create_views(self.db)
 
     def write(self, events: list[dict], texts: list[dict]) -> None:
         """Insert rows."""
         self.db.insert("events", events)
         if texts:
             self.db.insert("texts", texts)
+
+
+def create_views(db: object) -> int:
+    """Create/replace the curated views (infra/bigquery/views/*.sql) on a DuckDB twin; returns how many."""
+    from pathlib import Path
+
+    n = 0
+    for v in sorted((Path(__file__).resolve().parents[1] / "infra" / "bigquery" / "views").glob("*.sql")):
+        try:
+            db.con.execute(db.translate(v.read_text(encoding="utf-8"), db.dataset))  # type: ignore[attr-defined]
+            n += 1
+        except Exception:  # noqa: BLE001 — a view that needs BigQuery-only syntax is skipped locally
+            log.warning("view %s not created on DuckDB", v.stem, exc_info=True)
+    return n
 
 
 class PubSubSink:

@@ -1,0 +1,48 @@
+# Needs, consideration and buying (S-01 … S-05, architecture §12). All values are labelled assumptions.
+assumed: true
+need:                       # phone need 0..1
+  age_start_years: 1.5      # age below this adds nothing
+  age_full_years: 6.0       # age at which the age term reaches age_weight
+  age_weight: 0.55
+  condition: {ok: 0.0, slow: 0.25, battery_weak: 0.25, cracked: 0.35, lost: 1.0}
+  battery_weight: 0.25      # × (1 − battery_health)
+  satisfaction_weight: 0.2  # × (1 − satisfaction)
+  job_dependence: {high: 0.12, medium: 0.06, low: 0.0}
+  life_event_spike: 0.35    # extra need for 3 sim days after a lost/broken/slow event
+  life_event_days: 3
+interest:                   # interest 0..1 per product
+  attitude_weight: 0.45     # × (attitude + 1) / 2
+  awareness_weight: 0.15
+  social_weight: 0.15       # friends' expressed attitudes heard in chats
+  review_weight: 0.10       # review rating seen
+  fit_weight: 0.15          # features ↔ interests
+  price_fit_weight: 0.0     # price fit enters through affordability
+stages:                     # thresholds for the state machine
+  curious_interest: 0.42
+  research_interest: 0.50
+  inquire_interest: 0.55
+  inquire_need: 0.40
+  reject_attitude: -0.35
+  postpone_days: 3          # postponed → deciding again after payday / this many days
+  research_min_days: 0      # sim days in researching before inquiring may happen
+purchase:
+  theta_need: 0.50          # θ_need
+  delta_margin: 0.06        # δ preference margin over the best alternative
+  emi_min_price_inr: 12000
+  card_share_of_limit: 0.6  # a card purchase may use up to this share of the limit
+  cash_share_of_savings: 0.5
+stage_weight:               # likely-buyer score L = need × interest × affordability × stage_weight
+  unaware: 0.0
+  aware: 0.15
+  curious: 0.35
+  researching: 0.55
+  inquiring: 0.75
+  deciding: 0.9
+  purchased: 0.0
+  postponed: 0.5
+  rejected: 0.0
+online_first_share: 0.25    # agents ≤ 35 with an online-first habit inquire at ShopKart (online)
+store_visit:
+  minutes: 25
+  earliest: 660             # 11:00
+  latest: 1230              # 20:30

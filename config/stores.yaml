@@ -1,0 +1,18 @@
+# Fictional stores (S-04). Names are fictional; places come from assets/maps/stores.json (mapgen).
+assumed: true
+salespeople_per_store: 2
+shifts:                     # minute of day; two overlapping shifts per physical store
+  - [630, 990]
+  - [930, 1290]
+default_stock_units: 40     # launched product units when a store is in the product's plan
+baseline_stock_units: 25
+offers:
+  ST-DIGITAL-BAZAAR: ["No-cost EMI for 6 months on cards", "₹1,000 exchange bonus on old phones"]
+  ST-ELECTROHUB: ["Free tempered glass and case", "Exchange: up to ₹4,000 for working phones"]
+  ST-PHONEWORLD: ["Same-day screen-guard fitting", "₹500 off on cash payments"]
+  ST-SHOPKART: ["Doorstep delivery tomorrow", "Bank card instant discount ₹750"]
+salesperson_styles:
+  - "Friendly and patient, explains features with everyday examples"
+  - "Quick, confident, pushes offers and EMI"
+  - "Honest, mentions trade-offs, doesn't oversell"
+  - "Talkative, likes demos, a bit pushy"

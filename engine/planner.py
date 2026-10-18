@@ -77,3 +77,31 @@ def resolve_place(profile: dict[str, Any], meta: dict[str, Any], act: str, prev:
     if act in ("cafe", "gym", "park", "shop"):
         return pick(act)
     return home
+
+
+def insert_block(plan: list[dict[str, Any]], s: int, e: int, act: str, place: str | None,
+                 **extra: Any) -> list[dict[str, Any]]:
+    """Plan with a new block [s, e) inserted (overlapping blocks are cut); used for store visits and surveys."""
+    out: list[dict[str, Any]] = []
+    for b in plan:
+        if b["e"] <= s or b["s"] >= e:
+            out.append(b)
+            continue
+        if b["s"] < s:
+            out.append({**b, "e": s})
+        if b["e"] > e:
+            out.append({**b, "s": e})
+    out.append({"s": s, "e": e, "act": act, "place": place, **extra})
+    return sorted(out, key=lambda b: b["s"])
+
+
+def free_slot(plan: list[dict[str, Any]], earliest: int, latest: int, minutes: int,
+              free_acts: tuple[str, ...] = ("home", "shop", "cafe", "eat", "park", "gym", "roam")) -> int | None:
+    """First start ≥ earliest (and ≤ latest) inside a free-time block on the map, else None."""
+    for b in plan:
+        if b["act"] not in free_acts or b.get("place") == OFFMAP:
+            continue
+        st = max(b["s"], earliest)
+        if st <= latest and st + minutes <= max(b["e"], st + minutes) and st < b["e"]:
+            return st
+    return None

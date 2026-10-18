@@ -7,7 +7,9 @@ from datetime import datetime
 from pydantic import BaseModel
 
 PRIVATE_KINDS = frozenset({"thought", "memory_write", "share_plan", "debrief", "store_thought", "salesperson_thought",
-                           "review_private", "community_thought", "reflection"})
+                           "review_private", "community_thought", "reflection",
+                           # phase 5 Survey Room (addendum B6)
+                           "survey_rsvp", "survey_prestance", "survey_thought", "survey_decision", "survey_heard"})
 
 
 class Event(BaseModel):

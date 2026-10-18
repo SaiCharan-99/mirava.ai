@@ -1,0 +1,116 @@
+# Data dictionary for the Insights assistant (architecture §14.2). Every view the analyst account may read.
+# All numbers are SIMULATED. Time: t = sim minutes since the world epoch; day = 1-based sim day (1 sim day = 1 real hour).
+notes:
+  - "Everything is simulated: 1,000 synthetic residents of Indiranagar, Bengaluru."
+  - "Private thoughts (v_thoughts, store/survey private items, review private opinions) must be labelled 'private thought' when quoted."
+  - "Money is integer rupees (INR). Product ids: e.g. nova-x1, pulse-5, orbit-s. Baseline options: baseline:<tier>."
+  - "Stages: unaware → aware → curious → researching → inquiring → deciding → purchased | postponed | rejected."
+views:
+  agents_latest:
+    desc: "One row per agent: demographics, lifestyle and current phone (latest daily snapshot)."
+    columns:
+      agent_id: "agent id (int)"
+      name: "full name"
+      age: "years"
+      gender: "gender"
+      occupation: "job label, e.g. 'Software engineer'"
+      income_band: "monthly household income band: <25k, 25-50k, 50k-1L, 1-2L, >2L"
+      special_role: "none | reviewer | salesperson | news_desk"
+      lifestyle: "lifestyle segment, e.g. tech_enthusiast, budget_conscious, student_life"
+      phone_brand: "brand of the phone they own (real brands appear only as owned possessions, simulated)"
+      phone_tier: "budget | mid | premium | flagship"
+      phone_condition: "ok | cracked | slow | battery_weak | lost"
+      phone_age_years: "age of their phone in years (float), e.g. phone_age_years > 5"
+  beliefs_latest:
+    desc: "Current belief of each agent about each subject (product:<id>, brand:<x>, category:phone)."
+    columns:
+      agent_id: "agent id"
+      subject: "e.g. product:pulse-5"
+      product_id: "product id when the subject is a product, else NULL"
+      awareness: "unaware | heard | aware | familiar"
+      attitude: "−1 (very negative) … +1 (very positive)"
+      confidence: "0 … 1"
+      stage: "consideration stage (see notes)"
+      updated_t: "sim minute of the last change"
+  beliefs_daily:
+    desc: "Belief state per agent × subject on each day it changed (end of day)."
+    columns: {agent_id: "agent id", day: "sim day", t: "sim minute", subject: "subject", product_id: "product id",
+              awareness: "awareness", attitude: "attitude −1…1", confidence: "0…1", stage: "stage",
+              cause_event_id: "event that caused the change"}
+  v_exposures:
+    desc: "Every ad exposure outcome: hoardings, bus shelters, metro panels, reels, newspaper, store displays, community, reviews."
+    columns: {event_id: "event id", t: "sim minute", day: "sim day", hour: "hour of day 0–23", agent_id: "agent id",
+              product_id: "product id (or baseline:<brand>)", site_id: "hoarding site id (OOH only)",
+              channel: "hoarding | bus_shelter | metro_panel | reel | newspaper | store_display | community | review",
+              creative_id: "creative id", outcome: "pass | glance | notice (OOH); scroll | partial | full (feeds)",
+              noticed: "true when notice/partial/full", glanced: "true unless pass/scroll", distance_m: "metres",
+              angle_deg: "viewing angle", dwell_s: "seconds in view", facing: "board face direction (degrees)",
+              mode: "walk | two_wheeler | car | auto | bus | metro", lit: "board lit", target: "agent in the target audience",
+              rate_inr_day: "site rate card per day (INR)"}
+  v_site_daily:
+    desc: "Hoarding metrics per site × facing × product × day (equal to the sum of exposure events)."
+    columns: {site_id: "site id", facing: "face direction (degrees)", product_id: "product id", day: "sim day",
+              ots: "opportunities to see", glances: "glances", notices: "notices", glance_rate: "glances / ots",
+              notice_rate: "notices / ots", target_share: "share of OTS from the target audience",
+              thoughts: "rendered private thoughts from this site", sentiment: "average attitude delta of those thoughts",
+              cost_per_notice_inr: "rate per day / notices"}
+  v_thoughts:
+    desc: "PRIVATE thoughts agents had when they noticed an ad (label as private thought when quoting)."
+    columns: {event_id: "event id", t: "sim minute", day: "sim day", agent_id: "agent id", product_id: "product id",
+              site_id: "site id", rendered: "true = model-written text, false = template", channel: "where noticed",
+              text: "the private thought, verbatim", attitude_delta: "change in attitude", intent_change: "none | curious | research | visit_store | tell_friend | dismiss",
+              trigger_event_id: "exposure event id", private: "always true"}
+  v_messages:
+    desc: "Every spoken message, exactly as logged (social chats, store visits, focus groups)."
+    columns: {session_id: "conversation id", seq: "order in the conversation", speaker: "agent id",
+              listener: "agent id", text: "what was said, verbatim", conv_kind: "social | stranger | store | focus_group",
+              t: "sim minute", day: "sim day", event_id: "event id"}
+  v_conversations:
+    desc: "One row per conversation (summary)."
+    columns: {session_id: "id", rendered: "true = transcript exists, false = unrendered interaction",
+              conv_kind: "social | stranger | store | focus_group", agent_a: "agent id", agent_b: "agent id",
+              t: "start", day: "day", n_messages: "messages", model: "model used",
+              topics: "array of topics", product_mentions: "array of product ids mentioned",
+              interaction_topic: "topic of an unrendered interaction"}
+  v_inquiries:
+    desc: "Store inquiries (turn-by-turn visits): outcome, satisfaction, topics."
+    columns: {event_id: "event id", t: "sim minute", day: "sim day", agent_id: "customer", salesperson_id: "salesperson",
+              product_id: "product asked about", session_id: "transcript id (join v_messages)", rendered: "rendered",
+              store_id: "ST-DIGITAL-BAZAAR | ST-ELECTROHUB | ST-PHONEWORLD | ST-SHOPKART (online)",
+              outcome: "left | think_about_it | buy | referred_online", satisfaction: "0…1", n_messages: "messages",
+              first_topic: "main topic", first_question: "first question asked"}
+  v_purchases:
+    desc: "Phone purchases. option = our product id or baseline:<tier> (generic current models of familiar brands)."
+    columns: {event_id: "event id", t: "sim minute", day: "sim day", agent_id: "buyer", option: "what they bought",
+              is_ours: "true when option is one of our products", considered_product_id: "product they were deciding on",
+              store_id: "store", price_inr: "price", method: "cash | card | emi", need: "phone need 0…1 at purchase",
+              life_event: "a phone life event (lost/broken/slow) happened in the last 3 days", reason: "their reason"}
+  v_posts:
+    desc: "Community threads and comments (r/IndiranagarLife, r/BangaloreTech, r/BangaloreStyle)."
+    columns: {event_id: "event id", t: "sim minute", day: "sim day", author: "agent id", product_id: "product id",
+              kind: "thread | comment", thread_id: "thread id", forum: "forum", title: "thread title", text: "body or comment",
+              upvotes: "upvotes (threads)"}
+  v_reviews:
+    desc: "Reviewer agents: PRIVATE opinion vs the published review."
+    columns: {review_id: "id", reviewer: "agent id", product_id: "product", t_private: "when they formed the opinion",
+              t_published: "when published", day: "day published", title: "review title", summary: "published summary",
+              rating: "published rating /10", private_opinion: "PRIVATE opinion (label it)", private_rating: "private rating"}
+  v_first_heard:
+    desc: "First channel through which each agent became aware of each product (shares sum to 100% of aware agents)."
+    columns: {agent_id: "agent id", product_id: "product", t: "sim minute", day: "sim day",
+              channel: "hoarding | bus_shelter | metro_panel | reel | newspaper | store_display | community | review | friend_chat",
+              event_id: "event id"}
+  v_paths:
+    desc: "Journey per agent × product: first touch per channel in time order (e.g. 'hoarding > friend_chat > store')."
+    columns: {agent_id: "agent id", product_id: "product", path: "ordered steps joined by ' > '", n_steps: "steps",
+              first_t: "first touch", inquiry_t: "first store inquiry (NULL if none)",
+              minutes_to_inquiry: "sim minutes from first touch to first inquiry"}
+  v_funnel_daily:
+    desc: "Per product × day: aware (cumulative), positive (attitude > 0.2), considering (curious or further), that day's inquiries and purchases."
+    columns: {day: "sim day", product_id: "product", aware: "agents aware so far", positive: "agents with attitude > 0.2",
+              considering: "agents curious or further", inquiries: "store inquiries that day", purchases: "purchases of this product that day"}
+examples:
+  - q: "How many agents have phones older than 5 years?"
+    sql: "SELECT COUNT(*) AS n FROM agents_latest WHERE phone_age_years > 5"
+  - q: "Share curious or further per product among old-phone owners"
+    sql: "SELECT b.product_id, COUNTIF(b.stage IN ('curious','researching','inquiring','deciding','purchased')) / COUNT(*) AS share FROM beliefs_latest b JOIN agents_latest a USING (agent_id) WHERE a.phone_age_years > 5 AND b.product_id IS NOT NULL GROUP BY 1"
