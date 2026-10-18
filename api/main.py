@@ -296,3 +296,7 @@ app.include_router(products_router)
 from api.insights import router as insights_router  # noqa: E402
 
 app.include_router(insights_router)
+
+from api.surveys import router as surveys_router  # noqa: E402
+
+app.include_router(surveys_router)

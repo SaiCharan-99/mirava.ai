@@ -135,7 +135,7 @@ async def live(ws: WebSocket) -> None:
     await e.hub.join(ws, e)
     try:
         while True:
-            await ws.receive_text()
+            e.hub.on_client_message(ws, await ws.receive_text())
     except WebSocketDisconnect:
         pass
     finally:

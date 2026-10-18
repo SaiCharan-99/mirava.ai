@@ -40,6 +40,7 @@ class LiveHub:
 
     def __init__(self) -> None:
         self.clients: set[Any] = set()
+        self.survey_subs: dict[Any, set[str]] = {}     # ws → survey ids (addendum B8)
 
     async def join(self, ws: Any, engine: Engine) -> None:
         """Register a viewer and send hello (if the world is loaded)."""
@@ -50,6 +51,32 @@ class LiveHub:
     def leave(self, ws: Any) -> None:
         """Forget a viewer."""
         self.clients.discard(ws)
+        self.survey_subs.pop(ws, None)
+
+    def on_client_message(self, ws: Any, text: str) -> None:
+        """Client → server messages: {"type":"sub","survey_id":…} / {"type":"unsub",…}; anything else is ignored."""
+        try:
+            msg = json.loads(text)
+        except ValueError:
+            return
+        if not isinstance(msg, dict) or not msg.get("survey_id"):
+            return
+        sid = str(msg["survey_id"])
+        if msg.get("type") == "sub":
+            self.survey_subs.setdefault(ws, set()).add(sid)
+        elif msg.get("type") == "unsub":
+            self.survey_subs.get(ws, set()).discard(sid)
+
+    async def send_survey(self, survey_id: str, frames: list[dict[str, Any]]) -> None:
+        """Survey frames only to clients subscribed to that survey."""
+        targets = [ws for ws, subs in self.survey_subs.items() if survey_id in subs]
+        for ws in targets:
+            for f in frames:
+                try:
+                    await asyncio.wait_for(ws.send_text(json.dumps(f, separators=(",", ":"))), 1.0)
+                except Exception:  # noqa: BLE001
+                    self.leave(ws)
+                    break
 
     async def send_all(self, frame: dict[str, Any]) -> None:
         """Send one frame to everyone (1 s timeout each)."""

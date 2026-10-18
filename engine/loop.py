@@ -17,6 +17,7 @@ from engine.lease import Lease
 from engine.live import LiveHub
 from engine.media_rt import MediaRuntime
 from engine.social_rt import SocialRuntime
+from engine.survey.runtime import SurveyRuntime
 from engine.world import World
 from mind.decision import get_decider
 from population.genesis import genesis_bucket, unpack
@@ -67,6 +68,7 @@ class Engine:
         self.media: MediaRuntime | None = None
         self.commerce_enabled = commerce and media
         self.commerce: CommerceRuntime | None = None
+        self.surveys: SurveyRuntime | None = None
         self.highlights: HighlightRecorder | None = None
         self._first_line: dict[str, str] = {}
         self.hub = LiveHub()
@@ -115,6 +117,11 @@ class Engine:
                 self.commerce.load(ck["commerce"])
             else:
                 self.commerce.seed_from_media(w.t)
+        if self.media is not None:
+            self.surveys = SurveyRuntime(self.store, self.llm, get_decider(self.llm, self.s), self.gov, w, hub=self.hub,
+                                         commerce=self.commerce, social=self.social)
+            if ck is not None and ck.get("surveys"):
+                self.surveys.load(ck["surveys"])
         self.highlights = HighlightRecorder({p.agent_id: p.name.split()[0] for p in g["profiles"]})
         if ck is not None and ck.get("highlights"):
             self.highlights.load(ck["highlights"])
@@ -128,6 +135,8 @@ class Engine:
             self.bus.listeners.append(self.social.on_event)
         if self.commerce is not None:
             self.bus.listeners.append(self.commerce.on_event)
+        if self.surveys is not None:
+            self.bus.listeners.append(self.surveys.on_event)
         self.bus.listeners.append(self._highlight_event)
         self.world = w
         self.bus.new("engine_start", w.t, None, {"holder": self.lease.holder, "resumed_from": ck["t"] if ck else None,
@@ -184,6 +193,8 @@ class Engine:
             await self.media.tick(w, bus)
         if self.commerce is not None:
             await self.commerce.tick(w, bus)
+        if self.surveys is not None:
+            await self.surveys.tick(w, bus)
         if self.highlights is not None:
             self.highlights.sample(w.t, [w.position(a, float(w.t))[:2] for a in w.agents])
             done = day_of_end(w.t)
@@ -223,6 +234,8 @@ class Engine:
             state["media"] = self.media.to_dict()
         if self.commerce is not None:
             state["commerce"] = self.commerce.to_dict()
+        if self.surveys is not None:
+            state["surveys"] = self.surveys.to_dict()
         if self.highlights is not None:
             state["highlights"] = self.highlights.to_dict()
         info = await asyncio.to_thread(checkpoint.save, self.files, self.bucket, self.store, state)
@@ -309,6 +322,9 @@ class Engine:
         return {"t": t, "day": simtime.day_of(t), "label": simtime.fmt(t),
                 "scale": {"sim_min_per_real_s": self.clock.sim_min_per_real_s, "speed": self.clock.speed},
                 "slowed": self.clock.slowed, "status": self.status, "budget": self.budget(),
+                "surveys": self.surveys.status() if self.surveys else None,
+                "interactive": {"used_usd": round(self.gov.interactive_today, 4),
+                                "cap_usd": float(self.gov.cfg["interactive_cap_usd"])},
                 "engine": {"holder": self.lease.holder, "lease_held": self.lease.held, "tick_p95_ms": p95,
                            "viewers": len(self.hub.clients), "last_checkpoint": self.last_checkpoint,
                            "events": self.bus.count if self.bus else 0}}
@@ -332,6 +348,13 @@ class Engine:
                                                  llm=self.llm))
             self._tasks.add(fut)
             fut.add_done_callback(self._tasks.discard)
+        elif kind in ("survey_launch", "survey_cancel"):
+            if self.surveys is None or self.world is None or self.bus is None:
+                return {"ok": False, "error": "survey runtime not running"}
+            sid = str(cmd.get("survey_id", ""))
+            res = self.surveys.launch(sid) if kind == "survey_launch" else self.surveys.cancel(sid, self.world, self.bus)
+            self.bus.new("command", self.world.t, None, {k: v for k, v in cmd.items() if k != "auth"})
+            return {**res, "ok": True}
         elif kind == "launch":
             if self.media is None:
                 return {"ok": False, "error": "media runtime not running"}

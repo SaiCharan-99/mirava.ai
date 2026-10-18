@@ -109,6 +109,41 @@ views:
     desc: "Per product × day: aware (cumulative), positive (attitude > 0.2), considering (curious or further), that day's inquiries and purchases."
     columns: {day: "sim day", product_id: "product", aware: "agents aware so far", positive: "agents with attitude > 0.2",
               considering: "agents curious or further", inquiries: "store inquiries that day", purchases: "purchases of this product that day"}
+  v_surveys:
+    desc: "Survey Room: one row per survey or focus group (mode, wave, panel, counts, cost)."
+    columns: {survey_id: "id", created_t: "created", created_day: "day", title: "title", mode: "focus_group | survey",
+              n_questions: "questions", cohort: "cohort filter", wave: "wave number (1, 2, …)", panel_id: "panel id",
+              parent_survey_id: "previous wave", product_id: "product", start_at_t: "session start", completed_t: "completed",
+              invited: "invited", attended: "attended", answers: "ballots", changed: "answers changed from prestance",
+              actual_usd: "actual model cost", estimate_usd: "estimate", discussion_skipped: "budget ran out", status: "running | completed"}
+  v_survey_participants:
+    desc: "Survey invitations and RSVPs. rsvp_reason_private is PRIVATE (label it)."
+    columns: {survey_id: "id", agent_id: "agent", t: "sim minute", rsvp: "accept | decline", status: "accepted | waitlist | declined",
+              rsvp_reason_private: "PRIVATE reason", attended: "answered at least one question"}
+  v_survey_messages:
+    desc: "Public focus-group messages per table and question (moderator included), verbatim."
+    columns: {survey_id: "id", table_id: "T1, T2 …", question_id: "question", session_id: "table session", seq: "order",
+              message_id: "message id (influenced_by refers to these)", speaker_id: "agent id (NULL = moderator)",
+              speaker: "agent id or 'moderator'", text: "what was said", addressed_to: "agent addressed", t: "sim minute",
+              day: "day", event_id: "event id"}
+  v_survey_answers:
+    desc: "Private ballots: one per agent × question with reason, confidence, influence and effort."
+    columns: {survey_id: "id", table_id: "table", question_id: "question", agent_id: "agent", t: "sim minute", day: "day",
+              event_id: "event id", answer: "answer as text (JSON list for multi)", answer_value: "numeric value (scale)",
+              confidence: "0…1", reason: "first-person reason", changed_from_prestance: "changed vs their first private answer",
+              influence_type: "persuaded | conformed | reinforced | unchanged | reacted_against",
+              influenced_by_first: "first message id that influenced them", public_private_gap: "said ≠ answered privately",
+              effort: "careful | satisficed", prestance: "first private answer", table_majority: "majority stance at their table",
+              susceptibility: "conformity susceptibility 0…1"}
+  v_survey_shift:
+    desc: "Focus groups: private prestance → final answer per agent × question (who changed their mind, how, why)."
+    columns: {survey_id: "id", question_id: "question", agent_id: "agent", table_id: "table", prestance: "first private answer",
+              final_answer: "final private answer", changed: "true when changed", influence_type: "how", influenced_by_first: "message id",
+              reason: "their reason", t: "sim minute", event_id: "event id"}
+  v_survey_waves:
+    desc: "Panels over time: answer per agent per wave (wave 1, 2 …) for the same questions."
+    columns: {panel_id: "panel (root survey id)", wave: "wave", survey_id: "survey of that wave", question_id: "question",
+              agent_id: "agent", answer: "answer", reason: "reason", t: "sim minute", event_id: "event id"}
 examples:
   - q: "How many agents have phones older than 5 years?"
     sql: "SELECT COUNT(*) AS n FROM agents_latest WHERE phone_age_years > 5"

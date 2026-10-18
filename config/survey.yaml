@@ -1,0 +1,56 @@
+# Survey Room (phase-5 addendum B2). All weights are labelled assumptions.
+assumed: true
+venue: {place_id: P-0186, name: "Research Lounge"}   # an existing office near Digital Bazaar on 100 Feet Road (map unchanged)
+max_participants: 100
+table_size_default: 8
+table_size_range: [6, 10]
+max_questions: 10
+timings:                      # sim minutes
+  lead_min: 60                # default start ≥ 60 min ahead (travel time)
+  slot_round: 30              # start slots on the half hour
+  gather_timeout: 20          # start when ≥ 90% arrived or 20 min after start_at
+  gather_share: 0.9
+  per_question_focus: 12
+  per_question_survey: 4
+  wrap_up: 5
+no_show_p: 0.06
+waitlist_share: 0.25          # accept up to 25% more than max as waitlist
+fatigue_days: 3
+rsvp_batch: 32
+messages_per_person: 10       # = conversation limit (10 per person per session)
+turns_per_question: [8, 16]
+floor:                        # speak propensity weights (rules, no model call)
+  extraversion: 1.2
+  confidence: 0.6
+  stake: 0.8
+  disagreement: 0.7
+  addressed: 1.5
+  invited: 1.2
+  spoken_penalty: 0.35
+  fatigue: 0.4
+  noise: 0.35
+absorption:                   # salience weights
+  relevance: 0.30
+  credibility: 0.20
+  emotion: 0.10
+  novelty: 0.15
+  consistency: 0.15
+  primacy_recency: 0.10
+heard_k: [4, 8]
+conformity:                   # susceptibility weights
+  agreeableness: 0.35
+  neuroticism: 0.25
+  low_confidence: 0.25
+  minority: 0.25
+  openness: -0.15
+shift_target_band: [0.10, 0.40]
+tokens:                       # per call, for the estimate (in, out)
+  rsvp: [180, 40]
+  prestance: [520, 70]
+  think: [560, 80]
+  speak: [260, 50]
+  moderator: [300, 50]
+  ballot: [760, 110]
+  summary: [1400, 220]
+  lint: [500, 200]
+  why: [900, 120]

@@ -46,6 +46,9 @@ class DuckDBShim:
             sql = re.sub(rf"\b(?:[\w-]+\.)?{re.escape(dataset)}\.", "", sql)
         sql = re.sub(r"ARRAY\(SELECT JSON_VALUE\((\w+)\) FROM UNNEST\(JSON_QUERY_ARRAY\((\w+), '([^']+)'\)\) \1\)",
                      r"json_extract_string(\2, '\3[*]')", sql)          # BigQuery JSON array → DuckDB list
+        sql = re.sub(r"TO_JSON_STRING\(JSON_QUERY\((\w+), '([^']+)'\)\)", r"CAST(json_extract(\1, '\2') AS VARCHAR)", sql)
+        sql = re.sub(r"\bSAFE_CAST\(", "TRY_CAST(", sql)
+        sql = re.sub(r"\bAS STRING\)", "AS VARCHAR)", sql)
         sql = re.sub(r"\bJSON_VALUE\(", "json_extract_string(", sql)   # BigQuery JSON_VALUE returns unquoted text
         sql = re.sub(r"\bFLOAT64\b", "DOUBLE", sql)
         return re.sub(r"\bINT64\b", "BIGINT", sql)
