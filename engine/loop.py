@@ -248,8 +248,9 @@ class Engine:
         """Bus listener feeding the day's highlight candidates."""
         if self.highlights is None or self.world is None:
             return
-        if ev.kind == "message" and ev.payload.get("seq") == 0 and ev.session_id:
-            self._first_line[ev.session_id] = ev.payload.get("text", "")
+        if ev.kind == "message":
+            if ev.payload.get("seq") == 0 and ev.session_id:
+                self._first_line[ev.session_id] = ev.payload.get("text", "")
             return
         xy = None
         if ev.agent_id is not None and 0 <= ev.agent_id < len(self.world.agents):

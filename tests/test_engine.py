@@ -211,6 +211,7 @@ async def test_engine_social_day(tmp_path):
     h = json.loads(e.files.read(e.bucket, "highlights/day-1.json"))
     assert h["day"] == 1 and 0 < len(h["moments"]) <= 40 and len(h["samples"]["positions"]) == 144
     assert [m["t"] for m in h["moments"]] == sorted(m["t"] for m in h["moments"])
+    assert all(m["text"] for m in h["moments"] if m["kind"] == "conversation")
     convs_docs = e.store.list("conversations")
     assert convs_docs and all(set(d["private"]) <= {str(p) for p in d["participants"]} for d in convs_docs)
     e2, sink2 = await _social_day(tmp_path / "b", 1440 + 200)
