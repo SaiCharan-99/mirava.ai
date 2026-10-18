@@ -104,7 +104,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 06 | Firebase Hosting | 1 | ✅ | 2026-10-18 | Firebase added to mirava-ai-hack (Blaze/free trial); site mirava-ai-hack.web.app; .firebaserc committed |
 | 07 | Firestore emulator (local) | 1 | ✅ | 2026-10-17 | 127.0.0.1:8080; needs Java 21+ (Temurin 25 JRE installed) |
 | 07 | Firestore database `asia-south1` | 2 | ✅ | 2026-10-18 | (default) native, asia-south1 |
-| 08 | Cloud Storage buckets + CORS | 2 | ✅ | 2026-10-18 | mirava-ai-hack-mirava-{uploads,worlds,exports}, asia-south1, worlds versioned; CORS not set yet (phase 3 highlights / phase 4 uploads) |
+| 08 | Cloud Storage buckets + CORS | 2 | ✅ | 2026-10-18 | mirava-ai-hack-mirava-{uploads,worlds,exports}, asia-south1, worlds versioned; CORS not needed for phase 3 (highlights via API); set before phase 4 uploads |
 | 09 | BigQuery dataset `launch_lens` (+ public data priors) | 2 | ✅ | 2026-10-18 | dataset `mirava` (asia-south1): events, texts, view agents_latest via `python -m infra.bigquery.init`; priors cached in config |
 | 10 | Pub/Sub `world-events`, `world-texts` + BigQuery subscriptions | 2 | ✅ | 2026-10-18 | world-events-to-bq / world-texts-to-bq (table schema); ping verified |
 | 05 | Cloud Run `world-engine` (always-on, min=max=1) | 2 | ✅ | 2026-10-18 | SA mirava-engine, 2 vCPU/4 GiB, no-cpu-throttling, session affinity, public; /commands needs ID token from mirava-api; mirava-api has ENGINE_URL |

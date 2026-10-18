@@ -9,6 +9,7 @@ COPY shared ./shared
 COPY engine ./engine
 COPY population ./population
 COPY mind ./mind
+COPY social ./social
 COPY world ./world
 COPY config ./config
 COPY assets/maps ./assets/maps
