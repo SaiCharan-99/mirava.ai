@@ -14,7 +14,7 @@ VITE := node node_modules/vite/bin/vite.js
 # local dev: fakes + fast clock (overrides .env)
 DEVENV := WORLD_SECONDS_PER_SIM_DAY=120 LLM_BACKEND=fake DECISION_BACKEND=fake BQ_BACKEND=duckdb
 
-.PHONY: help setup dev api web emulator test lint types map fetch-osm genesis engine llm-smoke seed-demo restore-demo eval visual fixtures deploy
+.PHONY: help setup dev api web emulator test lint types map fetch-osm genesis engine llm-smoke seed-demo restore-demo save-demo eval visual fixtures deploy
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
@@ -76,8 +76,11 @@ llm-smoke: ## one structured call + one embedding via the configured backend
 seed-demo: ## placeholder products through the API: Nova X1 ready, Pulse 5 + Orbit S live (api + engine running)
 	$(PY) python -m tools.seed_demo
 
-restore-demo: ## phase 6
-	@echo "make restore-demo arrives in phase 6"; exit 1
+restore-demo: ## restore the pre-warmed demo snapshot in place (SNAPSHOT=demo-v1; cloud: ENV=cloud ENGINE_URL=...)
+	$(PY) python -m tools.demo_snapshot restore --name $${SNAPSHOT:-demo-v1}
+
+save-demo: ## save the current world as a demo snapshot (SNAPSHOT=demo-v1)
+	$(PY) python -m tools.demo_snapshot save --name $${SNAPSHOT:-demo-v1}
 
 eval: ## insights benchmark + survey realism → evals/RESULTS.md
 	uv run python -m evals.run

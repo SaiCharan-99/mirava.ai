@@ -220,3 +220,32 @@ async def test_engine_social_day(tmp_path):
     strip = lambda evs: [(x["event_id"], json.dumps(x["payload"], sort_keys=True, default=str))  # noqa: E731
                          for x in evs if x["kind"] not in ("budget", "engine_start")]
     assert strip(sink.events) == strip(sink2.events)
+
+
+async def test_demo_snapshot_save_and_reload(tmp_path, monkeypatch):
+    """X-05: save a snapshot, run on, then `reload` reboots in place at the snapshot time with its products."""
+    import tools.demo_snapshot as ds
+
+    s = Settings(world_agents=N, world_seed=99, checkpoint_every_sim_minutes=60, gcs_bucket_worlds="w",
+                 local_files_dir=str(tmp_path))
+    store, files = MemoryStoreBackend(), LocalFiles(str(tmp_path))
+    await run_genesis(N, 99, store=store, files=files, sink=NullSink(), llm=None, settings=s)
+    e = Engine(s, store, files, NullSink(), social=False)
+    e.boot()
+    for _ in range(130):
+        await e.tick()
+    store.set("products", "pulse-5", {"product_id": "pulse-5", "status": "live"})
+    monkeypatch.setattr(ds, "get_settings", lambda: s)
+    monkeypatch.setattr(ds, "get_files", lambda _s: files)
+    monkeypatch.setattr(ds, "get_store", lambda: store)
+    snap = ds.save("t1")
+    assert snap["t"] == 120 and snap["products"] == ["pulse-5"]
+    for _ in range(200):
+        await e.tick()
+    store.set("products", "nova-x1", {"product_id": "nova-x1", "status": "live"})
+    assert e.command({"type": "reload", "checkpoint": "snapshots/nope.msgpack.zst"})["ok"] is False
+    assert e.command({"type": "reload", "checkpoint": "snapshots/t1/checkpoint.msgpack.zst"}).get("ok", True)
+    await e._reload()
+    assert e.world.t == 120 and (store.get("world", "state") or {})["last_checkpoint"].startswith("snapshots/t1/")
+    await e.tick()
+    assert e.world.t == 121

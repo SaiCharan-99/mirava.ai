@@ -44,6 +44,7 @@ class BudgetGovernor:
     spent_sim_day: float = 0.0
     high_sim_day: float = 0.0
     used: dict[str, int] = field(default_factory=lambda: dict.fromkeys(CLASSES, 0))
+    used_hour: dict[str, int] = field(default_factory=lambda: dict.fromkeys(CLASSES, 0))
     hour_frac: float = 0.0
     rendered: int = 0
     unrendered: int = 0
@@ -78,13 +79,15 @@ class BudgetGovernor:
         cap = int(self.cfg["class_caps"][pc])
         if pc not in HIGH:                         # spread lower classes through the sim day
             cap = min(cap, max(1, int(cap * (self.hour_frac + float(self.cfg["pace_slack"])))))
-        ok = (self.used[pc] < cap
+        hour_cap = self.cfg.get("hourly_caps", {}).get(pc)
+        ok = (self.used[pc] < cap and (hour_cap is None or self.used_hour[pc] < int(hour_cap))
               and (pc == "P0" or self.spent_sim_day + est_cost_usd <= budget * float(self.cfg["reserve"][pc]))
               and self.spent_today + est_cost_usd <= float(self.cfg["daily_cap_usd"]) * (1.1 if pc == "P0" else 1.0))
         if ok and pc not in HIGH:
             ok = self.spent_sim_day + est_cost_usd <= budget * (self.hour_frac + float(self.cfg["pace_slack"]))
         if ok:
             self.used[pc] += 1
+            self.used_hour[pc] += 1
             self.rendered += 1
         else:
             self.unrendered += 1
@@ -107,7 +110,7 @@ class BudgetGovernor:
             self.high_sim_day += cost_usd
 
     def on_sim_hour(self, t: int) -> GovernorState:
-        """Hourly: new sim day resets class counts; slows or speeds time from projected P0–P2 spend."""
+        """Hourly: resets per-hour counts, a new sim day resets class counts; slows or speeds time from projected P0–P2 spend."""
         day, hour = t // 1440, (t % 1440) // 60
         if day != self.sim_day:
             if self.sim_day >= 0:
@@ -115,6 +118,7 @@ class BudgetGovernor:
             self.sim_day, self.spent_sim_day, self.high_sim_day = day, 0.0, 0.0
             self.used = dict.fromkeys(CLASSES, 0)
         self.hour_frac = (hour + 1) / SIM_HOURS_PER_DAY
+        self.used_hour = dict.fromkeys(CLASSES, 0)
         if hour >= 6:
             projected = self.high_sim_day / self.hour_frac
             if projected > self.sim_day_budget() * float(self.cfg["slow_down_ratio"]):

@@ -9,6 +9,9 @@ class_caps:
   P3: 120      # reflection
   P4: 30       # social chats
   P5: 15       # community posts / reviews
+# per-sim-hour count caps (a morning commute must not spend the whole day's thoughts and stall the tick)
+hourly_caps:
+  P1: 28       # ≈ 2× the even rate of 220 over 16 waking hours
 # share of the sim-day money a class may reach (lower classes are cut first)
 reserve:
   P0: 1.00

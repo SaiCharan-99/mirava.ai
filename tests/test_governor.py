@@ -64,3 +64,13 @@ def test_interactive_cap_separate() -> None:
     g.record(4.5, "interactive")
     assert not g.allow_interactive(1.0)
     assert g.state().spent_today_usd == 14.9
+
+
+def test_p1_hourly_cap_spreads_thoughts_through_the_day() -> None:
+    """A morning burst of notices cannot use the whole day's P1 cap (cloud Day 16: 147 thoughts in one hour)."""
+    g = BudgetGovernor(now=lambda: 0.0)
+    g.on_sim_hour(7 * 60)
+    morning = sum(g.allow("P1", 0.0005) for _ in range(200))
+    g.on_sim_hour(12 * 60)
+    noon = sum(g.allow("P1", 0.0005) for _ in range(200))
+    assert morning == 28 and noon == 28

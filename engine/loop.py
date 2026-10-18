@@ -82,6 +82,7 @@ class Engine:
         self._stop = asyncio.Event()
         self.retired = False
         self._lock = asyncio.Lock()
+        self._reload_key: str | None = None     # demo snapshot checkpoint to reboot from (tools.demo_snapshot)
         self._tasks: set[asyncio.Future] = set()
 
     # ------------------------------------------------------------------ setup
@@ -170,6 +171,10 @@ class Engine:
                     await asyncio.sleep(0.5)
                     continue
                 self.status = "running"
+                if self._reload_key is not None:
+                    async with self._lock:
+                        await self._reload()
+                    await self.hub.broadcast_hello(self)
                 start = time.time()
                 async with self._lock:
                     if self.world is None:
@@ -221,6 +226,18 @@ class Engine:
                                     True)
         if w.t % self.s.checkpoint_every_sim_minutes == 0:
             await self.save_checkpoint()
+
+    async def _reload(self) -> None:
+        """Reboot in place from a snapshot checkpoint: point `world/state` at it, then boot (no replay)."""
+        key, self._reload_key = self._reload_key, None
+        assert key is not None
+        if self.bus is not None:
+            await self.bus.flush()
+        t = int(checkpoint.unpack(await asyncio.to_thread(self.files.read, self.bucket, key))["t"])
+        await asyncio.to_thread(self.store.set, "world", "state",
+                                {"last_checkpoint": key, "checkpoint_t": t, "last_flushed_t": t, "t": t}, True)
+        await asyncio.to_thread(self.boot)
+        log.info("reloaded from snapshot %s at t=%s", key, t)
 
     async def save_checkpoint(self) -> None:
         """Checkpoint + Firestore agent-state batch."""
@@ -338,6 +355,11 @@ class Engine:
             self.clock.paused = False
         elif kind == "set_speed":
             self.clock.set_speed(float(cmd.get("speed", 1.0)))
+        elif kind == "reload":
+            key = str(cmd.get("checkpoint", ""))
+            if not key.startswith("snapshots/") or not self.files.exists(self.bucket, key):
+                return {"ok": False, "error": "unknown snapshot checkpoint"}
+            self._reload_key = key
         elif kind == "poll":
             if self.world is None or self.bus is None:
                 return {"ok": False, "error": "engine not running"}
