@@ -94,7 +94,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets here — only names and ✅.
 | # | Item | Needed by phase | Status | Date | Notes (names, region — no secrets) |
 |---|---|---|---|---|---|
-| 00 | OpenRouter account, API key in `.env`, models verified, credit limit | 1 | ✅ | 2026-10-17 | key in .env only; 4 model ids listed; llm-smoke OK (structured + 768-d embedding) |
+| 00 | OpenRouter account, API key in `.env`, models verified, credit limit | 1 | ✅ | 2026-10-17 | key in .env only; 4 model ids listed; llm-smoke OK (structured + 768-d embedding); credit limit $25 set by user 2026-10-18 (engine uses the key for real from phase 3) |
 | 15 | OpenStreetMap extract for Indiranagar (only if Overpass is blocked) | 1 | not needed | 2026-10-17 | Overpass reachable; extract committed |
 | 01 | GCP project, billing, budget alert, gcloud + ADC | 1 | ✅ | 2026-10-17 | project mirava-ai-hack (#760833706192), free trial, billing ✅, ADC ✅ (saicharangobburu@gmail.com); budget alert set in console by user |
 | 02 | APIs enabled, service accounts + roles | 1 | ✅ | 2026-10-17 | 19 APIs (+billingbudgets); SAs mirava-api, mirava-engine, mirava-analyst-ro, mirava-scheduler; roles per guide 02 (run.invoker on world-engine in phase 2) |
@@ -106,7 +106,7 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 | 07 | Firestore database `asia-south1` | 2 | ✅ | 2026-10-18 | (default) native, asia-south1 |
 | 08 | Cloud Storage buckets + CORS | 2 | ✅ | 2026-10-18 | mirava-ai-hack-mirava-{uploads,worlds,exports}, asia-south1, worlds versioned; CORS not needed for phase 3 (highlights via API); set before phase 4 uploads |
 | 09 | BigQuery dataset `launch_lens` (+ public data priors) | 2 | ✅ | 2026-10-18 | dataset `mirava` (asia-south1): events, texts, view agents_latest via `python -m infra.bigquery.init`; priors cached in config |
-| 10 | Pub/Sub `world-events`, `world-texts` + BigQuery subscriptions | 2 | ✅ | 2026-10-18 | world-events-to-bq / world-texts-to-bq (table schema); ping verified |
+| 10 | Pub/Sub `world-events`, `world-texts` + BigQuery subscriptions | 2 | ✅ | 2026-10-18 | world-events-to-bq / world-texts-to-bq (table schema); ping verified; phase 3: texts rows with 768-d embeddings verified in BigQuery |
 | 05 | Cloud Run `world-engine` (always-on, min=max=1) | 2 | ✅ | 2026-10-18 | SA mirava-engine, 2 vCPU/4 GiB, no-cpu-throttling, session affinity, public; /commands needs ID token from mirava-api; mirava-api has ENGINE_URL |
 | 16 | Cloud Scheduler watchdog | 2 | ✅ | 2026-10-18 | world-engine-watchdog, */5, GET /health, asia-south1 |
 | 07 | Firestore vector index `memories` | 3 | ✅ | 2026-10-18 | composite CICAgOjXh4EK: agent_id ASC + embedding flat 768-d, scope COLLECTION, READY |
@@ -140,9 +140,12 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - [phase 1] `indiranagar.tmj` gains object layer `lights` and documents `labels` object types (INTERFACES §4.1) — needed for night lighting — DECISIONS #60.
 
 ## 8. Known issues / tech debt
+- [phase 3] [minor] Gate talk/skip is rule-based (closeness × free time) instead of a model call, to keep I/O out of the tick (DECISIONS #75); the model still chooses share plans.
+- [phase 3] [minor] Day timeline in live mode shows the average for past days (no per-day conversation counts endpoint yet).
+- [phase 3] [minor] Worlds-bucket CORS not set (not needed: highlights go through the API); set before phase 4 uploads.
 - [phase 3] [minor] Boot replay from a checkpoint (≤ 1 sim hour) re-steps the world without the social layer, so talk pauses in that window are not reproduced (positions may differ slightly from what viewers saw; events are not re-emitted). In-flight conversations at a crash are dropped.
 - [phase 3] [fixed] Paydays at 09:00 and life events were skipped for agents travelling at that minute (phase 2).
-- [phase 2] [minor] On deploy Cloud Run kept the old revision instance alive >20 min (even after deleting the revision). Fixed with revision handoff in `engine/lease.py`; first real test on the next engine deploy. If a new revision stays `follower`, set `world/lease.holder` to the new holder id (`GET /state` → engine.holder).
+- [phase 2] [resolved in phase 3] On deploy Cloud Run kept the old revision alive >20 min. Revision handoff in `engine/lease.py` verified on 3 phase-3 engine deploys (new revision took the lease within ~1 min, no tick gap). If a new revision stays `follower`, set `world/lease.holder` to the new holder id (`GET /state` → engine.holder).
 - [phase 2] [minor] Tick p95 108–220 ms in the cloud (target 150, budget 2.5 s); fast dev clock can't keep pace.
 - [phase 2] [minor] BigQuery can hold a few duplicate event_ids around restarts (Pub/Sub has no dedupe): views dedupe by event_id.
 - [phase 2] [minor] Live sprite look keyed by id; Export CSV placeholder; Products tab awareness from fixtures; buckets have no CORS yet.
