@@ -76,7 +76,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | 31-insights-interview | 5 | 2.5% | 0.2% | ok | PASS |
 | 32-people | 2 | 4.9% | 0.4% | ok | PASS |
 | 33-guide | 1 | 1.8% | 0.2% | ok | PASS |
-| 34-people-light | 6 |  | | | |
+| 34-people-light | 6 | 2.1% | 0.4% | ok | PASS |
 
 ## 5. Environment
 | Item | Value |

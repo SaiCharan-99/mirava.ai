@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
-import sys
 import time
 
 import httpx
@@ -51,8 +51,9 @@ def _engine_headers(url: str, env: str) -> dict[str, str]:
     if env != "cloud":
         return {}
     sa = f"mirava-api@{get_settings().gcp_project_id}.iam.gserviceaccount.com"
-    tok = subprocess.run(["gcloud", "auth", "print-identity-token", f"--impersonate-service-account={sa}",
-                          f"--audiences={url}"], capture_output=True, text=True, shell=sys.platform == "win32")
+    gcloud = shutil.which("gcloud") or "gcloud"
+    tok = subprocess.run([gcloud, "auth", "print-identity-token", f"--impersonate-service-account={sa}",
+                          f"--audiences={url}", "--include-email"], capture_output=True, text=True)
     if tok.returncode != 0:
         raise SystemExit(f"could not mint an ID token for {sa}: {tok.stderr.strip()[:300]}")
     return {"Authorization": f"Bearer {tok.stdout.strip()}"}
