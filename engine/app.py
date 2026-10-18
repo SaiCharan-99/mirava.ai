@@ -88,7 +88,7 @@ def _authorised(request: Request) -> bool:
         from google.auth.transport import requests as greq
         from google.oauth2 import id_token
 
-        info: dict[str, Any] = id_token.verify_oauth2_token(auth[7:], greq.Request(), audience=s.engine_auth_audience)
+        info: dict[str, Any] = id_token.verify_oauth2_token(auth[7:], greq.Request(), audience=s.engine_auth_audience or None)
     except Exception:  # noqa: BLE001 — any verification failure is a 403
         return False
     allowed = {x.strip() for x in s.engine_allowed_callers.split(",") if x.strip()}
