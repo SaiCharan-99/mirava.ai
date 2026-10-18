@@ -6,10 +6,13 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY shared ./shared
+COPY media ./media
+COPY agents ./agents
 COPY api ./api
 COPY population ./population
 COPY engine ./engine
 COPY mind ./mind
+COPY social ./social
 COPY world ./world
 COPY config ./config
 COPY assets/maps ./assets/maps
