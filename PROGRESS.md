@@ -84,12 +84,12 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | GCP project / region | mirava-ai-hack (760833706192) / asia-south1 |
 | Web URL (Firebase Hosting) | https://mirava-ai-hack.web.app |
 | API URL (Cloud Run `mirava-api`) | https://mirava-api-kfh7v3hvjq-el.a.run.app (public path: https://mirava-ai-hack.web.app/api/healthz) |
-| world-engine URL / revision | https://world-engine-kfh7v3hvjq-el.a.run.app (wss …/live, GET /health) · world-engine-00009-vtq |
+| world-engine URL / revision | https://world-engine-kfh7v3hvjq-el.a.run.app (wss …/live, GET /health) · world-engine-00012-fpw (phase 4) · mirava-api-00008-prw (1 GiB, Model Armor on) |
 | OSM extract date / map stats | Overpass 2026-10-17T17:07Z · 299×305 tiles (8 m) · 3,501 nodes / 4,455 edges (all reachable) · 12,179 places · 60 sites · 4 stores |
 | Genesis version / seed | v1 / 4271 · 1,000 agents, 435 households, 7,012 relationships (avg degree 14.0, 0 isolated), 950 Gemini bios + 50 template ($0.52) · gs://mirava-ai-hack-mirava-worlds/genesis/v1/ |
 | Firestore vector index | `memories` composite CICAgOjXh4EK (agent_id + embedding 768-d flat) |
-| BigQuery views | agents_latest, v_messages, v_conversations (`python -m infra.bigquery.init mirava-ai-hack mirava`) |
-| Live products (ids, launched at) | _phase 4+_ |
+| BigQuery views | agents_latest, v_messages, v_conversations, v_exposures, v_site_daily (`python -m infra.bigquery.init mirava-ai-hack mirava`) |
+| Live products (ids, launched at) | cloud: pulse-5 @ t=14030, orbit-s @ t=14047 (Day 10); nova-x1 ready in the dock · local emulator: all three live (Nova X1 @ t=108593) |
 | Demo snapshot name | _phase 6_ |
 
 ## 5b. Accounts & cloud setup status
@@ -146,6 +146,8 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - [phase 1] `indiranagar.tmj` gains object layer `lights` and documents `labels` object types (INTERFACES §4.1) — needed for night lighting — DECISIONS #60.
 
 ## 8. Known issues / tech debt
+- [phase 4] [minor] Cloud plan reasons came back as templates (Gemini `write_reasons` returned no usable list — check length match / prompt) and target OTS/day is low (~10) because the cloud world has only ~9 days of highlights. Re-plan once more history exists.
+- [phase 4] [minor] Reviewers publish 0.4–2 sim days after launch; first review in the cloud expected around Day 11 (Pulse 5).
 - [phase 3] [minor] No reflections observed live yet: real importance ratings (~5–6 per chat) rarely reach the ≥ 12 threshold before ads exist, and a 03:00 inside a boot replay skips the nightly job. Fix: keep threshold (spec), re-check in phase 4; optionally run the nightly job on the first live tick after a replay that crossed 03:00.
 - [phase 3] [minor] Firebase Hosting cached `/api` responses (incl. 404s) for 10 min; fixed with `Cache-Control: no-store` middleware in `api/main.py` — confirm it is deployed (§9).
 - [phase 3] [minor] Embedding calls are not reported to the governor/budget meter (`shared/llm.py` embed). Fix: record a CostRecord per embed batch.
