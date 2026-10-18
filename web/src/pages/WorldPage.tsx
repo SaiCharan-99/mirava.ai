@@ -16,7 +16,8 @@ import { hhmm } from "../lib/time";
 import { isVisualTest } from "../lib/visualTest";
 import { studioApi } from "../lib/studio";
 import { toast } from "../lib/toast";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getJSON } from "../lib/api";
 
 const STAGES = ["aware", "curious", "researching", "inquiring", "deciding", "purchased", "postponed", "rejected"];
 const STAGE_COL: Record<string, string> = { aware: "#94a3b8", curious: "#60a5fa", researching: "#a78bfa", inquiring: "#f5b041", deciding: "#fb923c", purchased: "#4ade80", postponed: "#64748b", rejected: "#f87171" };
@@ -262,6 +263,33 @@ function HlBanner() {
   );
 }
 
+/** Fallback (architecture §21): after 10 s without `/live`, offer the latest finished day's highlights. */
+function EngineDownBanner() {
+  const connected = useWorld((s) => s.connected);
+  const source = useWorld((s) => s.source);
+  const hl = useWorld((s) => s.hl);
+  const t = useWorld((s) => s.t);
+  const [down, setDown] = useState(false);
+  useEffect(() => {
+    if (connected || source !== "live") { setDown(false); return; }
+    const id = setTimeout(() => setDown(true), 10_000);
+    return () => clearTimeout(id);
+  }, [connected, source]);
+  if (!down || hl) return null;
+  const replay = async () => {
+    let now = t;
+    if (!now) now = Number((await getJSON<{ t?: number }>("/world/state").catch(() => ({ t: 0 }))).t ?? 0);
+    const day = Math.max(1, Math.floor(now / 1440));
+    void openHighlights(day);
+  };
+  return (
+    <div className="banner glass" data-testid="engine-down-banner">
+      <b>Live world unreachable</b> · reconnecting…{" "}
+      <button className="btn sm" style={{ marginLeft: 10 }} onClick={() => void replay()}>Replay</button>
+    </div>
+  );
+}
+
 /** World (home, U-02 shell): live map stage, stats, lens switch, ready dock, side panel, day timeline. */
 export function WorldPage() {
   const tab = useWorld((s) => s.sideTab);
@@ -275,6 +303,7 @@ export function WorldPage() {
         <Stats />
         <Tools />
         <HlBanner />
+        <EngineDownBanner />
         <Dock />
         <Minimap />
         <div className="attrib">Indiranagar from OpenStreetMap · © OpenStreetMap contributors (ODbL)</div>
