@@ -226,6 +226,10 @@ class OpenRouterClient(_CachingClient):
         """Embeddings via /embeddings, normalised to `dim`."""
         raw = await self._post("/embeddings", {"model": models.MODEL_EMBED, "input": texts, "dimensions": dim})
         rows = sorted(raw.get("data", []), key=lambda d: d.get("index", 0))
+        u = raw.get("usage") or {}
+        usage = Usage(prompt_tokens=int(u.get("prompt_tokens", 0)), cost_usd=float(u.get("cost", 0.0) or 0.0))
+        self._record("embed", models.MODEL_EMBED, "P5",
+                     LLMResult(usage=usage, model=models.MODEL_EMBED, cached=False))
         return [fit_dim(r["embedding"], dim) for r in rows]
 
     async def list_models(self) -> set[str]:

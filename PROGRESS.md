@@ -5,8 +5,8 @@ Living document. Every Claude Code session reads it first and updates it last (`
 ## 1. Current status
 | Field | Value |
 |---|---|
-| Current phase | 4 — Launch Studio, channels and attention (not started) |
-| Phase status | Phase 3 ⚠️ done with open issues · phase 4 ⬜ |
+| Current phase | 4 — Launch Studio, channels and attention (in progress) |
+| Phase status | Phase 3 ⚠️ done with open issues · phase 4 🟨 |
 | Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (72 py + 15 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
 | Last session | 2026-10-18 · phase 3 |
 | Builder | Sai Charan (Claude Code) |
@@ -18,7 +18,7 @@ Living document. Every Claude Code session reads it first and updates it last (`
 | 1 | Foundation, globe, Indiranagar map, app shell | ✅ | 2026-10-18 | 01/02/33 PASS | hello deploy live |
 | 2 | Population & the always-on world engine | ✅ | 2026-10-18 | 03/04/05/06/10/32 PASS; 13/14 review | world-engine live on Cloud Run |
 | 3 | Memory, think/speak conversations, governor, highlights | ⚠️ | 2026-10-18 | 07/08/09/12 PASS (+ all earlier) | live in cloud; nightly reflection not yet observed live (§8) |
-| 4 | Launch Studio, channels and attention | ⬜ | | | |
+| 4 | Launch Studio, channels and attention | 🟨 | 2026-10-18 | | |
 | 5 | Stores, buying and Insights | ⬜ | | | |
 | 6 | Hardening, deploy, demo, submission | ⬜ | | | |
 Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open issues
