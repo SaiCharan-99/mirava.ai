@@ -5,10 +5,10 @@ Living document. Every Claude Code session reads it first and updates it last (`
 ## 1. Current status
 | Field | Value |
 |---|---|
-| Current phase | 4 — Launch Studio, channels and attention (in progress) |
-| Phase status | Phase 3 ⚠️ done with open issues · phase 4 🟨 |
-| Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (72 py + 15 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
-| Last session | 2026-10-18 · phase 3 |
+| Current phase | 5 — Stores, buying and Insights (not started) |
+| Phase status | Phase 4 ⚠️ done with open issues · phase 5 ⬜ |
+| Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (97 py + 18 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
+| Last session | 2026-10-18 · phase 4 |
 | Builder | Sai Charan (Claude Code) |
 | Deadline | 18 Oct 2026 |
 
@@ -18,7 +18,7 @@ Living document. Every Claude Code session reads it first and updates it last (`
 | 1 | Foundation, globe, Indiranagar map, app shell | ✅ | 2026-10-18 | 01/02/33 PASS | hello deploy live |
 | 2 | Population & the always-on world engine | ✅ | 2026-10-18 | 03/04/05/06/10/32 PASS; 13/14 review | world-engine live on Cloud Run |
 | 3 | Memory, think/speak conversations, governor, highlights | ⚠️ | 2026-10-18 | 07/08/09/12 PASS (+ all earlier) | live in cloud; nightly reflection not yet observed live (§8) |
-| 4 | Launch Studio, channels and attention | 🟨 | 2026-10-18 | | |
+| 4 | Launch Studio, channels and attention | ⚠️ | 2026-10-18 | 11/18–23 PASS (+ all earlier); 15/16/17/21b review ok | live in cloud; Nova X1 review not yet seen; P-07 not built (§8) |
 | 5 | Stores, buying and Insights | ⬜ | | | |
 | 6 | Hardening, deploy, demo, submission | ⬜ | | | |
 Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open issues
@@ -30,13 +30,13 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | Population | 2, 4 | ☑ P-01 ☑ P-02 ☑ P-03 ☑ P-04 ☑ P-05 ☑ P-06 ☐ P-07 (stretch) ☑ P-08 |
 | Engine | 2, 3 | ☑ E-01 ☑ E-02 ☑ E-03 ☑ E-04 ☑ E-05 ☑ E-06 ☑ E-07 |
 | Memory | 3 | ☑ M-01 ☑ M-02 ☑ M-03 ☑ M-04 ☐ M-05 (built + tested; not yet observed live) ☑ M-06 ☑ M-07 |
-| Attention | 4 | ☐ A-01 ☐ A-02 ☐ A-03 ☐ A-04 ☐ A-05 ☐ A-06 |
-| Channels | 3, 4 | ☐ C-01 ☐ C-02 ☐ C-03 ☐ C-04 ☐ C-05 ☐ C-06 ☐ C-07 ☐ C-08 |
+| Attention | 4 | ☑ A-01 ☑ A-02 ☑ A-03 ☑ A-04 ☑ A-05 ☑ A-06 |
+| Channels | 3, 4 | ☑ C-01 ☑ C-02 ☑ C-03 ☑ C-04 ☑ C-05 ☑ C-06 ☐ C-07 (built; Sources share in phase 5) ☑ C-08 |
 | Talk | 3, 5 | ☑ T-01 ☑ T-02 ☐ T-03 ☑ T-04 ☑ T-05 ☑ T-06 ☑ T-07 |
 | Shopping | 5 | ☐ S-01 ☐ S-02 ☐ S-03 ☐ S-04 ☐ S-05 ☐ S-06 |
-| Launch Studio | 4 | ☐ L-01 ☐ L-02 ☐ L-03 ☐ L-04 ☐ L-05 ☐ L-06 ☐ L-07 ☐ L-08 |
+| Launch Studio | 4 | ☑ L-01 ☑ L-02 ☑ L-03 ☑ L-04 ☑ L-05 ☑ L-06 ☑ L-07 ☐ L-08 (launch marker on Insights charts in phase 5) |
 | Insights | 5 | ☐ I-01 ☐ I-02 ☐ I-03 ☐ I-04 ☐ I-05 ☐ I-06 ☐ I-07 ☐ I-08 ☐ I-09 |
-| UI | 1, 1, 6, 1–4, 1–6, 2, 2–3, 4, 5 | ☑ U-01 ☐ U-02 ☑ U-03 ☑ U-04 ☑ U-05 ☐ U-06 ☐ U-07 ☑ U-08 ☐ U-09 |
+| UI | 1, 1, 6, 1–4, 1–6, 2, 2–3, 4, 5 | ☑ U-01 ☑ U-02 ☑ U-03 ☑ U-04 ☑ U-05 ☑ U-06 ☐ U-07 ☑ U-08 ☐ U-09 |
 | Platform | 1, 1–2, 4, 6, 6 | ☑ X-01 ☑ X-02 ☐ X-03 ☐ X-04 ☐ X-05 ☐ X-06 |
 
 ## 4. Visual check status (`tools/visual`, latest run)
@@ -52,20 +52,20 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | 08-profile-conversations | 3 | 3.0% | 0.4% | ok | PASS |
 | 09-profile-memory | 3 | 3.7% | 0.2% | ok | PASS |
 | 10-world-watching | 2 | 2.1% | 0.2% | ok | PASS |
-| 11-world-products | 4 |  | | | |
+| 11-world-products | 4 | 1.7% | 0.3% | ok | PASS |
 | 12-world-highlights | 3 | 3.0% | 0.2% | ok | PASS |
 | 13-world-look | 2 | 27.5% | 12.3% | ok | REVIEW (real OSM mesh vs mockup grid; ok by eye) |
 | 14-world-night | 2 | 25.2% | 12.1% | ok | REVIEW (dark overlay + glows on real roads; ok by eye) |
-| 15-world-lens-aware | 4 | review | | | |
-| 16-world-lens-hoardings | 4 | review | | | |
-| 17-world-launch-fx | 4 | review | | | |
-| 18-launch-list | 4 |  | | | |
-| 19-launch-details | 4 |  | | | |
-| 20-launch-content | 4 |  | | | |
-| 21-launch-understand | 4 |  | | | |
-| 21b-launch-graph | 4 | review | | | |
-| 22-launch-plan | 4 |  | | | |
-| 23-launch-ready | 4 |  | | | |
+| 15-world-lens-aware | 4 | 41.5% | 3.3% | ok | REVIEW (rings + legend + product picker; ok by eye) |
+| 16-world-lens-hoardings | 4 | 42.4% | 3.2% | ok | REVIEW (cones coloured by product; ok by eye) |
+| 17-world-launch-fx | 4 | 43.0% | 3.7% | ok | REVIEW (orb/burst/pill/flares; ok by eye) |
+| 18-launch-list | 4 | 1.7% | 0.2% | ok | PASS |
+| 19-launch-details | 4 | 3.9% | 0.2% | ok | PASS |
+| 20-launch-content | 4 | 4.4% | 0.3% | ok | PASS |
+| 21-launch-understand | 4 | 3.2% | 0.3% | ok | PASS |
+| 21b-launch-graph | 4 | 5.3% | 6.9% | ok | REVIEW (select + neighbours + details; ok by eye) |
+| 22-launch-plan | 4 | 3.3% | 0.3% | ok | PASS |
+| 23-launch-ready | 4 | 2.2% | 0.2% | ok | PASS |
 | 24-insights-ask | 5 |  | | | |
 | 25-insights-overview | 5 |  | | | |
 | 26-insights-sources | 5 |  | | | |
@@ -123,7 +123,8 @@ Filled in by `/gcp-setup` (guides in `docs/setup/`). Never paste keys or secrets
 uv sync && (cd web && npm install) && (cd tools/visual && npm ci && npx playwright install chromium)
 # npm install must run from PowerShell on this PC (stray quote in Windows PATH breaks cmd.exe from Git Bash)
 make genesis      # once, emulator running (fake LLM; LLM_BACKEND=openrouter for real bios)
-make dev          # Firestore emulator (Java 21+ on PATH) + world-engine :8100 + api :8000 + web :5173
+make dev          # Firestore emulator (Java 21+ on PATH) + world-engine :8100 + api :8000 + web :5173 (fakes, 120 s/day)
+make seed-demo    # Nova X1 ready, Pulse 5 + Orbit S live via the API (api + engine running); cloud: uv run python -m tools.seed_demo --api https://mirava-api-kfh7v3hvjq-el.a.run.app
 make engine       # engine alone (fast clock 120 s/day; actually runs ~1.6 sim min/s)
 make test && make lint
 make map          # regenerate map assets (deterministic)
@@ -136,6 +137,9 @@ uv run python -m infra.bigquery.init mirava-ai-hack mirava                      
 ```
 # phase 3: conversations run in the engine by default (Engine(..., social=False) disables them, used by the determinism test)
 # OpenRouter key usage (never prints the key): uv run python -c "import httpx;from shared.settings import get_settings as g;print(httpx.get('https://openrouter.ai/api/v1/key',headers={'Authorization':'Bearer '+g().openrouter_api_key.get_secret_value()}).json()['data']['usage_daily'])"
+# phase 4: visual capture against another port: cd tools/visual && node capture.mjs --target app --phase 4 --base http://localhost:5174
+# v_site_daily locally: the engine holds .data/mirava.duckdb — stop it, query (read_only), restart (resumes from checkpoint)
+# Model Armor gcloud: CLOUDSDK_API_ENDPOINT_OVERRIDES_MODELARMOR=https://modelarmor.asia-south1.rep.googleapis.com/ gcloud model-armor templates list --location=asia-south1
 Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirava-ai-hack.web.app
 
 ## 7. Contract changes (to docs/INTERFACES.md)
@@ -146,7 +150,13 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - [phase 1] `indiranagar.tmj` gains object layer `lights` and documents `labels` object types (INTERFACES §4.1) — needed for night lighting — DECISIONS #60.
 
 ## 8. Known issues / tech debt
-- [phase 4] [minor] Cloud plan reasons came back as templates (Gemini `write_reasons` returned no usable list — check length match / prompt) and target OTS/day is low (~10) because the cloud world has only ~9 days of highlights. Re-plan once more history exists.
+- [phase 4] [fixed] Cloud plan reasons were templates (prompt placeholder `{sites}` vs `{facts}` → KeyError swallowed); fixed + regression test, Nova X1 re-planned. Gemini reasons are repetitive in wording — tighten the prompt (phase 6).
+- [phase 4] [minor] Target OTS/day in cloud plans is low (4–12) — the cloud world has ~9 days of highlight samples at 10-min resolution. Re-plan after more history.
+- [phase 4] [minor] P-07 (category bootstrap, stretch) not built.
+- [phase 4] [minor] GraphView is a canvas port of the mockup's force engine, not `react-force-graph-2d` (DECISIONS #83).
+- [phase 4] [minor] Feed "friends' posts" are not modelled (feed = campaign reels + followed reviews + baseline ads); newspaper print ads use fixed size/page (half, p3).
+- [phase 4] [minor] Store-display exposures are rare: stores are only 3 of many shop haunts (phase 5 adds intent-driven store visits).
+- [phase 4] [minor] Visual-test REVIEW screens 15–17 differ from the mockup in base map (real OSM) as in 13/14.
 - [phase 4] [minor] Reviewers publish 0.4–2 sim days after launch; first review in the cloud expected around Day 11 (Pulse 5).
 - [phase 3] [minor] No reflections observed live yet: real importance ratings (~5–6 per chat) rarely reach the ≥ 12 threshold before ads exist, and a 03:00 inside a boot replay skips the nightly job. Fix: keep threshold (spec), re-check in phase 4; optionally run the nightly job on the first live tick after a replay that crossed 03:00.
 - [phase 3] [minor] Firebase Hosting cached `/api` responses (incl. 404s) for 10 min; fixed with `Cache-Control: no-store` middleware in `api/main.py` — confirm it is deployed (§9).
@@ -190,7 +200,21 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - Acceptance: (1) ✅ s6551-116-569-71 greeting first, 10 msgs, private parts only for the owner (2) ✅ v_messages == transcript; texts 549/549 with 768-d embeddings (3) ✅ budget events hourly, $0.16 / ~11 sim h (4) ✅ Day 5 highlights replay + camera jumps + click → profile. Fixes for first line / hour spread verified on Day 6: 31 moments over 16 hours, 30/30 conversation moments with first line.
 - Embedding calls are not reported to the governor yet (engine meter $0.18 vs OpenRouter $0.57 today).
 
-**Next session (phase 4) must:**
+**Phase 4 handoff**
+- Product ids: nova-x1 (ready, --p1 #f97316 locally; cloud colour by creation order), pulse-5 (live, cloud t=14030), orbit-s (live, cloud t=14047). Local emulator: all three live (Nova X1 launched t=108593 from the dock, seen by two browsers).
+- Plan outputs (cloud): Nova X1 8 sites (S-12M-02, S-CMH-11, S-CMH-09, S-CMH-06, S-DBL-04, S-100FT-08, S-CMH-12, S-100FT-16), 4–10 target OTS/day each, reel audience 190, 4 reviewers, 3 stores; Pulse 5 8 sites; Orbit S 4 sites (intensity low).
+- Notice rates (cloud, Day 10): hoarding 4.3% notice / 31.9% glance of OTS; metro panels 3.2%; bus shelters 0/40; reels 20.4% watched (partial+full); community 24.4%. Local demo world: 35% glance / 6% notice (calibration test).
+- Thoughts: 149 rendered ad thoughts in the cloud on Day 10 (from ~09:00), all rendered (P1 cap 220/day); engine spend $0.88 that real day incl. conversations. Local fake run: 369 thoughts in 1.6 sim days.
+- Reviewers/community: local — 4 reviews in 1.6 days (first ~0.7 day after launch), threads from the news desk + every review, comments 6–10/day, upvotes; cloud — 2 news-desk threads, 55 community thoughts, 12 upvotes, first review expected ~Day 11.
+- Planner edge cases: no highlights yet → commute-path traffic fallback (few OTS); sites held by live products excluded; Gemini reasons only when lengths match (else templates, logged).
+- Bugs fixed this phase: duplicate Phaser canvas under StrictMode (visible map was a frozen frame), `clientOf` stale worldView, ticker per-agent name lookups starving the Launch POST, engine ID-token audience empty (403), api 512 MiB OOM in the planner, Dockerfiles missing media/agents/social.
+
+**Next session (phase 5) must:**
+1. `/start-phase 5`; `make test`/`make lint`; check `GET https://world-engine-kfh7v3hvjq-el.a.run.app/state` is running on revision ≥ 00012 and that a Nova X1/Pulse 5 review appeared (`reviews` collection).
+2. `/gcp-setup 09` (BigQuery views + `mirava-analyst-ro` + VECTOR_SEARCH check) before the Insights assistant.
+3. Build stores/inquiries on `engine/media_rt.py` (store displays) + `commerce/`; Insights Hoardings tab reads `v_site_daily`; Sources uses `belief.first_heard` (C-07, L-08 launch markers).
+
+**(phase 3) Next session (phase 4) must:**
 1. `/start-phase 4`; run `make test`/`make lint`; check `curl -sI https://mirava-ai-hack.web.app/api/world/state | grep -i cache-control` says `no-store` (api fix committed at phase-3 close; if not, `make deploy`).
 2. Report embedding cost to the governor (`shared.llm` embed → `CostRecord`), re-check the OpenRouter key limit, then `/gcp-setup 12` (Model Armor) and CORS on the uploads bucket (guide 08).
 3. Build ad thoughts on top of `mind.context.build` + `MemoryStore`; product salience feeds `social.gate.Side.products_salient` (C-07 word of mouth).
@@ -206,6 +230,16 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 3. Walk through `/gcp-setup` 07 (cloud Firestore), 08, 09, 10, 05 (world-engine), 16 before deploying the engine.
 
 ## 10. Session log (newest first)
+### 2026-10-18 12:00 · Phase 4 · ⚠️
+- Built: products API (CRUD, screened creatives, signed uploads, audience, understanding, plan, ready, launch), media (screen/Model Armor, audience, attention, traffic, planner, graph), agents/understanding, mind/ad_thought, social/community, engine/media_rt (launch, hoardings, feeds, newspaper, store displays, reviewers, community, baseline ads), BQ views v_exposures/v_site_daily, web Launch Studio + GraphView + PlanCanvas + dock launch + firework + lenses, `make seed-demo`, `make dev` with engine.
+- Tests: py (Launch Studio 14 + media 13 incl. geometry, calibration, planner determinism/exclusion, reels ≥70% audience, injection suite, launch→thought/memory/belief, review/community, view totals) + 18 vitest.
+- Visual check: 11, 18–23 PASS (+ all earlier gated); 15/16/17/21b REVIEW ok by eye.
+- Deployed: world-engine-00012-fpw, mirava-api-00008+ (1 GiB, Model Armor), Hosting; cloud seeded (Pulse 5, Orbit S live; Nova X1 ready).
+- Cloud setup: §5b 12 Model Armor ✅, 08 uploads CORS ✅.
+- Contract changes: §7 (DECISIONS #77–83).
+- Open issues: §8.
+- Next session must: see §9.
+
 ### 2026-10-18 06:40 · Phase 3 · ⚠️
 - Built: mind (MemoryStore retrieval/beliefs/prune, context.build ≤ 900 tok, decision adapter batched 32, reflection), social (gate, sessions, prep, dialogue, debrief, conversation), engine (encounters, governor, social runtime, highlights, Firestore read models), api (thoughts, conversations, memories, highlights), web (profile tabs 4–6, highlights mode, conversation ticker, slowed state), BQ views v_messages/v_conversations.
 - Tests: 72 pytest + 15 vitest (marker-fact 200 chats, retrieval isolation, SharePlan typing, transcript bounds, sessions property, governor 3-day sim, engine social day determinism, API privacy filter).
