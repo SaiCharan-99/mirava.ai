@@ -24,3 +24,4 @@ artifacts/
 # local tool output / office lock files
 .playwright-mcp/
 ~$*
+docs/
