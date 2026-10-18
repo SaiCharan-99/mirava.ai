@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any
@@ -214,6 +215,7 @@ class Engine:
             bus.new("budget", w.t, None, {**vars(gs), **({"social": self.social.stats} if self.social else {}),
                                           **({"media": self.media.stats} if self.media else {}),
                                           **({"commerce": self.commerce.stats} if self.commerce else {})})
+            self._log_metrics(gs)
         self.tick_ms.append((time.perf_counter() - t0) * 1000)
         self.tick_ms = self.tick_ms[-600:]
         self.last_tick_real = time.time()
@@ -323,6 +325,16 @@ class Engine:
         self.highlights.on_event(ev, xy, self._first_line.pop(ev.session_id or "", ""))
 
     # ------------------------------------------------------------------ views
+    def _log_metrics(self, gs: Any) -> None:
+        """One structured line per sim hour → Cloud Logging jsonPayload → log-based metrics (guide 13 dashboard)."""
+        p95 = sorted(self.tick_ms)[int(len(self.tick_ms) * 0.95)] if self.tick_ms else 0.0
+        done = self.gov.rendered + self.gov.unrendered
+        print(json.dumps({"severity": "INFO", "message": "engine metrics", "metric": "engine", "t": self.world.t if self.world else None,
+                          "tick_p95_ms": round(p95, 1), "spend_today_usd": round(self.gov.spent_today, 4),
+                          "rendered_ratio": round(self.gov.rendered / done, 3) if done else 1.0,
+                          "live_viewers": len(self.hub.clients), "slowed": bool(getattr(gs, "slowed", False))}),
+              flush=True)
+
     def budget(self) -> dict[str, float]:
         """Budget used today (background world) from the governor."""
         return {"used_usd": round(self.gov.spent_today, 3), "cap_usd": self.s.daily_cap_usd,
