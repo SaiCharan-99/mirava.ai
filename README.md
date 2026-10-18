@@ -17,12 +17,8 @@ Built for the **Google Cloud AI Builder Cup 2026 — Retail & Commerce**.
 - **Launch moment.** Products launch one at a time from the World's *Ready to launch* dock with a firework; sites flip, reels go out, reviewers publish, community threads grow.
 - **Insights.** Every event is logged to BigQuery. A Gemini assistant answers questions over the data with SQL, charts and verbatim quotes. Dashboards include **Hoardings** (out-of-home by site and facing), Segments, Funnel and a Survey Room.
 
-## Screenshots
-| | |
-|---|---|
-| ![Globe](docs/ui-reference/01-globe.png) Globe intro | ![World](docs/ui-reference/02-world.png) Live World |
-| ![Conversations](docs/ui-reference/08-profile-conversations.png) Profile → conversations (prep / dialogue / debrief) | ![Graph](docs/ui-reference/21b-launch-graph.png) Launch Studio knowledge graph |
-| ![Ask](docs/ui-reference/24-insights-ask.png) Insights → Ask | ![Hoardings](docs/ui-reference/27-insights-hoardings.png) Insights → Hoardings |
+## Try it
+Open the live world at https://mirava-ai-hack.web.app (desktop browser, 1280 px or wider).
 
 ## Architecture
 ```mermaid
@@ -92,7 +88,6 @@ gcloud builds submit --config infra/cloudbuild-engine.yaml --region asia-south1 
 uv run python -m infra.bigquery.init mirava-ai-hack mirava                           # BigQuery tables + views
 uv run python -m tools.seed_demo --api https://mirava-api-kfh7v3hvjq-el.a.run.app    # demo products
 ```
-Step-by-step account and cloud setup guides are in `docs/setup/`.
 
 ## Eval results (latest: 200 agents · 2 sim days · fake backend)
 - Insights benchmark: **faithfulness 100%**, quotes verbatim 100%, 9/10 questions pass. The `first_heard` routing miss was fixed afterwards and is pinned by a unit test.
@@ -103,9 +98,6 @@ Step-by-step account and cloud setup guides are in `docs/setup/`.
 - Web: https://mirava-ai-hack.web.app
 - API health: https://mirava-ai-hack.web.app/api/healthz
 - world-engine health: https://world-engine-kfh7v3hvjq-el.a.run.app/health
-
-## Docs
-`docs/architecture.md` · `docs/INTERFACES.md` · `docs/specs.md` · `docs/techstack.md` · `docs/DECISIONS.md` · `docs/DEMO_SCRIPT.md` · `docs/DECK_OUTLINE.md`
 
 ## Attribution and licence
 Map data © OpenStreetMap contributors, ODbL. Fonts: Inter and JetBrains Mono (SIL OFL).
