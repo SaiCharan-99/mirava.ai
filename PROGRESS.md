@@ -5,8 +5,8 @@ Living document. Every Claude Code session reads it first and updates it last (`
 ## 1. Current status
 | Field | Value |
 |---|---|
-| Current phase | 5 — Stores, buying and Insights (not started) |
-| Phase status | Phase 4 ⚠️ done with open issues · phase 5 ⬜ |
+| Current phase | 5 — Stores, buying and Insights + Survey Room (in progress) |
+| Phase status | Phase 4 ⚠️ done with open issues · phase 5 🟨 |
 | Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (97 py + 18 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
 | Last session | 2026-10-18 · phase 4 |
 | Builder | Sai Charan (Claude Code) |
@@ -19,7 +19,7 @@ Living document. Every Claude Code session reads it first and updates it last (`
 | 2 | Population & the always-on world engine | ✅ | 2026-10-18 | 03/04/05/06/10/32 PASS; 13/14 review | world-engine live on Cloud Run |
 | 3 | Memory, think/speak conversations, governor, highlights | ⚠️ | 2026-10-18 | 07/08/09/12 PASS (+ all earlier) | live in cloud; nightly reflection not yet observed live (§8) |
 | 4 | Launch Studio, channels and attention | ⚠️ | 2026-10-18 | 11/18–23 PASS (+ all earlier); 15/16/17/21b review ok | live in cloud; Nova X1 review not yet seen; P-07 not built (§8) |
-| 5 | Stores, buying and Insights | ⬜ | | | |
+| 5 | Stores, buying and Insights (+ Survey Room addendum) | 🟨 | 2026-10-18 | | |
 | 6 | Hardening, deploy, demo, submission | ⬜ | | | |
 Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open issues
 
@@ -143,6 +143,7 @@ uv run python -m infra.bigquery.init mirava-ai-hack mirava                      
 Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirava-ai-hack.web.app
 
 ## 7. Contract changes (to docs/INTERFACES.md)
+- [phase 5] **Survey Room** (additive): schemas, config/survey.yaml, event/text kinds, views, API, live types, routes, testids, `__ll.surveyRoom` — see `docs/phases/phase-05-addendum-survey-room.md` "Contract additions" — DECISIONS #86–91.
 - [phase 4] media runtime, `attend` signature, exposure payload extras, live evts notice/launch/review/post/comment, views v_exposures/v_site_daily — DECISIONS #80–82.
 - [phase 4] products API extras (`/creatives`, `/audience`, DELETE, local `PUT /uploads`), plan field notes — DECISIONS #77–79.
 - [phase 3] async `mind.context.build(..., store, llm)`, `MemoryStore(agent_id, store, llm, on_event)`, `DocStore.nearest` — DECISIONS #72.
