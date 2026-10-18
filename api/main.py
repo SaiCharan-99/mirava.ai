@@ -19,6 +19,16 @@ from shared.store import DocStore, get_store
 app = FastAPI(title="mirava.ai api", version="0.2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def no_store(request: Any, call_next: Any) -> Any:
+    """Live data: stop Firebase Hosting's CDN caching API responses (it kept 404s for 10 min)."""
+    resp = await call_next(request)
+    resp.headers.setdefault("Cache-Control", "no-store")
+    return resp
+
+
 api = APIRouter(prefix="/api")
 _cache: dict[str, tuple[float, Any]] = {}
 WATCH_DOC = "default"

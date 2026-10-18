@@ -88,3 +88,8 @@ def test_memories_and_thoughts_endpoints(client):
     store.set("agents/5/thoughts", "e1", {"t": 10, "text": "hmm", "trigger": {"channel": "reflection"}})
     assert c.get("/api/agents/5/thoughts").json()[0]["text"] == "hmm"
     assert c.get("/api/world/highlights", params={"day": 99}).status_code == 404
+
+
+def test_api_responses_are_not_cached(client):
+    c, _ = client
+    assert c.get("/api/world/highlights", params={"day": 99}).headers["cache-control"] == "no-store"

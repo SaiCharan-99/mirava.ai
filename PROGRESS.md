@@ -5,10 +5,10 @@ Living document. Every Claude Code session reads it first and updates it last (`
 ## 1. Current status
 | Field | Value |
 |---|---|
-| Current phase | 3 — Memory, think/speak conversations, governor, highlights (in progress) |
-| Phase status | Phase 2 ✅ done · phase 3 🟨 |
-| Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (47 py + 14 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
-| Last session | 2026-10-18 · phase 2 |
+| Current phase | 4 — Launch Studio, channels and attention (not started) |
+| Phase status | Phase 3 ⚠️ done with open issues · phase 4 ⬜ |
+| Repo green (`make test` + `make lint`) | ✅ 2026-10-18 (72 py + 15 web tests; ruff, mypy, eslint, tsc, gitleaks clean) |
+| Last session | 2026-10-18 · phase 3 |
 | Builder | Sai Charan (Claude Code) |
 | Deadline | 18 Oct 2026 |
 
@@ -17,7 +17,7 @@ Living document. Every Claude Code session reads it first and updates it last (`
 |---|---|---|---|---|---|
 | 1 | Foundation, globe, Indiranagar map, app shell | ✅ | 2026-10-18 | 01/02/33 PASS | hello deploy live |
 | 2 | Population & the always-on world engine | ✅ | 2026-10-18 | 03/04/05/06/10/32 PASS; 13/14 review | world-engine live on Cloud Run |
-| 3 | Memory, think/speak conversations, governor, highlights | 🟨 | 2026-10-18 | | |
+| 3 | Memory, think/speak conversations, governor, highlights | ⚠️ | 2026-10-18 | 07/08/09/12 PASS (+ all earlier) | live in cloud; nightly reflection not yet observed live (§8) |
 | 4 | Launch Studio, channels and attention | ⬜ | | | |
 | 5 | Stores, buying and Insights | ⬜ | | | |
 | 6 | Hardening, deploy, demo, submission | ⬜ | | | |
@@ -26,17 +26,17 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 ## 3. Spec coverage (DEMO + STRETCH; tick only when "done when" is met)
 | Group | Phase | Specs |
 |---|---|---|
-| World & time | 1, 2, 3 | ☑ W-01 ☑ W-02 ☑ W-03 ☑ W-04 ☑ W-05 ☑ W-06 ☑ W-07 ☐ W-08 ☑ W-09 ☑ W-10 |
+| World & time | 1, 2, 3 | ☑ W-01 ☑ W-02 ☑ W-03 ☑ W-04 ☑ W-05 ☑ W-06 ☑ W-07 ☑ W-08 ☑ W-09 ☑ W-10 |
 | Population | 2, 4 | ☑ P-01 ☑ P-02 ☑ P-03 ☑ P-04 ☑ P-05 ☑ P-06 ☐ P-07 (stretch) ☑ P-08 |
-| Engine | 2, 3 | ☑ E-01 ☑ E-02 ☐ E-03 ☑ E-04 ☐ E-05 ☑ E-06 ☑ E-07 |
-| Memory | 3 | ☐ M-01 ☐ M-02 ☐ M-03 ☐ M-04 ☐ M-05 ☐ M-06 ☐ M-07 |
+| Engine | 2, 3 | ☑ E-01 ☑ E-02 ☑ E-03 ☑ E-04 ☑ E-05 ☑ E-06 ☑ E-07 |
+| Memory | 3 | ☑ M-01 ☑ M-02 ☑ M-03 ☑ M-04 ☐ M-05 (built + tested; not yet observed live) ☑ M-06 ☑ M-07 |
 | Attention | 4 | ☐ A-01 ☐ A-02 ☐ A-03 ☐ A-04 ☐ A-05 ☐ A-06 |
 | Channels | 3, 4 | ☐ C-01 ☐ C-02 ☐ C-03 ☐ C-04 ☐ C-05 ☐ C-06 ☐ C-07 ☐ C-08 |
-| Talk | 3, 5 | ☐ T-01 ☐ T-02 ☐ T-03 ☐ T-04 ☐ T-05 ☐ T-06 ☐ T-07 |
+| Talk | 3, 5 | ☑ T-01 ☑ T-02 ☐ T-03 ☑ T-04 ☑ T-05 ☑ T-06 ☑ T-07 |
 | Shopping | 5 | ☐ S-01 ☐ S-02 ☐ S-03 ☐ S-04 ☐ S-05 ☐ S-06 |
 | Launch Studio | 4 | ☐ L-01 ☐ L-02 ☐ L-03 ☐ L-04 ☐ L-05 ☐ L-06 ☐ L-07 ☐ L-08 |
 | Insights | 5 | ☐ I-01 ☐ I-02 ☐ I-03 ☐ I-04 ☐ I-05 ☐ I-06 ☐ I-07 ☐ I-08 ☐ I-09 |
-| UI | 1, 1, 6, 1–4, 1–6, 2, 2–3, 4, 5 | ☑ U-01 ☐ U-02 ☑ U-03 ☐ U-04 ☑ U-05 ☐ U-06 ☐ U-07 ☑ U-08 ☐ U-09 |
+| UI | 1, 1, 6, 1–4, 1–6, 2, 2–3, 4, 5 | ☑ U-01 ☐ U-02 ☑ U-03 ☑ U-04 ☑ U-05 ☐ U-06 ☐ U-07 ☑ U-08 ☐ U-09 |
 | Platform | 1, 1–2, 4, 6, 6 | ☑ X-01 ☑ X-02 ☐ X-03 ☐ X-04 ☐ X-05 ☐ X-06 |
 
 ## 4. Visual check status (`tools/visual`, latest run)
@@ -48,12 +48,12 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | 04-profile-overview | 2 | 3.6% | 0.3% | ok | PASS |
 | 05-profile-relations | 2 | 2.0% | 0.2% | ok | PASS |
 | 06-profile-possessions | 2 | 2.4% | 0.2% | ok | PASS |
-| 07-profile-thoughts | 3 |  | | | |
-| 08-profile-conversations | 3 |  | | | |
-| 09-profile-memory | 3 |  | | | |
+| 07-profile-thoughts | 3 | 3.3% | 0.2% | ok | PASS |
+| 08-profile-conversations | 3 | 3.0% | 0.4% | ok | PASS |
+| 09-profile-memory | 3 | 3.7% | 0.2% | ok | PASS |
 | 10-world-watching | 2 | 2.1% | 0.2% | ok | PASS |
 | 11-world-products | 4 |  | | | |
-| 12-world-highlights | 3 |  | | | |
+| 12-world-highlights | 3 | 3.0% | 0.2% | ok | PASS |
 | 13-world-look | 2 | 27.5% | 12.3% | ok | REVIEW (real OSM mesh vs mockup grid; ok by eye) |
 | 14-world-night | 2 | 25.2% | 12.1% | ok | REVIEW (dark overlay + glows on real roads; ok by eye) |
 | 15-world-lens-aware | 4 | review | | | |
@@ -84,9 +84,11 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⚠️ done with open
 | GCP project / region | mirava-ai-hack (760833706192) / asia-south1 |
 | Web URL (Firebase Hosting) | https://mirava-ai-hack.web.app |
 | API URL (Cloud Run `mirava-api`) | https://mirava-api-kfh7v3hvjq-el.a.run.app (public path: https://mirava-ai-hack.web.app/api/healthz) |
-| world-engine URL / revision | https://world-engine-kfh7v3hvjq-el.a.run.app (wss …/live, GET /health) · world-engine-00004-sjb |
+| world-engine URL / revision | https://world-engine-kfh7v3hvjq-el.a.run.app (wss …/live, GET /health) · world-engine-00009-vtq |
 | OSM extract date / map stats | Overpass 2026-10-17T17:07Z · 299×305 tiles (8 m) · 3,501 nodes / 4,455 edges (all reachable) · 12,179 places · 60 sites · 4 stores |
 | Genesis version / seed | v1 / 4271 · 1,000 agents, 435 households, 7,012 relationships (avg degree 14.0, 0 isolated), 950 Gemini bios + 50 template ($0.52) · gs://mirava-ai-hack-mirava-worlds/genesis/v1/ |
+| Firestore vector index | `memories` composite CICAgOjXh4EK (agent_id + embedding 768-d flat) |
+| BigQuery views | agents_latest, v_messages, v_conversations (`python -m infra.bigquery.init mirava-ai-hack mirava`) |
 | Live products (ids, launched at) | _phase 4+_ |
 | Demo snapshot name | _phase 6_ |
 
@@ -132,6 +134,8 @@ gcloud builds submit --config infra/cloudbuild-engine.yaml --region asia-south1 
 uv run python -m infra.bigquery.init mirava-ai-hack mirava                          # BQ tables + views
 # cloud genesis: ENV=cloud GCP_PROJECT_ID=mirava-ai-hack LLM_BACKEND=openrouter EVENT_SINK=pubsub GCS_BUCKET_WORLDS=mirava-ai-hack-mirava-worlds uv run python -m population.genesis
 ```
+# phase 3: conversations run in the engine by default (Engine(..., social=False) disables them, used by the determinism test)
+# OpenRouter key usage (never prints the key): uv run python -c "import httpx;from shared.settings import get_settings as g;print(httpx.get('https://openrouter.ai/api/v1/key',headers={'Authorization':'Bearer '+g().openrouter_api_key.get_secret_value()}).json()['data']['usage_daily'])"
 Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirava-ai-hack.web.app
 
 ## 7. Contract changes (to docs/INTERFACES.md)
@@ -140,6 +144,9 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - [phase 1] `indiranagar.tmj` gains object layer `lights` and documents `labels` object types (INTERFACES §4.1) — needed for night lighting — DECISIONS #60.
 
 ## 8. Known issues / tech debt
+- [phase 3] [minor] No reflections observed live yet: real importance ratings (~5–6 per chat) rarely reach the ≥ 12 threshold before ads exist, and a 03:00 inside a boot replay skips the nightly job. Fix: keep threshold (spec), re-check in phase 4; optionally run the nightly job on the first live tick after a replay that crossed 03:00.
+- [phase 3] [minor] Firebase Hosting cached `/api` responses (incl. 404s) for 10 min; fixed with `Cache-Control: no-store` middleware in `api/main.py` — confirm it is deployed (§9).
+- [phase 3] [minor] Embedding calls are not reported to the governor/budget meter (`shared/llm.py` embed). Fix: record a CostRecord per embed batch.
 - [phase 3] [minor] Gate talk/skip is rule-based (closeness × free time) instead of a model call, to keep I/O out of the tick (DECISIONS #75); the model still chooses share plans.
 - [phase 3] [minor] Day timeline in live mode shows the average for past days (no per-day conversation counts endpoint yet).
 - [phase 3] [minor] Worlds-bucket CORS not set (not needed: highlights go through the API); set before phase 4 uploads.
@@ -168,7 +175,23 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 - Acceptance: (1) 755 sim min in 1,956 real s ≈ 0.39/s ✅ (2) new revision resumed from checkpoint 900 + replay 20 ✅ (3) two viewers 1000/1000 identical positions ✅ (4) agents_latest phone_age_years>5 = 176 = API ✅.
 - Web: hover, profile Overview/Relations/Possessions live; Thoughts/Conversations/Memory show "available in phase 3".
 
-**Next session (phase 3) must:**
+**Phase 3 handoff**
+- Live since Day 5 10:08 with real OpenRouter (Flash-Lite for prep/dialogue/debrief; Flash for product chats). Engine revision handoff verified 3×.
+- Rendered chats per sim day: 60 (Day 5), 30 (Day 6; P4 cap 30/day, paced by hour) vs ~1,100–2,150 unrendered `interaction`s; stranger chats 79–130/day; avg 6 msgs, max 10.
+- Average cost per rendered chat ≈ $0.003 (5 calls). OpenRouter key usage today $0.57; **key limit is $10 (user meant $25 — re-check on openrouter.ai)**.
+- Retrieval latency: not measured in the cloud (Firestore find_nearest + 1 query embedding; LRU caches hot agents). Measure in phase 4.
+- Reflection count: 0 so far (only 1/104 agents reached day importance ≥ 12; Day 6 03:00 fell inside a boot replay). Expected to rise once ad thoughts exist.
+- Isolation: 200-chat marker-fact test with an echo model — 0 leaks; it found and fixed one real leak path (free-text `tone`).
+- Governor caps in use: config/budget.yaml (daily $15, interactive $5, P0 40 · P1 220 · P2 20 · P3 120 · P4 30 · P5 15 per sim day); no slow-down so far.
+- Acceptance: (1) ✅ s6551-116-569-71 greeting first, 10 msgs, private parts only for the owner (2) ✅ v_messages == transcript; texts 549/549 with 768-d embeddings (3) ✅ budget events hourly, $0.16 / ~11 sim h (4) ✅ Day 5 highlights replay + camera jumps + click → profile. Fixes for first line / hour spread verified on Day 6: 31 moments over 16 hours, 30/30 conversation moments with first line.
+- Embedding calls are not reported to the governor yet (engine meter $0.18 vs OpenRouter $0.57 today).
+
+**Next session (phase 4) must:**
+1. `/start-phase 4`; run `make test`/`make lint`; check `curl -sI https://mirava-ai-hack.web.app/api/world/state | grep -i cache-control` says `no-store` (api fix committed at phase-3 close; if not, `make deploy`).
+2. Report embedding cost to the governor (`shared.llm` embed → `CostRecord`), re-check the OpenRouter key limit, then `/gcp-setup 12` (Model Armor) and CORS on the uploads bucket (guide 08).
+3. Build ad thoughts on top of `mind.context.build` + `MemoryStore`; product salience feeds `social.gate.Side.products_salient` (C-07 word of mouth).
+
+**(phase 2) Next session (phase 3) must:**
 1. `/start-phase 3`; run `make test`/`make lint` first.
 2. `/gcp-setup 07` vector index for memories (+ CORS on the worlds bucket for highlights).
 3. Build memory retrieval + conversations on `engine/world.py` (encounter hook in `World._act`) using `engine/tasks.py`.
@@ -179,6 +202,16 @@ Visual-test URL: http://localhost:5173/world?visualTest=1 · Live: https://mirav
 3. Walk through `/gcp-setup` 07 (cloud Firestore), 08, 09, 10, 05 (world-engine), 16 before deploying the engine.
 
 ## 10. Session log (newest first)
+### 2026-10-18 06:40 · Phase 3 · ⚠️
+- Built: mind (MemoryStore retrieval/beliefs/prune, context.build ≤ 900 tok, decision adapter batched 32, reflection), social (gate, sessions, prep, dialogue, debrief, conversation), engine (encounters, governor, social runtime, highlights, Firestore read models), api (thoughts, conversations, memories, highlights), web (profile tabs 4–6, highlights mode, conversation ticker, slowed state), BQ views v_messages/v_conversations.
+- Tests: 72 pytest + 15 vitest (marker-fact 200 chats, retrieval isolation, SharePlan typing, transcript bounds, sessions property, governor 3-day sim, engine social day determinism, API privacy filter).
+- Visual check: 07/08/09/12 PASS (all earlier gated screens still PASS).
+- Deployed: world-engine (social on, real OpenRouter), mirava-api, Hosting.
+- Cloud setup: §5b 07 vector index ✅, 00 credit limit (see §9), 10 texts embeddings verified; CORS deferred.
+- Contract changes: §7 (DECISIONS #72–75).
+- Open issues: §8 (reflection not yet seen live, embedding cost not metered, gate rule-based).
+- Next session must: see §9.
+
 ### 2026-10-18 02:00 · Phase 2 · ✅
 - Built: population (quota sampler, households, relationships, routines, money, phones + hazards, media diet, special agents, Gemini bios, seed memories, `make genesis`); engine (world step, planner, A* movement, events → DuckDB/Pub/Sub, checkpoints, lease + revision handoff, /live, tasks, clock, app); api world/agents/watchlist; web live client, hover card, profile tabs 1–3, People, Watching.
 - Tests: 47 pytest + 14 vitest (marginals, determinism 2 days, lease, kill/resume no dup ids, movement on graph, live schemas, API, agents_latest SQL).
