@@ -93,6 +93,7 @@ function toView(ans: AskAnswer, steps: string[]): AskAnswerView {
 }
 
 function AskTab({ names }: { names: Names }) {
+  const nav = useNavigate();
   const [thread, setThread] = useState<{ q: string; a: AskAnswerView | null; steps: string[] }[]>(isVisualTest ? D.DEMO_ASK.map((x) => ({ ...x, steps: [] })) : []);
   const [q, setQ] = useState("");
   const [sugg, setSugg] = useState<string[]>(D.DEMO_SUGGESTIONS);
@@ -130,6 +131,9 @@ function AskTab({ names }: { names: Names }) {
           <button className="btn primary" type="submit" disabled={busy}>Ask</button>
         </form>
         <div className="sugg" data-testid="ask-suggestions" style={{ marginTop: 10 }}>{sugg.map((s) => <button key={s} onClick={() => void run(s)}>{s}</button>)}</div>
+        {!isVisualTest && thread.length > 0 && (
+          <div className="xs muted" style={{ marginTop: 8 }}>Want to hear it from people directly? <a href="#" onClick={(e) => { e.preventDefault(); nav(withMode(`/insights/polls/survey/new?title=${encodeURIComponent(thread[thread.length - 1].q.slice(0, 80))}`)); }}>Open a focus group in the Survey Room</a> (the assistant never launches one itself).</div>
+        )}
       </div>
       <div className="grid" style={{ alignContent: "start" }}>
         <div className="card"><h3>What the assistant can use</h3><div className="list small">{[["Raw log", "every thought, message, exposure, inquiry, purchase (BigQuery)"], ["Semantic search", "VECTOR_SEARCH over thoughts, chats, posts, reviews"], ["Cohorts", "any filter on agents: age, income, phone age, stage…"], ["Likely-buyer model", "need × interest × affordability × stage"], ["Poll / interview", "ask agents now (uses budget, asks first)"]].map(([h, t]) => <div key={h} className="item"><b>{h}</b><div className="xs muted">{t}</div></div>)}</div></div>

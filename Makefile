@@ -79,8 +79,8 @@ seed-demo: ## placeholder products through the API: Nova X1 ready, Pulse 5 + Orb
 restore-demo: ## phase 6
 	@echo "make restore-demo arrives in phase 6"; exit 1
 
-eval: ## phase 6
-	@echo "make eval arrives in phase 6"; exit 1
+eval: ## insights benchmark + survey realism → evals/RESULTS.md
+	uv run python -m evals.run
 
 fixtures: ## regenerate web/src/visual-fixtures/mockup-fixtures.json from the mockup
 	cd $(VISUAL) && node extract-fixtures.mjs

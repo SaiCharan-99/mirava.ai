@@ -4,6 +4,7 @@ import { worldRef } from "../world/ref";
 import { openHighlights } from "../lib/highlights";
 import { playLaunchFx } from "../world/launchFx";
 import { graphRef } from "../components/GraphView";
+import { surveyFreeze } from "../pages/survey/SurveyRoomPage";
 
 
 /** The visual-test / automation API (INTERFACES §6.4). Stubs are marked and listed in PROGRESS.md §9. */
@@ -19,6 +20,8 @@ export interface LLHooks {
   launchFx(productId: string, progress: number): void;
   graphSelect(nodeId: string): void;
   graphHover(nodeId: string): void;
+  /** Survey Room (addendum B9): freeze the room at a phase and progress 0–1 for screenshots. */
+  surveyRoom(surveyId: string, phase: "recruiting" | "discussion" | "ballot" | "results", progress: number): void;
 }
 
 declare global {
@@ -28,6 +31,10 @@ declare global {
 export function makeHooks(): LLHooks {
   const st = useWorld.getState;
   return {
+    surveyRoom: (_surveyId, phase, progress) => {
+      if (surveyFreeze.set) surveyFreeze.set(phase, progress);
+      else surveyFreeze.pending = [phase, progress];
+    },
     featured: () => st().fixtures?.featured.id ?? 0,
     focus: (id) => {
       if (!worldRef.scene?.focusAgent(id)) worldRef.pendingFocus = id; // applied when the scene is ready

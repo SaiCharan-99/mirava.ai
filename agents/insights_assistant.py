@@ -258,6 +258,10 @@ class Assistant:
     def _rule_plan(self, q: str) -> list[Call]:
         ql = q.lower()
         p = self._product_in(q)
+        domain = ("phone", "product", "hoarding", "billboard", "store", "survey", "focus", "people", "agent", "buy", "bought",
+                  "aware", "segment", "inquir", "review", "community", "poll", "thought", "chat", "talk", "site", "purchase")
+        if p is None and not any(w in ql for w in domain):
+            return []
         pid = p["product_id"] if p else None
         if re.search(r"older than (\d+)", ql) or "old phone" in ql:
             m = re.search(r"older than (\d+)", ql)
@@ -339,7 +343,10 @@ class Assistant:
                                    "t": row["t"], "text": row["text"], "private": row["private"]})
             elif r["tool"] in ("run_sql", "cohort", "survey_results") and isinstance(res, dict) and res.get("error"):
                 lines.append(f"(A query failed: {res['error'][:120]})")
-        if not lines and not quotes:
+        if not results:
+            lines.append("I can't answer that from the simulated world's data — Insights only knows what the agents in "
+                         "Indiranagar saw, thought, said and bought.")
+        elif not lines and not quotes:
             lines.append("There isn't enough data in the simulated world yet to answer that.")
         md = " ".join(lines)
         sugg = ["Which hoarding gets noticed most and does facing matter?",

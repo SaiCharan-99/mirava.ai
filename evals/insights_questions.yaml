@@ -1,0 +1,31 @@
+# Insights benchmark (I-01, I-09). Each answer must be faithful: numbers ↔ tool results, verbatim labelled quotes.
+- id: old_phones
+  q: "People whose phones are older than 5 years — are they interested in any of our phones? Why?"
+  expect: {numbers: true, quotes: 3, sql: true, chart: true}
+- id: hoarding_facing
+  q: "Which hoarding gets noticed most and does facing matter?"
+  expect: {numbers: true, sql: true}
+- id: private_pulse
+  q: "What do people privately think but not say about Pulse 5?"
+  expect: {quotes: 2, private_quotes: true}
+- id: focus_group_changers
+  q: "In the latest focus group, who changed their mind and why?"
+  expect: {numbers: true}
+- id: first_heard
+  q: "Where did Pulse 5 buyers first hear about it?"
+  expect: {numbers: true, sql: true}
+- id: purchases
+  q: "How many people bought a phone, and did they choose ours or the baseline market?"
+  expect: {numbers: true}
+- id: store_inquiries
+  q: "What happens in store inquiries — outcomes and satisfaction?"
+  expect: {numbers: true}
+- id: segments
+  q: "Who is most likely to buy Pulse 5, by age and income segment?"
+  expect: {numbers: true}
+- id: funnel
+  q: "How is awareness of each product doing?"
+  expect: {numbers: true}
+- id: unanswerable
+  q: "What is the weather forecast for Mumbai tomorrow?"
+  expect: {decline: true}

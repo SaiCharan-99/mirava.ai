@@ -101,7 +101,7 @@ class SurveyRuntime:
             exp = sum(1 for p in a["participants"].values() if p["rsvp"] == "accepted")
             if a.pop("dirty", False) or t % 5 == 0:
                 w.live_evts.append({"k": "survey", "survey_id": a["id"], "status": "gathering", "venue": self.venue,
-                                    "arrived": arrived, "expected": exp, "name": self.venue_name})
+                                    "arrived": arrived, "expected": exp, "name": self.venue_name, **self._xy(w)})
             if exp == 0 and t >= a["start_t"]:
                 self._finish(w, bus, a, empty=True)
             elif exp and (arrived >= math.ceil(exp * float(self.cfg["timings"]["gather_share"]))
@@ -193,7 +193,7 @@ class SurveyRuntime:
         self._persist(a, {"status": "recruiting", "eligible": len(pool), "start_at_t": start,
                           "start_label": simtime.fmt(start), "venue": self.venue, "venue_name": self.venue_name})
         w.live_evts.append({"k": "survey", "survey_id": s.survey_id, "status": "recruiting", "venue": self.venue,
-                            "arrived": 0, "expected": 0, "name": self.venue_name})
+                            "arrived": 0, "expected": 0, "name": self.venue_name, **self._xy(w)})
 
     def _select(self, w: World, bus: EventBus, a: dict[str, Any]) -> None:
         s: Survey = a["s"]
@@ -291,7 +291,7 @@ class SurveyRuntime:
                             s.questions[0].question_id, "tables": [{"table_id": x["table"]["table_id"],
                                                                     "seats": x["table"]["present"]} for x in runners]})
         w.live_evts.append({"k": "survey", "survey_id": s.survey_id, "status": "in_session", "venue": self.venue,
-                            "arrived": len(here), "expected": len(here), "name": self.venue_name})
+                            "arrived": len(here), "expected": len(here), "name": self.venue_name, **self._xy(w)})
 
     def _person(self, w: World, aid: int, s: Survey, product_name: str) -> Person:
         prof = w.profiles[aid]
@@ -460,13 +460,42 @@ class SurveyRuntime:
         bus.new("survey_completed", t, None, {"survey_id": s.survey_id, "counts": counts, "actual_usd": cost,
                                               "estimate_usd": s.estimate_usd, "discussion_skipped": skipped,
                                               "empty": empty}, product_id=s.product_id)
+        self._background(asyncio.to_thread(self._profile_docs, a, t))
         self._release(w, bus, a)
         self._persist(a, {"status": "completed", "completed_t": t, "counts": counts, "actual_usd": cost,
                           "summaries": summaries, "discussion_skipped": skipped,
                           "participants": list(a["participants"].values())})
         w.live_evts.append({"k": "survey", "survey_id": s.survey_id, "status": "completed", "venue": self.venue,
-                            "arrived": counts["attended"], "expected": counts["attended"], "name": self.venue_name})
+                            "arrived": counts["attended"], "expected": counts["attended"], "name": self.venue_name,
+                            **self._xy(w)})
         self.active = None
+
+    def _profile_docs(self, a: dict[str, Any], t: int) -> None:
+        """Profile read models: each table's transcript in `conversations/{session}` with every agent's OWN private
+        survey items under private[agent]; plus `agents/{id}/conversations/{session}` rows (kind focus_group)."""
+        s: Survey = a["s"]
+        for x in a.get("runners", []):
+            r: TableRunner = x["runner"]
+            sid = x["table"]["session_id"]
+            msgs = [{"seq": it["payload"]["seq"], "speaker": it["payload"]["speaker"], "listener": it["payload"]["listener"],
+                     "text": it["payload"]["text"], "question_id": it["payload"]["question_id"], "t": t}
+                    for it in r.items if it["kind"] == "message"]
+            private: dict[str, dict[str, Any]] = {}
+            for it in r.items:
+                if it["agent_id"] is not None and it["kind"].startswith("survey_"):
+                    private.setdefault(str(it["agent_id"]), {}).setdefault("survey_items", []).append(
+                        {"kind": it["kind"], "payload": it["payload"]})
+            parts = [p.agent_id for p in r.people]
+            conv = {"session_id": sid, "participants": parts, "kind": "focus_group", "t_start": a.get("session_t", t),
+                    "t_end": t, "topics": [s.title], "product_mentions": [s.product_id] if s.product_id else [],
+                    "n_messages": len(msgs), "rendered": True, "model": None, "survey_id": s.survey_id}
+            self.store.set("conversations", sid, {"session_id": sid, "participants": parts, "t": t, "conversation": conv,
+                                                  "messages": msgs, "private": private, "survey_id": s.survey_id})
+            for aid in parts:
+                self.store.set(f"agents/{aid}/conversations", sid, {
+                    "session_id": sid, "with": None, "kind": "focus_group", "t": t, "label": simtime.fmt(t),
+                    "topics": [s.title], "n_messages": len(msgs), "rendered": True, "survey_id": s.survey_id,
+                    "first_line": msgs[0]["text"] if msgs else ""})
 
     def _release(self, w: World, bus: EventBus, a: dict[str, Any], cancelled: bool = False) -> None:
         """Close the table sessions; participants resume their routine (survey block ends now)."""
@@ -481,6 +510,11 @@ class SurveyRuntime:
         if cancelled:
             bus.new("survey_completed", w.t, None, {"survey_id": a["id"], "counts": {}, "actual_usd": 0.0,
                                                     "cancelled": True})
+
+    def _xy(self, w: World) -> dict[str, float]:
+        """Venue entrance in metres (for the World pin)."""
+        pl = w.wm.place_by_id.get(self.venue)
+        return {"x": round(pl.entrances[0][0], 1), "y": round(pl.entrances[0][1], 1)} if pl else {}
 
     # ------------------------------------------------------------------ io
     def _persist(self, a: dict[str, Any], upd: dict[str, Any]) -> None:

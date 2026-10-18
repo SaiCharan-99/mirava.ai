@@ -222,13 +222,14 @@ def agent_conversations(agent_id: int, limit: int = Query(100, ge=1, le=500)) ->
 def conversation(session_id: str, as_agent: int = Query(...)) -> dict:
     """Transcript + ONLY `as_agent`'s private prep and debrief (the other side's private parts never leave)."""
     doc = store().get("conversations", session_id)
-    if doc is None or as_agent not in doc.get("participants", []):
+    if doc is None or as_agent not in [int(x) for x in doc.get("participants", [])]:
         raise HTTPException(404, "unknown conversation for this agent")
     mine = (doc.get("private") or {}).get(str(as_agent), {})
     names = _names()
     return {"conversation": doc["conversation"], "messages": doc.get("messages", []),
             "share_plan": mine.get("share_plan"), "debrief": mine.get("debrief"),
             "store_thoughts": mine.get("store_thoughts") or [], "inquiry": doc.get("inquiry"),
+            "survey_items": mine.get("survey_items") or [], "survey_id": doc.get("survey_id"),
             "names": {str(p): names.get(p) for p in doc.get("participants", [])}}
 
 

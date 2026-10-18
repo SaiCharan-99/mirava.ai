@@ -48,6 +48,8 @@ interface ApiConv {
   share_plan: { opening: string; tone: string; withheld_count: number; points_to_share: string[]; questions_to_ask: string[]; candidates: { text: string; tag: string }[] } | null;
   debrief: { reaction: string; summary: string; importance: number; intents: string[]; belief_deltas: { subject: string; attitude_delta: number }[] } | null;
   names: Record<string, string | null>;
+  store_thoughts?: { seq: number; thought: string; decision?: { chosen?: { text: string; kind: string }; withheld?: string[] } }[];
+  survey_items?: { kind: string; payload: Record<string, any> }[];
 }
 interface ApiBelief { subject: string; stage: string; attitude: number; first_heard: { channel: string; t: number } | null; reasons_for: string[]; reasons_against: string[]; open_questions: string[] }
 interface ApiMem { t: number; kind: string; importance: number; text: string }
@@ -143,7 +145,7 @@ export function ConversationsTab({ a }: { a: AgentView }) {
       <div className="list" data-testid="conversation-list">
         {items.length ? items.map((c) => (
           <div className="item" style={{ cursor: "pointer" }} key={c.id} onClick={() => setOpen(c.id)}>
-            <div className="row between"><b>with {c.withName}</b><span className="xs muted">{shortT(c.t)} · {c.kind}{c.n ? ` · ${c.n} msgs` : ""}</span></div>
+            <div className="row between"><b>{c.kind === "focus_group" ? "Focus group" : c.kind === "store" ? `store visit · ${c.withName}` : `with ${c.withName}`}</b><span className="xs muted">{shortT(c.t)} · {c.kind}{c.n ? ` · ${c.n} msgs` : ""}</span></div>
             <div className="xs muted">{c.topics}</div>
           </div>
         )) : <div className="item muted small">{source === "live" && !list ? "Loading…" : "No conversations yet."}</div>}
@@ -151,6 +153,26 @@ export function ConversationsTab({ a }: { a: AgentView }) {
       {conv && <Transcript c={conv} />}
     </>
   );
+}
+
+/** Messages with THIS agent's own private thoughts interleaved (store visits: before each turn; focus groups: before
+ * each of their own lines, then their private ballots). Other people's private items never reach the client. */
+function interleave(d: ApiConv, self: number, nm: (id: number) => string): { sp: number; name: string; tx: string; priv?: boolean }[] {
+  const out: { sp: number; name: string; tx: string; priv?: boolean }[] = [];
+  const st = new Map((d.store_thoughts ?? []).map((x) => [x.seq, x]));
+  const sv = (d.survey_items ?? []).filter((x) => x.kind === "survey_thought").map((x) => String(x.payload.text));
+  let k = 0;
+  for (const m of d.messages) {
+    const speaker = typeof m.speaker === "number" ? m.speaker : -1;
+    const t = st.get(m.seq);
+    if (t && speaker === self) out.push({ sp: self, name: nm(self), tx: `thinks: ${t.thought}${t.decision?.withheld?.length ? ` (keeps to self: ${t.decision.withheld.join("; ")})` : ""}`, priv: true });
+    if (speaker === self && sv[k]) out.push({ sp: self, name: nm(self), tx: `thinks: ${sv[k++]}`, priv: true });
+    out.push({ sp: speaker, name: speaker === -1 ? "Moderator" : nm(speaker), tx: m.text });
+  }
+  for (const a of (d.survey_items ?? []).filter((x) => x.kind === "survey_answer")) {
+    out.push({ sp: self, name: nm(self), tx: `private ballot ${a.payload.question_id}: ${Array.isArray(a.payload.answer) ? a.payload.answer.join(", ") : a.payload.answer} — ${a.payload.reason}`, priv: true });
+  }
+  return out;
 }
 
 function liveConv(d: ApiConv, self: number, selfName: string): ConvVM {
@@ -163,7 +185,7 @@ function liveConv(d: ApiConv, self: number, selfName: string): ConvVM {
   return {
     title: `${fmt(d.conversation.t_start)}${d.conversation.place_id ? ` · ${d.conversation.place_id}` : ""}`,
     self, selfName, otherName: nm(other),
-    msgs: d.messages.map((m) => ({ sp: m.speaker, name: nm(m.speaker), tx: m.text })),
+    msgs: interleave(d, self, nm),
     prep: sp ? { cands: (sp.candidates ?? []).map((c) => [c.text, shared.has(c.text) ? "share" : asked.has(c.text) ? "ask" : `withhold (${c.tag})`] as [string, string]),
       opening: sp.opening, tone: sp.tone, withheld: sp.withheld_count } : null,
     debrief: db ? { reaction: db.reaction, deltas: db.belief_deltas.map((x) => [subjectName(x.subject), `attitude ${signed(x.attitude_delta)}`] as [string, string]),
@@ -186,7 +208,9 @@ function Transcript({ c }: { c: ConvVM }) {
         </div>
       ) : <div className="privbox xs muted">{c.otherName}'s private prep and debrief are shown only in their own profile.</div>}
       <div className="trans" style={{ margin: "10px 0" }}>
-        {c.msgs.map((m, i) => <div className={`tmsg ${m.sp === c.self ? "b" : "a"}`} key={i}><span className="who">{m.name} · {i + 1}</span>{m.tx}</div>)}
+        {c.msgs.map((m, i) => (m as { priv?: boolean }).priv
+          ? <div className="tmsg b" key={i} style={{ border: "1.5px dashed var(--private)", background: "transparent", color: "var(--private)" }}><span className="who">{m.name} · <span className="privtag">PRIVATE THOUGHT</span></span>{m.tx}</div>
+          : <div className={`tmsg ${m.sp === c.self ? "b" : "a"}`} key={i}><span className="who">{m.name} · {i + 1}</span>{m.tx}</div>)}
       </div>
       {c.debrief && (
         <div className="privbox" data-testid="private-debrief">

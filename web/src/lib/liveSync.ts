@@ -174,6 +174,20 @@ export function applyLive(m: LiveMsg): void {
           if (tr && typeof e.act === "string") tr.act = e.act;
         }
         if (e.k === "launch") onLaunch(e);
+        if (e.k === "survey") {
+          const done = e.status === "completed" || e.status === "cancelled";
+          useWorld.setState((s) => ({
+            surveyPin: done ? null : { survey_id: String(e.survey_id), status: String(e.status), name: String(e.name ?? "Research Lounge"),
+              arrived: Number(e.arrived ?? 0), expected: Number(e.expected ?? 0), x: Number(e.x ?? s.surveyPin?.x ?? 0), y: Number(e.y ?? s.surveyPin?.y ?? 0) },
+            surveyTrips: done ? [] : s.surveyTrips,
+          }));
+          continue;
+        }
+        if (e.k === "survey_trip" && typeof e.a === "number") {
+          const aid = e.a;
+          useWorld.setState((s) => ({ surveyTrips: s.surveyTrips.includes(aid) ? s.surveyTrips : [...s.surveyTrips, aid] }));
+          continue;
+        }
         if (e.k === "notice" && typeof e.a === "number" && typeof e.product === "string" && !e.product.startsWith("baseline:")) {
           const pid = e.product, aid = e.a;
           useWorld.setState((s) => ({ aware: { ...s.aware, [pid]: { ...(s.aware[pid] ?? {}), [aid]: (s.aware[pid]?.[aid] ?? 0) + 0.05 } } }));

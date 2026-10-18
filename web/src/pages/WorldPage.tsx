@@ -1,3 +1,4 @@
+import { SurveyPin } from "../world/SurveyPin";
 import { useNavigate } from "react-router-dom";
 import { useWorld, type Lens, type SideTab } from "../state/world";
 import { fmt, fmtINR, fmtInt } from "../lib/time";
@@ -269,6 +270,7 @@ export function WorldPage() {
     <div className="page full"><div className="worldwrap">
       <div className="stage" data-testid="world-stage">
         <WorldCanvas />
+        <SurveyPin />
         <canvas className="fxcanvas" data-testid="launch-fx" />
         <Stats />
         <Tools />

@@ -56,6 +56,9 @@ export interface WorldStore {
   hourOverride: number | null;
   zoomCmd: { kind: "in" | "out" | "fit" | "focus"; x?: number; y?: number; z?: number; seq: number } | null;
   connected: boolean;
+  /** Survey Room pin (addendum B9) and agents walking to the venue (📋). */
+  surveyPin: { survey_id: string; status: string; name: string; arrived: number; expected: number; x: number; y: number } | null;
+  surveyTrips: number[];
   hover: HoverInfo | null;
   profile: { id: number; tab: ProfileTab } | null;
   setHover: (h: HoverInfo | null) => void;
@@ -98,6 +101,8 @@ export const useWorld = create<WorldStore>((set, get) => ({
   hourOverride: null,
   zoomCmd: null,
   connected: false,
+  surveyPin: null,
+  surveyTrips: [],
   hover: null,
   profile: null,
   setHover: (hover) => set({ hover }),
