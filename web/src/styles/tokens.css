@@ -1,22 +1,41 @@
-/* Design tokens — copied verbatim from docs/ui-mockup.html (INTERFACES §6.2). Do not invent new colours. */
+/* Design tokens — copied from docs/ui-mockup.html (INTERFACES §6.2). Light values for muted / teal / green / amber /
+   c5 are darkened to meet WCAG AA (DECISIONS: light-theme contrast). Do not invent new colours. */
 :root{
   --bg:#0b0f15; --bg2:#0f141c; --panel:#131a24; --panel2:#18212d; --panel3:#1e2937;
-  --line:#253141; --line2:#2f3d50; --ink:#e7edf5; --ink2:#b3c0d0; --muted:#7f8ea3;
-  --teal:#2dd4bf; --teal2:#14b8a6; --teal-soft:rgba(45,212,191,.12);
+  --line:#253141; --line2:#2f3d50; --ink:#e7edf5; --ink2:#b3c0d0; --muted:#8a99ad;
+  --teal:#2dd4bf; --teal2:#14b8a6; --teal-soft:rgba(45,212,191,.12); --on-teal:#05201c;
   --amber:#f5b041; --amber-soft:rgba(245,176,65,.13); --red:#f87171; --red-soft:rgba(248,113,113,.13);
   --green:#4ade80; --green-soft:rgba(74,222,128,.12); --violet:#a78bfa; --violet-soft:rgba(167,139,250,.14);
   --blue:#60a5fa; --pink:#f472b6;
   --c1:#2dd4bf; --c2:#f5b041; --c3:#60a5fa; --c4:#f472b6; --c5:#64748b; --c6:#a78bfa;
   --p1:#f97316; --p2:#22c55e; --p3:#8b5cf6; --p4:#ec4899; --p5:#eab308; --p6:#06b6d4;
   --private:#c084fc; --private-soft:rgba(192,132,252,.12);
-  --r:12px;
+  --r:12px; --legible-mix:80%; --track:var(--panel3);
+
+  /* "On-dark" set: theme-independent, for surfaces that are always dark (globe, map stage, glass overlays,
+     hover cards, canvas tooltips). These are the dark-theme values above. */
+  --od-bg:#0b0f15; --od-bg2:#0f141c; --od-panel:#131a24; --od-panel2:#18212d; --od-panel3:#1e2937;
+  --od-line:#253141; --od-line2:#2f3d50; --od-ink:#e7edf5; --od-ink2:#b3c0d0; --od-muted:#8a99ad;
+  --od-teal:#2dd4bf; --od-teal-soft:rgba(45,212,191,.12); --od-amber:#f5b041; --od-amber-soft:rgba(245,176,65,.13);
+  --od-red:#f87171; --od-red-soft:rgba(248,113,113,.13); --od-green:#4ade80; --od-green-soft:rgba(74,222,128,.12);
+  --od-violet:#a78bfa; --od-violet-soft:rgba(167,139,250,.14); --od-blue:#60a5fa; --od-private:#c084fc;
 }
 :root[data-theme="light"]{
   --bg:#f3f5f8; --bg2:#eef1f5; --panel:#ffffff; --panel2:#f7f9fb; --panel3:#eef2f6;
-  --line:#e2e8f0; --line2:#d3dbe6; --ink:#0f172a; --ink2:#334155; --muted:#64748b;
-  --teal:#0d9488; --teal2:#0f766e; --teal-soft:rgba(13,148,136,.10);
-  --amber:#b7791f; --red:#dc2626; --green:#16a34a; --violet:#7c3aed; --blue:#2563eb;
-  --c1:#0d9488; --c2:#d97706; --c3:#2563eb; --c4:#db2777; --c5:#94a3b8; --c6:#7c3aed;
+  --line:#e2e8f0; --line2:#d3dbe6; --ink:#0f172a; --ink2:#334155; --muted:#556275;
+  --teal:#0d6b65; --teal2:#115e59; --teal-soft:rgba(13,148,136,.10); --on-teal:#ffffff;
+  --amber:#8a5a0b; --red:#c81e1e; --green:#166534; --violet:#7c3aed; --blue:#1d4ed8;
+  --c1:#0d9488; --c2:#d97706; --c3:#2563eb; --c4:#db2777; --c5:#64748b; --c6:#7c3aed;
   --p1:#ea580c; --p2:#16a34a; --p3:#7c3aed; --p4:#db2777; --p5:#ca8a04; --p6:#0891b2;
   --private:#9333ea; --private-soft:rgba(147,51,234,.08);
+  --legible-mix:45%; --track:#d3dbe6;
+}
+/* Always-dark surfaces re-bind the theme tokens to the on-dark set, so text on them never goes dark-on-dark. */
+.on-dark,.globe,.glass,.hovercard,.kg-tip,.stage .attrib,.stage .zoombtn{
+  --bg:var(--od-bg); --bg2:var(--od-bg2); --panel:var(--od-panel); --panel2:var(--od-panel2); --panel3:var(--od-panel3);
+  --line:var(--od-line); --line2:var(--od-line2); --ink:var(--od-ink); --ink2:var(--od-ink2); --muted:var(--od-muted);
+  --teal:var(--od-teal); --teal-soft:var(--od-teal-soft); --legible-mix:80%; --on-teal:#05201c; --track:var(--od-panel3); --amber:var(--od-amber); --amber-soft:var(--od-amber-soft);
+  --red:var(--od-red); --red-soft:var(--od-red-soft); --green:var(--od-green); --green-soft:var(--od-green-soft);
+  --violet:var(--od-violet); --violet-soft:var(--od-violet-soft); --blue:var(--od-blue); --private:var(--od-private);
+  color:var(--ink);
 }

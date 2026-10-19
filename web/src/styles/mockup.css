@@ -35,7 +35,7 @@ aside{border-right:1px solid var(--line);background:var(--bg2);padding:14px 10px
 .nav a:hover{background:var(--panel2)}
 .nav a.active{background:var(--teal-soft);color:var(--ink)}
 .nav a .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;background:var(--panel2);border:1px solid var(--line2);font-size:11px;color:var(--muted);font-weight:700}
-.nav a.active .ic{background:var(--teal);border-color:var(--teal);color:#06231f}
+.nav a.active .ic{background:var(--teal);border-color:var(--teal);color:var(--on-teal)}
 .nav a.done .ic{color:var(--teal);border-color:var(--teal)}
 .worldcard{margin:16px 6px 0;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
 .worldcard .row{font-size:12px}
@@ -63,15 +63,15 @@ h3{font-size:13px;margin:0 0 10px;color:var(--ink2);text-transform:uppercase;let
 .btn{border:1px solid var(--line2);background:var(--panel2);padding:7px 13px;border-radius:8px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .btn:hover{border-color:var(--muted)}
 a.btn{text-decoration:none;color:var(--ink)}
-a.btn.primary{color:#05201c}
-.btn.primary{background:var(--teal);border-color:var(--teal);color:#05201c}
+a.btn.primary{color:var(--on-teal)}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:var(--on-teal)}
 .btn.primary:hover{filter:brightness(1.08)}
 .btn.ghost{background:transparent;border-color:transparent}
 .btn.sm{padding:4px 9px;font-size:12px}
 .btn.on{background:var(--teal-soft);border-color:var(--teal);color:var(--teal)}
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
 .seg button{white-space:nowrap;border:none;background:var(--panel2);padding:6px 11px;font-size:12px;font-weight:600;color:var(--ink2)}
-.seg button.on{background:var(--teal);color:#05201c}
+.seg button.on{background:var(--teal);color:var(--on-teal)}
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px}
 .tabs button{border:none;background:none;padding:9px 14px;color:var(--muted);font-weight:600;border-bottom:2px solid transparent;font-size:13px}
 .tabs button.on{color:var(--ink);border-color:var(--teal)}
@@ -79,7 +79,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
 th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
 tr:last-child td{border-bottom:none}
-.bar{height:8px;border-radius:99px;background:var(--panel3);overflow:hidden}
+.bar{height:8px;border-radius:99px;background:var(--track);overflow:hidden}
 .bar i{display:block;height:100%;border-radius:99px;background:var(--teal)}
 .meter{display:grid;grid-template-columns:86px 1fr 34px;gap:8px;align-items:center;font-size:12px;margin:4px 0}
 .list{display:flex;flex-direction:column;gap:8px}
@@ -129,7 +129,7 @@ svg text{fill:var(--muted);font-family:Inter,sans-serif}
 @keyframes fadein{from{opacity:0;transform:translateY(-4px)}}
 .timeline{grid-column:1/3;border-top:1px solid var(--line);background:var(--bg2);padding:10px 16px 12px}
 .weeks{display:grid;grid-template-columns:repeat(52,1fr);gap:2px;align-items:end;height:46px;margin-top:6px}
-.wk{background:var(--panel3);border-radius:2px;cursor:pointer;position:relative;min-height:4px;transition:background .2s}
+.wk{background:var(--track);border-radius:2px;cursor:pointer;position:relative;min-height:4px;transition:background .2s}
 .wk:hover{outline:1px solid var(--teal)}
 .wk.cur{outline:2px solid var(--ink)}
 .wmarks{display:grid;grid-template-columns:repeat(52,1fr);gap:2px;font-size:10px;color:var(--muted);height:16px;margin-top:3px}
@@ -150,10 +150,10 @@ svg text{fill:var(--muted);font-family:Inter,sans-serif}
 .slotlist .item{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;cursor:pointer}
 .slotlist .item.sel{border-color:var(--teal);background:var(--teal-soft)}
 .flight{display:grid;grid-template-columns:repeat(52,1fr);gap:2px}
-.flight div{height:18px;border-radius:2px;background:var(--panel3);cursor:pointer}
+.flight div{height:18px;border-radius:2px;background:var(--track);cursor:pointer}
 .flight div.on{background:var(--teal)}
 .msg{max-width:78%;padding:9px 12px;border-radius:12px;font-size:13px}
-.msg.me{align-self:flex-end;background:var(--teal);color:#05201c}
+.msg.me{align-self:flex-end;background:var(--teal);color:var(--on-teal)}
 .msg.ai{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
 .chat{display:flex;flex-direction:column;gap:10px;height:380px;overflow:auto;padding-right:4px}
 .heat td{text-align:center;font-weight:600;font-size:12px;border-bottom:1px solid var(--bg)}
@@ -176,7 +176,7 @@ svg text{fill:var(--muted);font-family:Inter,sans-serif}
 .attrib{position:absolute;right:196px;bottom:14px;font-size:10px;color:var(--muted);background:rgba(10,13,18,.6);padding:2px 6px;border-radius:4px}
 .daybar{grid-column:1/3;border-top:1px solid var(--line);background:var(--bg2);padding:8px 16px 10px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center}
 .days{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;align-items:end;height:38px}
-.days .d{background:var(--panel3);border-radius:2px;cursor:pointer;position:relative;min-height:5px}
+.days .d{background:var(--track);border-radius:2px;cursor:pointer;position:relative;min-height:5px}
 .days .d:hover{outline:1px solid var(--teal)}
 .days .d.cur{background:var(--teal)}
 .days .d.sel{outline:2px solid var(--ink)}
@@ -217,7 +217,7 @@ svg text{fill:var(--muted);font-family:Inter,sans-serif}
 .privbox{border:1px dashed rgba(192,132,252,.5);background:var(--private-soft);border-radius:10px;padding:9px 11px;font-size:12px}
 .belief{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2)}
 .stagebar{display:flex;gap:3px;margin:6px 0}
-.stagebar span{flex:1;height:5px;border-radius:3px;background:var(--panel3)}
+.stagebar span{flex:1;height:5px;border-radius:3px;background:var(--track)}
 .stagebar span.on{background:var(--teal)}
 /* ---------- studio ---------- */
 .pcard{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:16px;cursor:pointer;position:relative;overflow:hidden}
@@ -227,7 +227,7 @@ svg text{fill:var(--muted);font-family:Inter,sans-serif}
 .steps button{flex:1;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);padding:10px 12px;border-radius:10px;font-weight:600;font-size:13px;color:var(--ink2)}
 .steps button .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--panel3);font-size:11px;color:var(--muted)}
 .steps button.on{border-color:var(--teal);background:var(--teal-soft);color:var(--ink)}
-.steps button.on .n,.steps button.done .n{background:var(--teal);color:#05201c}
+.steps button.on .n,.steps button.done .n{background:var(--teal);color:var(--on-teal)}
 .asset{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2)}
 .asset .ph{height:118px;display:flex;flex-direction:column;justify-content:flex-end;padding:10px;color:#fff;position:relative}
 .asset .ph b{font-size:14px;line-height:1.15;text-shadow:0 1px 6px rgba(0,0,0,.5)}
@@ -237,7 +237,7 @@ svg text{fill:var(--muted);font-family:Inter,sans-serif}
 .facing{width:24px;height:24px;border-radius:6px;background:var(--panel3);display:grid;place-items:center;font-size:13px}
 /* ---------- insights ---------- */
 .answer{border:1px solid var(--line2);border-radius:12px;background:var(--panel);padding:14px 16px}
-.qbubble{align-self:flex-end;max-width:70%;background:var(--teal);color:#05201c;padding:9px 13px;border-radius:12px;font-weight:500}
+.qbubble{align-self:flex-end;max-width:70%;background:var(--teal);color:var(--on-teal);padding:9px 13px;border-radius:12px;font-weight:500}
 .toolstep{font-size:11.5px;color:var(--muted);display:flex;gap:6px;align-items:center}
 .toolstep code{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ink2);background:var(--panel2);padding:1px 6px;border-radius:4px}
 .sqlbox{font-family:"JetBrains Mono",monospace;font-size:11px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre;overflow:auto;color:var(--ink2)}

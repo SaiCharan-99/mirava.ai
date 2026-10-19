@@ -14,7 +14,7 @@ VITE := node node_modules/vite/bin/vite.js
 # local dev: fakes + fast clock (overrides .env)
 DEVENV := WORLD_SECONDS_PER_SIM_DAY=120 LLM_BACKEND=fake DECISION_BACKEND=fake BQ_BACKEND=duckdb
 
-.PHONY: help setup dev api web emulator test lint types map fetch-osm genesis engine llm-smoke seed-demo restore-demo save-demo eval visual fixtures deploy
+.PHONY: help setup dev api web emulator test lint types map fetch-osm genesis engine llm-smoke seed-demo restore-demo save-demo eval visual contrast fixtures deploy
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
@@ -90,6 +90,9 @@ fixtures: ## regenerate web/src/visual-fixtures/mockup-fixtures.json from the mo
 
 visual: ## capture app (must run on :5173) + compare; PHASE=1 limits screens
 	cd $(VISUAL) && node capture.mjs --target app $(if $(PHASE),--phase $(PHASE),) && node compare.mjs $(if $(PHASE),--phase $(PHASE),)
+
+contrast: ## WCAG AA text-contrast check of every screen in Dark + Light (app must run on :5173)
+	cd $(VISUAL) && node contrast.mjs
 
 deploy: ## Cloud Build: api → Cloud Run, web → Firebase Hosting (needs gcloud auth)
 	gcloud builds submit --config infra/cloudbuild.yaml --region $${GCP_REGION:-asia-south1} \
