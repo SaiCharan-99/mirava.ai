@@ -88,7 +88,7 @@ export function Room3D(p: Props) {
           <mesh position={[t.x, 0.72, t.z]} castShadow receiveShadow><cylinderGeometry args={[TABLE_R, TABLE_R, 0.08, 36]} /><meshStandardMaterial color="#8a6340" roughness={0.5} /></mesh>
           <mesh position={[t.x, 0.36, t.z]}><cylinderGeometry args={[0.12, 0.2, 0.72, 12]} /><meshStandardMaterial color="#5b4129" /></mesh>
           <mesh position={[t.moderator.x, 0.62, t.moderator.z]}><capsuleGeometry args={[0.2, 0.5, 4, 10]} /><meshStandardMaterial color={p.st.speaker[t.table_id] === "moderator" ? "#2dd4bf" : "#94a3b8"} /></mesh>
-          <Html position={[t.x, 0.8, t.z]} center distanceFactor={9}><div style={{ color: "#f5e6d3", fontWeight: 700, fontSize: 12, pointerEvents: "none" }}>{t.table_id}</div></Html>
+          <Html position={[t.x, 0.8, t.z]} center distanceFactor={9}><div style={{ color: "#f5e6d3", background: "rgba(23,18,13,.75)", padding: "0 5px", borderRadius: 4, fontWeight: 700, fontSize: 12, pointerEvents: "none" }}>{t.table_id}</div></Html>
           <QuestionCard frozen={p.frozen} from={[t.moderator.x, t.moderator.z]} to={(() => { const k = p.st.cardSeat[t.table_id]; const s = L.seats.filter((x) => x.table === t.table_id)[k]; return s ? [s.x * 0.62 + t.x * 0.38, s.z * 0.62 + t.z * 0.38] : null; })()} />
         </group>
       ))}
@@ -96,7 +96,7 @@ export function Room3D(p: Props) {
       {L.seats.map((s) => (
         <Html key={s.agent} position={[s.x, 1.5, s.z]} center distanceFactor={9} zIndexRange={[10, 0]}>
           <div style={{ pointerEvents: "none", textAlign: "center", whiteSpace: "nowrap" }}>
-            <div style={{ fontSize: 10, color: p.selected === s.agent ? "#fff" : "#e2e8f0", fontWeight: speaking.has(s.agent) ? 700 : 500, textShadow: "0 1px 2px #000" }}>
+            <div style={{ fontSize: 10, color: p.selected === s.agent ? "#fff" : "#e2e8f0", fontWeight: speaking.has(s.agent) ? 700 : 500, textShadow: "0 1px 2px #000", background: "rgba(23,18,13,.75)", padding: "0 4px", borderRadius: 4 }}>
               {p.agents[s.agent]?.name.split(" ")[0]}{ballot ? (p.st.ballots.has(s.agent) ? " ✓" : " ⧗") : ""}
             </div>
             {ballot && !p.st.ballots.has(s.agent) && <div title="tablet" style={{ margin: "2px auto 0", width: 14, height: 10, borderRadius: 2, background: "#0f172a", border: "1.5px solid #2dd4bf" }} />}
@@ -108,7 +108,7 @@ export function Room3D(p: Props) {
         const pos: [number, number, number] = seat ? [seat.x, 2.05 + (arr.length - 1 - i) * 0.05, seat.z] : [t.moderator.x, 2.05, t.moderator.z];
         return (
           <Html key={b.message_id} position={pos} center distanceFactor={9} zIndexRange={[20, 10]}>
-            <div className="survey-bubble" style={{ opacity: 0.5 + 0.5 * ((i + 1) / arr.length), width: 190, whiteSpace: "normal", background: "#f8fafc", color: "#0f172a", border: `1.5px solid ${i === arr.length - 1 ? "#2dd4bf" : "#cbd5e1"}`, borderRadius: 10, padding: "5px 8px", fontSize: 11, lineHeight: 1.3, boxShadow: "0 3px 10px rgba(0,0,0,.35)" }}>
+            <div className="survey-bubble" style={{ opacity: 0.8 + 0.2 * ((i + 1) / arr.length), transform: "translateY(-50%)", width: 190, whiteSpace: "normal", background: "#f8fafc", color: "#0f172a", border: `1.5px solid ${i === arr.length - 1 ? "#2dd4bf" : "#cbd5e1"}`, borderRadius: 10, padding: "5px 8px", fontSize: 11, lineHeight: 1.3, boxShadow: "0 3px 10px rgba(0,0,0,.35)" }}>
               {b.text.length > 120 ? b.text.slice(0, 118) + "…" : b.text}
             </div>
           </Html>

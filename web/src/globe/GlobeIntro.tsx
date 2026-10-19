@@ -94,16 +94,16 @@ export function GlobeIntro() {
           to each other and remember. Launch your product into their world and see what they notice, think, say — and
           why they would buy.</p>
         <div className="gstats">
-          <div><b>Day {dayOf(t)}</b><span>of world time</span></div>
-          <div><b>{fmtInt(stats.conversations_total)}</b><span>conversations so far</span></div>
-          <div><b>{stats.products_live}</b><span>products live</span></div>
+          <div><b>{stats.agents ? `Day ${dayOf(t)}` : "—"}</b><span>of world time</span></div>
+          <div><b>{stats.agents ? fmtInt(stats.conversations_total) : "—"}</b><span>conversations so far</span></div>
+          <div><b>{stats.agents ? stats.products_live : "—"}</b><span>products live</span></div>
         </div>
         <div className="row" style={{ gap: 10 }}>
           <button className="btn primary" data-testid="globe-enter" style={{ padding: "11px 20px", fontSize: 14 }}
             onClick={() => enter(false)}>Enter world →</button>
           <button className="btn ghost" data-testid="globe-skip" onClick={() => enter(true)}>Skip intro</button>
         </div>
-        <p className="xs muted" style={{ marginTop: 18 }}>1 sim day = 1 real hour · runs on Google Cloud · all data simulated</p>
+        <p className="xs muted" style={{ marginTop: 18 }}>1 sim day = 1 real hour · runs on Google Cloud</p>
       </div>
     </div>
   );

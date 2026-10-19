@@ -52,7 +52,7 @@ export function LineChart({ series, w = 720, h = 230, labels = [], ymax = 100, e
         {events.map((e, k) => (
           <g key={k}>
             <line x1={x(e.i)} x2={x(e.i)} y1={pt} y2={pt + ih} stroke={e.c || "var(--amber)"} strokeDasharray="3 3" opacity={0.8} />
-            <text x={x(e.i) + 4} y={pt + 10} fontSize={10} style={{ fill: e.c || "var(--amber)" }}>{e.t}</text>
+            <text x={x(e.i) + 4} y={pt + 10} fontSize={10} style={{ fill: e.c ? `color-mix(in srgb,${e.c} var(--legible-mix),var(--ink))` : "var(--amber)" }}>{e.t}</text>
           </g>
         ))}
         {series.map((se, k) => {
@@ -98,7 +98,7 @@ export function HeatTable({ rows, cols, vals, unit = "%", max = 60, titles }:
           <tr key={r}>
             <td style={{ textAlign: "left", fontWeight: 500 }}>{r}</td>
             {(vals[i] || []).map((v, j) => (
-              <td key={j} title={titles?.[i]?.[j]} style={{ background: `color-mix(in srgb,var(--teal) ${Math.min(85, (v / max) * 85)}%,var(--panel2))`, color: v > max * 0.55 ? "#05201c" : "var(--ink)" }}>{v}{unit}</td>
+              <td key={j} title={titles?.[i]?.[j]} style={{ background: `color-mix(in srgb,var(--teal) ${Math.min(45, (v / max) * 45)}%,var(--panel2))`, color: "var(--ink)" }}>{v}{unit}</td>
             ))}
           </tr>
         ))}

@@ -3,7 +3,7 @@ import { useWorld, type ProfileTab } from "../state/world";
 import { useWatch } from "../state/watch";
 import { useAgentView } from "./agentHooks";
 import { ConversationsTab, MemoryTab, ThoughtsTab } from "./ProfileMind";
-import { STAGE_COL, initials, type AgentView } from "../lib/agentView";
+import { STAGE_COL, initials, inkOn, type AgentView } from "../lib/agentView";
 import { fmtINR } from "../lib/time";
 import { worldRef } from "../world/ref";
 import type { FixtureProduct } from "../visual-fixtures/types";
@@ -21,7 +21,7 @@ export function Meter({ label, v, col }: { label: string; v: number; col: string
 export function StageChip({ b }: { b?: { stage: string; att: number } | null }) {
   if (!b || b.stage === "unaware") return <span className="muted">unaware</span>;
   return (
-    <><span style={{ color: STAGE_COL[b.stage] || "var(--ink2)", fontWeight: 600 }}>{b.stage}</span>{" "}
+    <><span style={{ color: STAGE_COL[b.stage] ? `color-mix(in srgb,${STAGE_COL[b.stage]} var(--legible-mix),var(--ink))` : "var(--ink2)", fontWeight: 600 }}>{b.stage}</span>{" "}
       <span className="mono xs muted">{b.att >= 0 ? "+" : ""}{b.att.toFixed(2)}</span></>
   );
 }
@@ -47,7 +47,7 @@ export function HoverCard() {
   return (
     <div ref={ref} className={`hovercard ${show ? "" : "hidden"}`} data-testid="agent-hovercard" style={{ left, top }}>
       {a && <>
-        <div className="hd"><div className="avatar" style={{ background: a.shirt }}>{initials(a.name)}</div>
+        <div className="hd"><div className="avatar" style={{ background: a.shirt, color: inkOn(a.shirt) }}>{initials(a.name)}</div>
           <div><b style={{ fontSize: 13 }}>{a.name}, {a.age}</b><div className="muted">{a.job}{a.work ? ` · ${a.work}` : ""}</div></div></div>
         <div className="row" style={{ gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
           <span className="chip" style={{ padding: "1px 8px" }}>● {a.act}</span>
@@ -103,7 +103,7 @@ function Relations({ a, open }: { a: AgentView; open: (id: number) => void }) {
         {a.friends.slice(0, 14).map((f) => (
           <div className="item row between" style={{ cursor: "pointer" }} key={f.id} onClick={() => open(f.id)}>
             <span className="row" style={{ gap: 8 }}>
-              <span className="avatar" style={{ background: f.shirt, width: 24, height: 24, fontSize: 10 }}>{initials(f.name)}</span>
+              <span className="avatar" style={{ background: f.shirt, color: inkOn(f.shirt), width: 24, height: 24, fontSize: 10 }}>{initials(f.name)}</span>
               <span><b>{f.name}</b><div className="xs muted">{f.rel} · {f.job}</div></span></span>
             <span style={{ width: 90 }}><div className="meter"><div className="bar"><i style={{ width: `${Math.round(f.c * 100)}%`, background: "var(--violet)" }} /></div>
               <span className="mono xs">{Math.round(f.c * 100)}</span></div></span>
@@ -159,7 +159,7 @@ export function ProfileDrawer() {
       {profile && a && <>
         <div className="dh"><div className="row between">
           <div className="row" style={{ gap: 12 }}>
-            <div className="avatar" style={{ background: a.shirt, width: 42, height: 42, fontSize: 15 }}>{initials(a.name)}</div>
+            <div className="avatar" style={{ background: a.shirt, color: inkOn(a.shirt), width: 42, height: 42, fontSize: 15 }}>{initials(a.name)}</div>
             <div><h2 style={{ margin: 0 }}>{a.name}, {a.age}</h2>
               <div className="small muted">{a.job}{a.special && <> · <span className="chip violet" style={{ padding: "0 7px" }}>{a.special}</span></>}</div></div>
           </div>

@@ -299,7 +299,7 @@ function Details({ kg }: { kg: KGEngine }) {
         <span className="xs muted" style={{ textTransform: "uppercase", letterSpacing: ".06em" }}>{typeLabel(kg, n)}</span></div>
       <h2 style={{ margin: "6px 0 4px" }}>{n.label}</h2><p className="small muted" style={{ margin: "0 0 10px" }}>{n.desc}</p>
       {n.src && <div className="item small">📄 Source: <span className="mono">{n.src}</span></div>}
-      <div className="item small" style={{ marginTop: 8 }}>💬 Mentions in thoughts and chats are counted after launch <span className="sim-badge" style={{ marginLeft: 4 }}>SIM</span></div>
+      <div className="item small" style={{ marginTop: 8 }}>💬 Mentions in thoughts and chats are counted after launch</div>
       <h3 style={{ marginTop: 14 }}>Linked ({n.nb.size})</h3>
       <div className="list small">
         {links.map((e, i) => {

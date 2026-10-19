@@ -135,3 +135,13 @@ export function fromDetail(d: AgentDetail, watch: boolean): AgentView {
     history: ((ph.history ?? []) as Record<string, unknown>[]).map((h) => String(h.label ?? h.type ?? JSON.stringify(h))),
   };
 }
+
+/** Readable text colour (near-black or white) for a solid `#rrggbb` background. */
+export function inkOn(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#0b0f15";
+  const n = parseInt(m[1], 16);
+  const ch = [n >> 16, (n >> 8) & 255, n & 255].map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+  const L = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  return (L + 0.05) / 0.0546 >= 1.05 / (L + 0.05) ? "#0b0f15" : "#ffffff";
+}

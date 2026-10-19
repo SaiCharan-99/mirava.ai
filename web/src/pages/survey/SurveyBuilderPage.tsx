@@ -71,7 +71,7 @@ export function SurveyBuilderPage() {
   return (
     <div className="page" data-testid="survey-builder">
       <PageTitle title="Survey Room" sub="Run a real-world-style focus group or survey with the agents. They decide whether to come, walk to the Research Lounge, discuss, then answer privately."
-        right={<><button className="btn" onClick={() => nav(withMode("/insights/polls"))}>← Polls</button><span className="sim-badge">SIMULATED</span></>} />
+        right={<><button className="btn" onClick={() => nav(withMode("/insights/polls"))}>← Polls</button></>} />
       <div className="grid g21">
         <div className="grid" style={{ alignContent: "start" }}>
           <div className="card"><div className="filters">

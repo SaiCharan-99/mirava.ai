@@ -77,9 +77,11 @@ const CURIOUS_PLUS = ["curious", "researching", "inquiring", "deciding", "purcha
 
 function Stats() {
   const s = useWorld((x) => x.stats);
-  const rows: [string, string | number][] = [["Agents", fmtInt(s.agents)], ["Households", fmtInt(s.households)],
-    ["Relationships", fmtInt(s.relationships)], ["Conversations today", fmtInt(s.conversations_today)],
-    ["Thoughts today", fmtInt(s.thoughts_today)], ["Products live", s.products_live]];
+  // no stats message from world-engine yet: show a placeholder instead of misleading zeros
+  const v = (n: number): string => (s.agents ? fmtInt(n) : "—");
+  const rows: [string, string][] = [["Agents", v(s.agents)], ["Households", v(s.households)],
+    ["Relationships", v(s.relationships)], ["Conversations today", v(s.conversations_today)],
+    ["Thoughts today", v(s.thoughts_today)], ["Products live", v(s.products_live)]];
   return (
     <div className="wstats" data-testid="world-stats">
       {rows.map(([l, v]) => <div className="stat glass" key={l}><div className="v">{v}</div><div className="l">{l}</div></div>)}
@@ -247,7 +249,7 @@ function DayBar() {
       </div>
       <div className="row" style={{ gap: 8 }}><span className="legend">
         <span><i style={{ background: "var(--teal)" }} />today</span>
-        <span><i style={{ background: "var(--panel3)" }} />past day · click for highlights</span></span></div>
+        <span><i style={{ background: "var(--track)" }} />past day · click for highlights</span></span></div>
     </div>
   );
 }

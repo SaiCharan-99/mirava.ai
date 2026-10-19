@@ -238,7 +238,7 @@ export function SurveyRoomPage() {
   return (
     <div className="page" data-testid="survey-room">
       <PageTitle title={doc.title} sub={`${doc.mode === "focus_group" ? "Focus group" : "Survey"} · ${doc.venue_name ?? "Research Lounge"} · wave ${doc.wave ?? 1} · ${doc.start_label ?? ""}`}
-        right={<><button className="btn" onClick={() => nav(withMode("/insights/polls"))}>← Polls</button><span className="chip">{recruiting ? doc.status : st.phase}</span><span className="sim-badge">SIMULATED</span></>} />
+        right={<><button className="btn" onClick={() => nav(withMode("/insights/polls"))}>← Polls</button><span className="chip">{recruiting ? doc.status : st.phase}</span></>} />
       {recruiting ? (
         <div className="grid g21">
           <div className="card"><div className="row between"><h3 style={{ margin: 0 }}>Invitations and RSVPs</h3><span className="xs muted">reasons are each agent's <span className="privtag">PRIVATE</span> thought</span></div>

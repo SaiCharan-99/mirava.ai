@@ -337,7 +337,7 @@ function PollsTab({ names }: { names: Names }) {
         <div className="item small" style={{ marginTop: 10 }}>Estimated cost <b>{view ? view.estimate : est ? `$${est.estimate_usd.toFixed(2)}` : "…"}</b> from the interactive budget · ~{est ? est.seconds_est : 60} s · answers come from each agent's own memory</div>
         <button className="btn primary" style={{ marginTop: 10 }} onClick={() => void runPoll()}>Run poll</button>
         {err && <div className="xs" style={{ color: "var(--red)", marginTop: 6 }}>{err}</div>}</div>
-      <div className="card"><div className="row between"><h3 style={{ margin: 0 }}>{view ? view.title : doc ? `Result · ${doc.status === "done" ? `${(doc.n || 0).toLocaleString("en-IN")} agents${doc.seconds ? ` · ${doc.seconds} s · $${(doc.cost_usd ?? 0).toFixed(3)}` : ""}` : doc.status}` : "No poll yet"}</h3><span className="sim-badge">SIMULATED</span></div>
+      <div className="card"><div className="row between"><h3 style={{ margin: 0 }}>{view ? view.title : doc ? `Result · ${doc.status === "done" ? `${(doc.n || 0).toLocaleString("en-IN")} agents${doc.seconds ? ` · ${doc.seconds} s · $${(doc.cost_usd ?? 0).toFixed(3)}` : ""}` : doc.status}` : "No poll yet"}</h3></div>
         {doc && !view && <div className="xs muted" style={{ marginTop: 4 }}>{doc.question}</div>}
         <div style={{ marginTop: 10 }}><HBars rows={bars} max={view ? view.max : Math.max(10, ...bars.map((b) => b[1]))} /></div>
         {heat && <><h3 style={{ marginTop: 14 }}>By phone age</h3><HeatTable rows={heat.rows} cols={heat.cols} vals={heat.vals} max={80} /></>}
@@ -423,7 +423,7 @@ export function InsightsPage() {
   return (
     <div className="page">
       <PageTitle title="Insights" sub="Ask anything about what the world has seen, thought, said and bought. Answers come only from logged data."
-        right={<>{tab === "polls" && <span style={{ position: "relative", width: 0, height: 0, marginRight: -9 }}><span style={{ position: "absolute", right: "-180px", bottom: 22 }}><SurveyEntry /></span></span>}<span className="chip">{chip}</span><span className="sim-badge">SIMULATED</span></>} />
+        right={<>{tab === "polls" && <span style={{ position: "relative", width: 0, height: 0, marginRight: -9 }}><span style={{ position: "absolute", right: "-180px", bottom: 22 }}><SurveyEntry /></span></span>}<span className="chip">{chip}</span></>} />
       <div className="tabs" data-testid="insights-tabs">{ITABS.map(([k, l]) => (
         <button key={k} data-testid={`insights-tab-${k}`} className={tab === k ? "on" : ""} onClick={() => nav(withMode(`/insights/${k}`))}>{l}</button>
       ))}</div>

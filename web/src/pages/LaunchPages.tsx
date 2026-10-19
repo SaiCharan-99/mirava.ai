@@ -201,7 +201,7 @@ function Poster({ a }: { a: Asset }) {
   const news = a[0] === "newspaper";
   return (
     <div className="asset">
-      <div className="ph" style={{ background: a[4] }}>
+      <div className="ph" style={{ background: news ? a[4] : `linear-gradient(180deg,transparent 45%,rgba(0,0,0,.45)),${a[4]}` }}>
         {news && <span style={{ position: "absolute", top: 8, left: 10, color: "#111", font: "700 10px Georgia" }}>THE BENGALURU DAILY</span>}
         <span className="tag" style={{ position: "absolute", top: 8, right: 8, fontSize: 10, padding: "2px 7px", borderRadius: 99, background: "rgba(0,0,0,.45)" }}>{a[0].replace("_", " ")}</span>
         <b style={news ? { color: "#111", textShadow: "none" } : undefined}>{a[2]}</b>

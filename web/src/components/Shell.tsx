@@ -26,7 +26,7 @@ function useTheme(): [string, () => void] {
   return [theme, () => setTheme((t) => (t === "light" ? "dark" : "light"))];
 }
 
-/** Top bar (56 px): logo, crumbs, LIVE + SIMULATED DATA pills, world clock, budget meter, theme toggle. */
+/** Top bar (56 px): logo, crumbs, LIVE pill, world clock, budget meter, theme toggle. */
 export function Header() {
   const t = useWorld((s) => s.t);
   const agents = useWorld((s) => s.stats.agents);
