@@ -6,8 +6,8 @@ import { isVisualTest, withMode } from "../../lib/visualTest";
 import { useWorld } from "../../state/world";
 import { worldRef } from "../../world/ref";
 import {
-  explainWaves, getAgentDetail, getSurvey, getTranscript, mergeItems, paceMs, phaseIndex, rerunSurvey, launchSurvey, roomState,
-  subscribeSurvey, type Item, type QResult, type SurveyAgent, type SurveyDoc, type TableDef,
+  CHANNELS, explainWaves, funnelRows, getAgentDetail, getSurvey, getTranscript, mergeItems, paceMs, phaseIndex, rerunSurvey, launchSurvey,
+  roomState, subscribeSurvey, type Item, type Outreach, type QResult, type SurveyAgent, type SurveyDoc, type TableDef,
 } from "../../lib/survey";
 import { Room2D } from "./Room2D";
 import { hasWebGL, reducedMotion } from "./roomLayout";
@@ -74,6 +74,36 @@ function Results({ doc, results, items, tab }: { doc: SurveyDoc; results: QResul
       })}
       {Object.entries(doc.summaries ?? {}).map(([tid, s]) => <div key={tid} className="item small"><b>Moderator summary · {tid}</b><div className="xs" style={{ marginTop: 4 }}>{s}</div></div>)}
       <div className="xs muted">Participation effect: taking part becomes part of each agent's memory and may shift later answers.{doc.discussion_skipped ? " Budget ran out: some discussion turns were skipped; all ballots completed." : ""}</div>
+    </div>
+  );
+}
+
+const CHANNEL_LABEL: Record<string, string> = Object.fromEntries(CHANNELS.map((c) => [c.key, c.label.toLowerCase()]));
+
+/** How the word got out and who is coming: heard → said yes → on the way → checked in, with the channels that did the work. */
+function OutreachCard({ o, incentive }: { o?: Outreach; incentive?: SurveyDoc["incentive"] }) {
+  if (!o) return null;
+  const rows = funnelRows(o);
+  const top = Math.max(1, rows[0]?.n ?? 1);
+  const by = Object.entries(o.seen_by_channel).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="card" data-testid="survey-outreach">
+      <h3>Who heard, who is coming</h3>
+      <div className="list small" style={{ gap: 6 }}>
+        {rows.map((r) => (
+          <div key={r.label}><div className="row between"><span>{r.label}</span><b className="mono">{r.n}</b></div>
+            <div style={{ height: 6, borderRadius: 3, background: "var(--line)", marginTop: 2 }}><div style={{ width: `${Math.round((100 * r.n) / top)}%`, height: 6, borderRadius: 3, background: "var(--teal, #2dd4bf)" }} /></div></div>
+        ))}
+      </div>
+      <div className="xs muted" style={{ marginTop: 8 }}>
+        {by.length ? by.map(([k, n]) => `${n} via ${CHANNEL_LABEL[k] ?? k.replace("_", " ")}${o.accepted_by_channel[k] ? ` (${o.accepted_by_channel[k]} yes)` : ""}`).join(" · ") : "Nobody has seen it yet — messages are read at people's next phone session."}
+      </div>
+      <div className="xs muted" style={{ marginTop: 4 }}>
+        {o.declined} said no{o.waitlist ? ` · ${o.waitlist} on the waiting list` : ""}{o.turned_away ? ` · ${o.turned_away} arrived too late` : ""}{o.wave > 1 ? ` · reminder sent (wave ${o.wave})` : ""}{o.pending ? ` · ${o.pending} still to read it` : ""}
+      </div>
+      {incentive && (incentive.cash_inr > 0 || incentive.goodies.length > 0) && (
+        <div className="xs" style={{ marginTop: 6 }}>Reward: {[incentive.cash_inr ? `₹${incentive.cash_inr}` : "", ...incentive.goodies.map((g) => g.label)].filter(Boolean).join(" + ")}</div>
+      )}
     </div>
   );
 }
@@ -232,7 +262,7 @@ export function SurveyRoomPage() {
   const recruiting = frozenPhase === "recruiting" || (!isVisualTest && ["recruiting", "gathering", "draft"].includes(doc.status));
   const curTable = selTable ?? tables[0]?.table_id ?? "";
   const transcript = st.transcript[curTable] ?? [];
-  const parts = isVisualTest && fx ? fx.rsvp.map((r) => ({ agent_id: r.agent_id, rsvp: r.rsvp, rsvp_reason: r.reason, arrived_t: r.arrived ? 1 : null })) : doc.participants ?? [];
+  const parts = isVisualTest && fx ? fx.rsvp.map((r) => ({ agent_id: r.agent_id, rsvp: r.rsvp, rsvp_reason: r.reason, arrived_t: r.arrived ? 1 : null, channel: undefined as string | undefined })) : doc.participants ?? [];
   const arrived = parts.filter((p) => p.arrived_t).length, expected = parts.filter((p) => p.rsvp === "accepted" || p.rsvp === "attended").length;
   const qtext = doc.questions[Math.max(0, st.qIndex)]?.text ?? "";
   return (
@@ -243,12 +273,13 @@ export function SurveyRoomPage() {
         <div className="grid g21">
           <div className="card"><div className="row between"><h3 style={{ margin: 0 }}>Invitations and RSVPs</h3><span className="xs muted">reasons are each agent's <span className="privtag">PRIVATE</span> thought</span></div>
             <div className="list small" style={{ marginTop: 10, maxHeight: 560, overflow: "auto" }}>{parts.slice(0, 80).map((p) => (
-              <div key={p.agent_id} className="item row between"><span><b>{agents[p.agent_id]?.name ?? `#${p.agent_id}`}</b> <span className="xs muted">· {p.rsvp}</span>{p.rsvp_reason ? <div className="xs" style={{ color: "var(--private)" }}>private: {p.rsvp_reason}</div> : null}</span><span className="xs">{p.arrived_t ? "✓ arrived" : p.rsvp === "accepted" ? "on the way 📋" : ""}</span></div>
-            ))}{!parts.length && <div className="xs muted">Invitations sent — waiting for RSVPs…</div>}</div></div>
+              <div key={p.agent_id} className="item row between"><span><b>{agents[p.agent_id]?.name ?? `#${p.agent_id}`}</b> <span className="xs muted">· {p.rsvp}{p.channel ? ` · via ${CHANNEL_LABEL[p.channel] ?? p.channel}` : ""}</span>{p.rsvp_reason ? <div className="xs" style={{ color: "var(--private)" }}>private: {p.rsvp_reason}</div> : null}</span><span className="xs">{p.arrived_t ? "✓ arrived" : p.rsvp === "accepted" ? "on the way 📋" : ""}</span></div>
+            ))}{!parts.length && <div className="xs muted">Nobody has heard yet — messages are read at each person's next phone session.</div>}</div></div>
           <div className="grid" style={{ alignContent: "start" }}>
             <div className="card"><h3>Arrivals</h3><div style={{ fontSize: 34, fontWeight: 700 }}>{arrived}<span className="muted" style={{ fontSize: 18 }}> / {expected}</span></div>
               <div className="xs muted">The session starts when 90% have arrived or 20 sim min after the start time.</div>
               <button className="btn primary" style={{ marginTop: 10 }} onClick={() => { nav(withMode("/world")); const pin = useWorld.getState().surveyPin; setTimeout(() => pin && worldRef.scene?.focusM(pin.x, pin.y, 3), 400); }}>Watch them arrive</button></div>
+            <OutreachCard o={doc.outreach} incentive={doc.incentive} />
             <div className="card small"><b>Eligible</b> {doc.eligible ?? "—"} · <b>expected</b> {doc.expected_attendance ?? "—"} · <b>estimate</b> ${Number(doc.estimate_usd ?? 0).toFixed(2)}</div>
           </div>
         </div>
