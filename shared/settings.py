@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     decision_batch_size: int = 32
 
     daily_cap_usd: float = 15.0
-    interactive_cap_usd: float = 5.0
+    interactive_cap_usd: float = 10.0
 
     world_agents: int = 1000
     world_seed: int = 4271

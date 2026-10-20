@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -10,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from media.screen import wrap
 from mind.context import build
-from mind.decision import DecisionAdapter, DecisionRequest
+from mind.decision import DecisionAdapter
 from mind.memory import EventHook, MemoryStore
 from shared.llm import LLMClient
 from shared.models import MODEL_LITE
@@ -20,7 +21,7 @@ from shared.store import DocStore
 from social.conversation import Outcome
 
 PROMPTS = Path(__file__).resolve().parents[1] / "shared" / "prompts"
-MAX_PER_PERSON = 10
+MAX_PER_PERSON = 6
 TOPICS = ("battery", "camera", "price", "display", "performance", "warranty", "general")
 
 
@@ -29,10 +30,11 @@ def _p(name: str) -> str:
 
 
 class Candidate(BaseModel):
-    """One thing the customer could do next."""
+    """One thing the customer could do next, with the line they would say if they chose it."""
 
     text: str
     kind: Literal["ask", "share", "leave", "buy", "think_about_it"]
+    say: str = ""
 
 
 class CustomerThink(BaseModel):
@@ -43,24 +45,18 @@ class CustomerThink(BaseModel):
     withhold: list[str] = Field(default_factory=list, max_length=3)
 
 
-class Utterance(BaseModel):
-    """One spoken line."""
-
-    text: str
-
-
 class ToolCall(BaseModel):
-    """A salesperson tool call."""
+    """A salesperson tool use (recorded in the private note; results are pre-fetched into one briefing)."""
 
     tool: Literal["product_facts", "stock", "offers"]
     topic: Literal["battery", "camera", "price", "display", "performance", "warranty", "general"] = "general"
 
 
-class SalesPlan(BaseModel):
-    """Salesperson's private note + tools to call."""
+class SalesReply(BaseModel):
+    """Salesperson's private note + the spoken reply (one call per turn)."""
 
     note: str
-    calls: list[ToolCall] = Field(default_factory=list, max_length=3)
+    text: str
 
 
 class InquiryDebrief(BaseModel):
@@ -131,6 +127,40 @@ def product_facts(product: dict[str, Any]) -> dict[str, str]:
             "general": f"{product.get('brand', '')} {product.get('name', '')}: " + "; ".join(feats[:5]) + f"; {price}"}
 
 
+def topics_in(text: str) -> list[str]:
+    """Inquiry topics mentioned in free text (keyword rules); order of TOPICS, general excluded."""
+    low = text.lower()
+    keys = {"battery": ("battery", "mah", "charg"), "camera": ("camera", "photo", "mp", "video", "selfie"),
+            "price": ("price", "cost", "emi", "budget", "expensive", "cheap", "discount", "afford", "₹"),
+            "display": ("display", "screen", "amoled", "hz"), "performance": ("fast", "speed", "gaming", "lag", "chip", "ram"),
+            "warranty": ("warranty", "guarantee", "service")}
+    return [t for t, ks in keys.items() if any(k in low for k in ks)]
+
+
+def briefing(sales: Salesperson, msgs: list[Message]) -> tuple[str, list[ToolCall]]:
+    """Pre-fetched tool results for one salesperson turn: general facts, stock, offers and every topic the customer
+    has SAID out loud so far (never the private agenda)."""
+    spoken = " ".join(m.text for m in msgs if m.speaker != sales.agent_id)
+    topics = topics_in(spoken)[:3]
+    calls = [ToolCall(tool="product_facts", topic="general"), ToolCall(tool="stock"), ToolCall(tool="offers"),
+             *(ToolCall(tool="product_facts", topic=t) for t in topics)]  # type: ignore[arg-type]
+    return "\n".join(sales.call(c) for c in calls), calls
+
+
+def choose_candidate(cands: list[Candidate], turn: int, withhold: list[str], seed: str) -> Candidate:
+    """Local, deterministic choice of the next move (no model call): asks first, wrapping up as the visit goes on,
+    never volunteering something the customer decided to withhold."""
+    base = {"ask": 0.9 if turn < 3 else 0.45, "share": 0.5, "buy": 0.25 + 0.1 * turn,
+            "think_about_it": 0.2 + 0.12 * turn, "leave": 0.1 + 0.12 * turn}
+
+    def score(c: Candidate) -> float:
+        n = int(hashlib.sha256(f"{seed}|{turn}|{c.text}".encode()).hexdigest()[:6], 16) / 0xFFFFFF
+        hidden = any(w and w.lower() in c.text.lower() for w in withhold)
+        return base.get(c.kind, 0.3) * (0.1 if hidden else 1.0) * (0.85 + 0.3 * n)
+
+    return max(cands, key=score)
+
+
 def transcript_text(msgs: list[Message], names: dict[int, str]) -> str:
     """Public transcript lines."""
     return "\n".join(f"{names.get(m.speaker, m.speaker)}: {m.text}" for m in msgs) or "(nothing said yet)"
@@ -150,24 +180,17 @@ async def run_inquiry(sid: str, cust: Customer, sales: Salesperson, t: int, *, s
     agenda = "\n".join(f"- {q}" for q in cust.agenda) or "- is it worth it for me?"
     ended = "left"
     while n_c < MAX_PER_PERSON:
-        # salesperson greets / answers (sees the spoken transcript only)
+        # salesperson greets / answers (sees the spoken transcript only): ONE call with pre-fetched tool results
         if n_s < MAX_PER_PERSON and (not msgs or msgs[-1].speaker == cust.agent_id):
-            tr = transcript_text(msgs, names)
+            tools_text, calls = briefing(sales, msgs)
             fill = {"{name}": sales.name, "{store}": sales.store_name, "{style}": sales.style,
-                    "{product}": sales.product_name, "{transcript}": tr}
-            pt = _p("salesperson_tools")
-            for k, v in fill.items():
-                pt = pt.replace(k, v)
-            plan = await llm.generate(MODEL_LITE, pt, SalesPlan, purpose="salesperson_tools", reasoning="low",
-                                      max_tokens=200, priority_class="P0")
-            out.cost_usd += plan.usage.cost_usd
-            calls = plan.data.calls or [ToolCall(tool="product_facts", topic="general")]
-            results = [sales.call(c) for c in calls]
+                    "{product}": sales.product_name, "{transcript}": transcript_text(msgs, names),
+                    "{tools}": tools_text}
             pr = _p("salesperson_reply")
-            for k, v in {**fill, "{tools}": "\n".join(results)}.items():
+            for k, v in fill.items():
                 pr = pr.replace(k, v)
-            rep = await llm.generate(MODEL_LITE, pr, Utterance, purpose="salesperson_reply", reasoning="low",
-                                     max_tokens=120, priority_class="P0")
+            rep = await llm.generate(MODEL_LITE, pr, SalesReply, purpose="salesperson_reply", reasoning="low",
+                                     max_tokens=180, priority_class="P0")
             out.cost_usd += rep.usage.cost_usd
             m = Message(session_id=sid, seq=seq, speaker=sales.agent_id, listener=cust.agent_id,
                         text=rep.data.text.strip()[:300], t=t)
@@ -176,41 +199,32 @@ async def run_inquiry(sid: str, cust: Customer, sales: Salesperson, t: int, *, s
             out.ev("message", sales.agent_id, {"seq": seq, "speaker": sales.agent_id, "listener": cust.agent_id,
                                                "text": m.text, "conv_kind": "store", "store_id": sales.store_id},
                    other_id=cust.agent_id)
-            out.ev("salesperson_thought", sales.agent_id, {"seq": seq, "note": plan.data.note[:300],
+            out.ev("salesperson_thought", sales.agent_id, {"seq": seq, "note": rep.data.note[:300],
                                                            "tools": [c.model_dump() for c in calls],
                                                            "store_id": sales.store_id})
             seq += 1
             n_s += 1
-        # customer: think (private) → decide → speak
+        # customer: ONE call (think + candidate lines, private) → local choice → speak the chosen line
         tr = transcript_text(msgs, names)
         pt = (_p("store_think").replace("{store}", sales.store_name).replace("{product}", sales.product_name)
-              .replace("{context}", ctx.render()).replace("{agenda}", wrap(agenda, "agenda"))
-              .replace("{transcript}", tr))
+              .replace("{style}", cust.style).replace("{context}", ctx.render())
+              .replace("{agenda}", wrap(agenda, "agenda")).replace("{transcript}", tr))
         th = await llm.generate(MODEL_LITE, pt, CustomerThink, purpose="store_think", reasoning="low",
-                                max_tokens=260, priority_class="P0")
+                                max_tokens=420, priority_class="P0")
         out.cost_usd += th.usage.cost_usd
-        cands = [c for c in th.data.candidates if c.text.strip()] or [Candidate(text="I'll think about it.",
-                                                                                kind="think_about_it")]
+        cands = [c for c in th.data.candidates if c.text.strip()] or [Candidate(
+            text="I'll think about it.", kind="think_about_it", say="Let me think about it and come back.")]
         if n_c >= 2 and not any(c.kind in ("leave", "think_about_it", "buy") for c in cands):
-            cands.append(Candidate(text="I'll think about it and come back.", kind="think_about_it"))
-        opts = [f"{i}:{c.kind}:{c.text}" for i, c in enumerate(cands)]
-        dec = await decider.decide(DecisionRequest(agent_id=cust.agent_id, kind="speak", options=opts, context={
-            "persona": ctx.persona_card, "thought": th.data.thought, "turn": n_c, "withhold": th.data.withhold,
-            "t": t}))
-        chosen = cands[int(dec.choice.split(":", 1)[0])] if dec.choice and dec.choice.split(":", 1)[0].isdigit() \
-            else cands[0]
+            cands.append(Candidate(text="I'll think about it and come back.", kind="think_about_it",
+                                   say="Let me think about it and come back."))
+        chosen = choose_candidate(cands, n_c, th.data.withhold, f"{cust.agent_id}|{t}")
         out.ev("store_thought", cust.agent_id, {"seq": seq, "thought": th.data.thought[:400],
                                                 "candidates": [c.model_dump() for c in cands],
                                                 "decision": {"speak": True, "chosen": chosen.model_dump(),
                                                              "withheld": th.data.withhold},
                                                 "store_id": sales.store_id, "product_id": sales.product_id})
-        ps = (_p("store_speak").replace("{style}", cust.style).replace("{item}", chosen.text)
-              .replace("{opening}", "" if msgs else "Start politely.").replace("{transcript}", tr))
-        ut = await llm.generate(MODEL_LITE, ps, Utterance, purpose="store_speak", reasoning="low", max_tokens=100,
-                                priority_class="P0")
-        out.cost_usd += ut.usage.cost_usd
         m = Message(session_id=sid, seq=seq, speaker=cust.agent_id, listener=sales.agent_id,
-                    text=ut.data.text.strip()[:300], t=t)
+                    text=(chosen.say.strip() or chosen.text.strip())[:300], t=t)
         msgs.append(m)
         out.messages.append(m)
         out.ev("message", cust.agent_id, {"seq": seq, "speaker": cust.agent_id, "listener": sales.agent_id,

@@ -31,7 +31,7 @@ from social.store_inquiry import Customer, Salesperson, product_facts, run_inqui
 
 log = logging.getLogger("engine.commerce")
 INQUIRY_DELAY = 12        # sim minutes the customer stays in the store while the visit is generated
-EST_INQUIRY = 0.012
+EST_INQUIRY = 0.005
 EST_PURCHASE = 0.0004
 WAKE_UP = 7 * 60
 PHONE_CATS = {"smartphone", "phone", "phones"}

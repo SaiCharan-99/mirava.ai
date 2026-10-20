@@ -45,6 +45,7 @@ class BudgetGovernor:
     high_sim_day: float = 0.0
     used: dict[str, int] = field(default_factory=lambda: dict.fromkeys(CLASSES, 0))
     used_hour: dict[str, int] = field(default_factory=lambda: dict.fromkeys(CLASSES, 0))
+    spent_class: dict[str, float] = field(default_factory=lambda: dict.fromkeys(CLASSES, 0.0))
     hour_frac: float = 0.0
     rendered: int = 0
     unrendered: int = 0
@@ -80,11 +81,13 @@ class BudgetGovernor:
         if pc not in HIGH:                         # spread lower classes through the sim day
             cap = min(cap, max(1, int(cap * (self.hour_frac + float(self.cfg["pace_slack"])))))
         hour_cap = self.cfg.get("hourly_caps", {}).get(pc)
+        share = budget * float(self.cfg.get("class_money_share", {}).get(pc, 1.0))
         ok = (self.used[pc] < cap and (hour_cap is None or self.used_hour[pc] < int(hour_cap))
               and (pc == "P0" or self.spent_sim_day + est_cost_usd <= budget * float(self.cfg["reserve"][pc]))
+              and self.spent_class[pc] + est_cost_usd <= share
               and self.spent_today + est_cost_usd <= float(self.cfg["daily_cap_usd"]) * (1.1 if pc == "P0" else 1.0))
-        if ok and pc not in HIGH:
-            ok = self.spent_sim_day + est_cost_usd <= budget * (self.hour_frac + float(self.cfg["pace_slack"]))
+        if ok and pc not in HIGH:                  # spread a lower class through the day against its own spend
+            ok = self.spent_class[pc] + est_cost_usd <= share * (self.hour_frac + float(self.cfg["pace_slack"]))
         if ok:
             self.used[pc] += 1
             self.used_hour[pc] += 1
@@ -106,6 +109,8 @@ class BudgetGovernor:
             return
         self.spent_today += cost_usd
         self.spent_sim_day += cost_usd
+        if priority_class in self.spent_class:
+            self.spent_class[priority_class] += cost_usd
         if priority_class in HIGH:
             self.high_sim_day += cost_usd
 
@@ -117,6 +122,7 @@ class BudgetGovernor:
                 self._adjust_speed(self.high_sim_day)
             self.sim_day, self.spent_sim_day, self.high_sim_day = day, 0.0, 0.0
             self.used = dict.fromkeys(CLASSES, 0)
+            self.spent_class = dict.fromkeys(CLASSES, 0.0)
         self.hour_frac = (hour + 1) / SIM_HOURS_PER_DAY
         self.used_hour = dict.fromkeys(CLASSES, 0)
         if hour >= 6:
@@ -144,7 +150,7 @@ class BudgetGovernor:
     def to_dict(self) -> dict[str, Any]:
         """Checkpoint form."""
         keys = ("step", "spent_today", "real_day", "interactive_today", "sim_day", "spent_sim_day", "high_sim_day",
-                "used", "hour_frac", "rendered", "unrendered")
+                "used", "spent_class", "hour_frac", "rendered", "unrendered")
         return {k: getattr(self, k) for k in keys}
 
     def load(self, d: dict[str, Any]) -> None:

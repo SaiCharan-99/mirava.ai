@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { PageTitle } from "../../components/Shell";
 import { getJSON } from "../../lib/api";
 import { isVisualTest, withMode } from "../../lib/visualTest";
-import { createSurvey, launchSurvey, lintQuestions, type CreateOut, type QType, type QuestionDef } from "../../lib/survey";
+import { createSurvey, estimateSurvey, launchSurvey, lintQuestions, nextClockTime, questionProblems, type EstimateOut, type QType, type QuestionDef } from "../../lib/survey";
+import { useWorld } from "../../state/world";
 
 const DEFAULT_QS: QuestionDef[] = [
   { question_id: "q1", text: "What matters most to you in the Pixel 10a?", type: "single", options: ["Battery life", "Price", "Camera", "Brand trust"], discuss: true },
@@ -29,8 +30,9 @@ export function SurveyBuilderPage() {
   const [maxN, setMaxN] = useState(40), [tableSize, setTableSize] = useState(8), [incentive, setIncentive] = useState(500);
   const [startMode, setStartMode] = useState<"next" | "pick">("next"), [startHour, setStartHour] = useState("18:00");
   const [products, setProducts] = useState<{ product_id: string; name: string; status: string }[]>([]);
-  const [est, setEst] = useState<CreateOut | null>(null);
-  const [warn, setWarn] = useState<CreateOut["lint"]>([]);
+  const [est, setEst] = useState<EstimateOut | null>(null);
+  const [warn, setWarn] = useState<EstimateOut["lint"]>([]);
+  const simT = useWorld((s) => s.t);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (!isVisualTest) void getJSON<typeof products>("/products").then(setProducts).catch(() => undefined); }, []);
@@ -44,26 +46,26 @@ export function SurveyBuilderPage() {
     if (lifestyle) c.push(`lifestyle = '${lifestyle}'`);
     return c.join(" AND ");
   }, [ageMin, ageMax, income, occupation, phoneAge, lifestyle]);
+  const problems = useMemo(() => questionProblems(qs), [qs]);
+  const startAt = startMode === "pick" ? nextClockTime(simT, startHour) : null;
   const body = () => ({ title, mode, product_id: product || null, topic, questions: qs, cohort_filter: cohort || null,
     interest_filter: stage && product ? { product_id: product, min_stage: stage } : null, max_participants: maxN, table_size: tableSize,
-    incentive_inr: incentive, start_at_t: null });
+    incentive_inr: incentive, start_at_t: startAt });
+  const check = () => { lintQuestions(qs).then((r) => setWarn(r.warnings)).catch(() => undefined); };
   useEffect(() => {
-    if (isVisualTest) return;
-    const h = setTimeout(() => { lintQuestions(qs).then((r) => setWarn(r.warnings)).catch(() => undefined); }, 700);
-    return () => clearTimeout(h);
-  }, [qs]);
-  useEffect(() => {
-    if (isVisualTest) { setEst({ survey_id: "sv-demo", eligible: 187, expected_attendance: 40, tables: 5, estimate_usd: 0.31, remaining_interactive_usd: 4.62, lint: [] }); return; }
-    const h = setTimeout(() => { setErr(""); createSurvey(body()).then(setEst).catch((e) => setErr(String(e))); }, 600);
+    if (isVisualTest) { setEst({ eligible: 187, expected_attendance: 40, tables: 5, estimate_usd: 0.31, remaining_interactive_usd: 4.62, lint: [] }); return; }
+    if (problems.length || title.trim().length < 3) { setEst(null); setErr(problems[0] ?? "Add a title (3+ characters)"); return; }
+    // sizing only: the API writes nothing and calls no model until Launch
+    const h = setTimeout(() => { setErr(""); estimateSurvey(body()).then((r) => { setEst(r); setWarn(r.lint); }).catch((e) => setErr(String(e).replace(/^Error: /, ""))); }, 800);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, mode, product, topic, qs, cohort, stage, maxN, tableSize, incentive]);
+  }, [title, mode, product, topic, qs, cohort, stage, maxN, tableSize, incentive, startAt, problems]);
   const upd = (i: number, patch: Partial<QuestionDef>) => setQs((q) => q.map((x, k) => (k === i ? { ...x, ...patch } : x)));
   const move = (i: number, d: number) => setQs((q) => { const c = [...q]; const j = i + d; if (j < 0 || j >= c.length) return c; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const launch = async () => {
     if (!est) return;
     setBusy(true); setErr("");
-    try { await launchSurvey(est.survey_id); nav(withMode(`/insights/polls/survey/${est.survey_id}`)); }
+    try { const made = await createSurvey(body()); await launchSurvey(made.survey_id); nav(withMode(`/insights/polls/survey/${made.survey_id}`)); }
     catch (e) { setErr(String(e).replace(/^Error: /, "")); }
     setBusy(false);
   };
@@ -127,6 +129,7 @@ export function SurveyBuilderPage() {
               {est.message && <div className="xs" style={{ color: "var(--amber)" }}>{est.message}</div>}
               {over && <div className="xs" style={{ color: "var(--red)" }}>Over budget — try fewer participants, fewer questions or survey mode.</div>}
             </div> : <div className="xs muted">{err || "Calculating…"}</div>}
+            <button className="btn" style={{ marginTop: 8, width: "100%" }} disabled={isVisualTest || problems.length > 0} onClick={check}>Check questions</button>
             <button className="btn primary" data-testid="survey-launch" style={{ marginTop: 12, width: "100%" }} disabled={!est || busy || over || !est.eligible || isVisualTest} onClick={() => void launch()}>Launch {mode === "focus_group" ? "focus group" : "survey"}</button>
             {err && est && <div className="xs" style={{ color: "var(--red)", marginTop: 6 }}>{err}</div>}
             <p className="xs muted" style={{ marginTop: 8 }}>Invited agents decide whether to come (private reasons). Answers are private, one per person per question, on Gemini Flash-Lite. Counts against the interactive budget.</p></div>

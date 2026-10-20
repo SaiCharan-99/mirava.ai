@@ -1,9 +1,9 @@
 # Budget governor (E-05, architecture §17). Money in USD of real OpenRouter spend.
 daily_cap_usd: 15            # background world, per real (UTC) day
-interactive_cap_usd: 5       # Insights / Studio / interviews, per real day, separate
+interactive_cap_usd: 10      # Insights / Studio / interviews / surveys, per real day, separate
 # per-sim-day count caps by priority class (1,000 agents)
 class_caps:
-  P0: 40       # store inquiries + watched agents
+  P0: 25       # store inquiries + watched agents (inquiries now cost ~⅓ of before)
   P1: 220      # ad thoughts (noticed only)
   P2: 20       # product chats
   P3: 120      # reflection
@@ -20,6 +20,15 @@ reserve:
   P3: 0.75
   P4: 0.65
   P5: 0.50
+# ceiling on the share of a sim day's money one class may spend (they may sum to > 1: the total cap still binds).
+# Lower classes pace against their OWN spend, so a few early store inquiries can no longer lock chats out all day.
+class_money_share:
+  P0: 0.55
+  P1: 0.30
+  P2: 0.25
+  P3: 0.15
+  P4: 0.25
+  P5: 0.15
 pace_slack: 0.15             # P3–P5 may run at most this far ahead of the sim day's elapsed fraction
 slow_steps: [1.0, 1.5, 2.0, 3.0]   # real hours per sim day multipliers
 slow_down_ratio: 1.0         # step down when projected P0–P2 spend > ratio × sim-day budget

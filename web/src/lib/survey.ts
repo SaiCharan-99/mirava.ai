@@ -30,7 +30,30 @@ export interface SurveyResults { questions: QResult[]; n_attended: number; chang
 export interface Waves { distribution: Record<string, Record<string, Record<string, number>>>; changes: { question_id: string; agent_id: number; from_wave: number; to_wave: number; from: unknown; to: unknown; why?: { why: string; event_ids: string[] } | null }[] }
 export interface CreateOut { survey_id: string; eligible: number; expected_attendance: number; tables: number; estimate_usd: number; remaining_interactive_usd: number; lint: { question_id: string; kind: string; fix: string }[]; message?: string | null }
 
+export type EstimateOut = Omit<CreateOut, "survey_id">;
+/** Draft sizing while the form is edited: no store write, no model call. */
+export const estimateSurvey = (body: unknown) => postJSON<EstimateOut>("/surveys/estimate", body);
+/** Creates the survey doc: call on Launch only. */
 export const createSurvey = (body: unknown) => postJSON<CreateOut>("/surveys", body);
+
+/** Absolute sim minute of the next occurrence of "HH:MM" at least `minLead` minutes after `now` (null if unparsable). */
+export function nextClockTime(now: number, hhmm: string, minLead = 30): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+  const at = Math.floor(now / 1440) * 1440 + Number(m[1]) * 60 + Number(m[2]);
+  return at >= now + minLead ? at : at + 1440;
+}
+
+/** Client-side problems that would make the API refuse the draft ("Question 2 needs text"). */
+export function questionProblems(qs: QuestionDef[]): string[] {
+  const out: string[] = [];
+  qs.forEach((q, i) => {
+    if (!q.text.trim()) out.push(`Question ${i + 1} needs text`);
+    else if (q.text.trim().length < 3) out.push(`Question ${i + 1} is too short`);
+    if ((q.type === "single" || q.type === "multi") && (q.options ?? []).filter((o) => o.trim()).length < 2) out.push(`Question ${i + 1} needs at least 2 options`);
+  });
+  return out;
+}
 export const launchSurvey = (id: string) => postJSON<{ status: string }>(`/surveys/${id}/launch`, {});
 export const rerunSurvey = (id: string) => postJSON<{ survey_id: string; wave: number }>(`/surveys/${id}/rerun`, {});
 export const explainWaves = (id: string) => postJSON<{ explained: number }>(`/surveys/${id}/explain`, {});

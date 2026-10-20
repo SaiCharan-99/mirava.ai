@@ -228,3 +228,32 @@ def test_prune_products_drops_deleted(bought):
     assert c.prune_products({pid}) >= 1
     assert "1|demo-gone" not in c.pairs and 1 not in c.visits
     assert any(k.endswith(f"|{pid}") for k in c.pairs)           # real product untouched
+
+
+def test_inquiry_round_uses_two_calls_and_salesperson_never_sees_agenda(bought):
+    """Phase 0.5: per round ONE salesperson call + ONE customer call (+ one debrief), no model 'decide' call."""
+    from mind.decision import FakeDecision
+    from shared.llm import FakeGemini
+    from social.store_inquiry import Customer, Salesperson, run_inquiry
+
+    e, _, store, pid = bought
+    marker = "AGENDA-SECRET-9921"
+    calls: list[str] = []
+    seen: dict[str, list[str]] = {}
+
+    class Spy(FakeGemini):
+        async def generate(self, model, prompt, schema=None, **kw):
+            calls.append(kw.get("purpose", ""))
+            seen.setdefault(kw.get("purpose", ""), []).append(str(prompt))
+            return await super().generate(model, prompt, schema, **kw)
+
+    cust = Customer(1, "Asha", "plain", "now", [f"is the battery any good? {marker}"])
+    sales = Salesperson(2, "Ravi", "friendly", "ST-X", "Store X", pid, "Pulse 5", {"general": "facts"}, {pid: 3}, [])
+    out = asyncio.run(run_inquiry("s2", cust, sales, 100, store=store, llm=Spy(), decider=FakeDecision()))
+    rounds = sum(1 for m in out.messages if m.speaker == 1)
+    assert rounds >= 1
+    assert calls.count("salesperson_reply") == calls.count("store_think") == rounds
+    assert calls.count("inquiry_debrief") == 1
+    assert set(calls) <= {"salesperson_reply", "store_think", "inquiry_debrief"}
+    assert all(marker not in p for p in seen["salesperson_reply"])
+    assert len(calls) <= 2 * rounds + 1

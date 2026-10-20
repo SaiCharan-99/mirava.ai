@@ -62,6 +62,8 @@ def test_interactive_cap_separate() -> None:
     g.record(14.9, "P0")
     assert g.allow_interactive(1.0)
     g.record(4.5, "interactive")
+    assert g.allow_interactive(1.0)                 # cap is $10 now
+    g.record(5.0, "interactive")
     assert not g.allow_interactive(1.0)
     assert g.state().spent_today_usd == 14.9
 
@@ -74,3 +76,23 @@ def test_p1_hourly_cap_spreads_thoughts_through_the_day() -> None:
     g.on_sim_hour(12 * 60)
     noon = sum(g.allow("P1", 0.0005) for _ in range(200))
     assert morning == 28 and noon == 28
+
+
+def test_early_store_inquiries_do_not_starve_social_chats() -> None:
+    """Live Day 44: P0 inquiries spent the pace allowance and P4 chats stayed unrendered all day."""
+    g = BudgetGovernor(now=lambda: 0.0)
+    g.on_sim_hour(8 * 60)
+    n = 0
+    while g.allow("P0", 0.012):
+        g.record(0.012, "P0")
+        n += 1
+        assert n < 100
+    assert g.spent_class["P0"] <= g.sim_day_budget() * 0.55 + 0.012
+    g.on_sim_hour(14 * 60)                         # mid-afternoon: chats still get their own paced share
+    chats = 0
+    while g.allow("P4", 0.006):
+        g.record(0.006, "P4")
+        chats += 1
+        assert chats < 100
+    assert chats >= 5
+    assert g.spent_class["P4"] <= g.sim_day_budget() * 0.25 + 0.006

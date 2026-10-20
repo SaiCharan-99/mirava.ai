@@ -303,3 +303,26 @@ def test_live_protocol_subscriptions():
     hub.on_client_message(old, "not json")
     asyncio.run(hub.send_survey("sv-1", [{"type": "survey_msg", "survey_id": "sv-1", "text": "hi"}]))
     assert len(sent) == 1 and '"survey_msg"' in sent[0]
+
+
+def test_estimate_endpoint_never_writes_and_gives_friendly_errors(monkeypatch):
+    import api.main as m
+    import api.surveys as sv
+
+    store = MemoryStoreBackend()
+    monkeypatch.setattr(sv, "store", lambda: store)
+    monkeypatch.setattr(sv, "_eligible", lambda c, i: 120)
+    monkeypatch.setattr(sv, "remaining_interactive", lambda: 5.0)
+    monkeypatch.setattr(sv, "_engine_state", lambda: {"t": 1})
+    c = TestClient(m.app)
+    body = {"title": "Draft survey", "mode": "survey", "questions": QS, "max_participants": 30}
+    r = c.post("/api/surveys/estimate", json=body)
+    assert r.status_code == 200 and r.json()["eligible"] == 120 and r.json()["estimate_usd"] > 0
+    assert "survey_id" not in r.json()
+    assert store.list("surveys") == []                                   # editing never creates drafts
+    blank = {**body, "questions": [*QS, {"text": "", "type": "open", "discuss": True}]}
+    bad = c.post("/api/surveys/estimate", json=blank)
+    assert bad.status_code == 422 and bad.json()["detail"] == f"Question {len(QS) + 1} needs text"
+    assert store.list("surveys") == []
+    assert c.post("/api/surveys", json=body).status_code == 200          # create (on Launch) does write
+    assert len(store.list("surveys")) == 1

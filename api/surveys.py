@@ -151,16 +151,24 @@ async def lint(qs: list[Question]) -> list[dict[str, str]]:
     return out
 
 
-@router.post("/surveys")
-async def create_survey(body: SurveyIn) -> dict[str, Any]:
-    """Draft a survey → eligible count, expected attendance, tables, estimate, lint."""
+def _invalid_question(e: ValidationError, raw: list[dict[str, Any]]) -> str:
+    """Friendly message for a bad question ("Question 3 needs text")."""
+    err = e.errors()[0]
+    n = next((i + 1 for i, q in enumerate(raw) if not str(q.get("text", "")).strip()), None)
+    if n is not None and "text" in [str(x) for x in err.get("loc", ())]:
+        return f"Question {n} needs text"
+    return f"invalid question: {err['msg']}"
+
+
+def _plan(body: SurveyIn) -> tuple[Survey, int, int, dict[str, Any], list[Question]]:
+    """Validate and size a survey (no writes, no model calls): (survey, eligible, expected attendance, estimate, qs)."""
     sc = get_screener().screen(body.title + " " + body.topic + " " + " ".join(str(q.get("text", "")) for q in body.questions))
     if not sc.ok:
         raise HTTPException(422, "refused by screening (political content)")
     try:
         qs = _questions(body.questions)
     except ValidationError as e:
-        raise HTTPException(422, f"invalid question: {e.errors()[0]['msg']}") from e
+        raise HTTPException(422, _invalid_question(e, body.questions)) from e
     try:
         eligible = _eligible(body.cohort_filter, body.interest_filter)
     except Exception as e:  # noqa: BLE001
@@ -176,6 +184,24 @@ async def create_survey(body: SurveyIn) -> dict[str, Any]:
                start_at_t=body.start_at_t)
     est = recruit.estimate(s, expected or 1)
     s.estimate_usd = est["usd"]
+    return s, eligible, expected, est, qs
+
+
+@router.post("/surveys/estimate")
+def estimate_survey(body: SurveyIn) -> dict[str, Any]:
+    """Size and cost a draft while the form is being edited: NO store write, NO model call (rule lint only)."""
+    s, eligible, expected, est, qs = _plan(body)
+    msg = "No agents match this audience — widen the filters." if eligible == 0 else None
+    return {"eligible": eligible, "expected_attendance": expected, "tables": max(1, math.ceil((expected or 1) / s.table_size)),
+            "estimate_usd": est["usd"], "estimate": est, "remaining_interactive_usd": remaining_interactive(),
+            "lint": lint_rules(qs), "message": msg}
+
+
+@router.post("/surveys")
+async def create_survey(body: SurveyIn) -> dict[str, Any]:
+    """Create the survey doc (called on Launch only) → eligible count, expected attendance, tables, estimate, lint."""
+    s, eligible, expected, est, qs = _plan(body)
+    sid = s.survey_id
     warnings = await lint(qs)
     doc = {**s.model_dump(mode="json"), "eligible": eligible, "expected_attendance": expected,
            "tables_n": max(1, math.ceil((expected or 1) / s.table_size)), "estimate": est, "lint": warnings}
