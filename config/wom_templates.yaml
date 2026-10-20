@@ -23,6 +23,10 @@ purchase:
 store_visit:
   - "{teller} had been to a phone shop to look around."
   - "{teller} went to check phones out in a store."
+survey:
+  - "{teller} told me about a paid session they went to; they got something for taking part."
+  - "{teller} said there's a research session on phones, and they pay you to come."
+  - "Heard from {teller} that there's a survey going where you get a reward."
 general:
   - "{teller} and I caught up for a bit."
   - "Had a quick chat with {teller}."

@@ -45,6 +45,7 @@ class Person:
     attitude: float = 0.0          # attitude to the survey product (−1..1)
     experience: str | None = None  # "purchased" | "store_visit" | None — lived experience with the product
     memories: list[str] = field(default_factory=list)   # own top memories for the topic
+    briefs: str = ""               # how I see each product in this survey (own view from the opinion engine)
 
 
 @dataclass
@@ -272,7 +273,8 @@ class TableRunner:
         mem = "\n".join(f"- {m}" for m in p.memories[:6]) or "- (nothing specific)"
         b5 = ", ".join(f"{k} {v:.1f}" for k, v in sorted(p.big5.items()))
         exp = f"\nLived experience with the product: {p.experience}." if p.experience else ""
-        return (f"{p.card}\nBig Five: {b5}\nPhone: {p.phone}\nAttitude to {self.product}: {p.attitude:+.2f}{exp}\n"
+        views = f"\nHow I see these phones:\n{p.briefs}" if p.briefs else ""
+        return (f"{p.card}\nBig Five: {b5}\nPhone: {p.phone}\nAttitude to {self.product}: {p.attitude:+.2f}{exp}{views}\n"
                 f"My memories:\n{mem}")
 
     def _rule_choice(self, p: Person, q: Question, order: list[int], rng: Any) -> tuple[int, float]:

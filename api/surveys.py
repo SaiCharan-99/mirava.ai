@@ -11,18 +11,28 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, ValidationError
 
-from engine.survey import recruit
+from engine.survey import outreach, recruit
 from insights.tools import Tools, default_runner
 from media.screen import get_screener, wrap
 from shared import time as simtime
 from shared.llm import FakeGemini, get_llm
 from shared.models import MODEL_FLASH
-from shared.schemas.survey import MAX_PARTICIPANTS, InterestFilter, Question, Survey
+from shared.schemas.survey import (
+    ALL_CHANNELS,
+    MAX_PARTICIPANTS,
+    MAX_PRODUCTS,
+    Channel,
+    Incentive,
+    InterestFilter,
+    Question,
+    Survey,
+)
 from shared.store import DocStore, get_store
 
 router = APIRouter(prefix="/api")
 STAGE_ORDER = ["aware", "curious", "researching", "inquiring", "deciding", "purchased", "postponed"]
-ACCEPT_RATE = 0.38             # expected share of eligible agents who accept and come (assumption, shown as such)
+ACCEPT_RATE = 0.38             # fallback share of eligible agents who accept and come when the mix can't be read
+MAX_OPTIONS = 4
 
 
 def store() -> DocStore:
@@ -62,6 +72,9 @@ class SurveyIn(BaseModel):
     table_size: int = Field(8, ge=6, le=10)
     start_at_t: int | None = None
     incentive_inr: int = Field(500, ge=0, le=5000)
+    product_ids: list[str] = Field(default_factory=list, max_length=MAX_PRODUCTS)
+    incentive: Incentive | None = None
+    channels: list[Channel] = Field(default_factory=lambda: list(ALL_CHANNELS))
 
 
 def _questions(raw: list[dict[str, Any]]) -> list[Question]:
@@ -69,6 +82,9 @@ def _questions(raw: list[dict[str, Any]]) -> list[Question]:
     for i, q in enumerate(raw[:10]):
         q = {**q, "question_id": q.get("question_id") or f"q{i + 1}"}
         qs.append(Question.model_validate(q))
+    for i, q in enumerate(qs):                             # the builder allows 2–4 options (older surveys may have more)
+        if q.type in ("single", "multi") and len(q.options or []) > MAX_OPTIONS:
+            raise HTTPException(422, f"Question {i + 1} has more than {MAX_OPTIONS} options")
     if not qs:
         raise HTTPException(422, "add at least one question")
     if len(raw) > 10:
@@ -151,6 +167,33 @@ async def lint(qs: list[Question]) -> list[dict[str, str]]:
     return out
 
 
+def expected_attendance(eligible: int, max_participants: int, channels: list[str], inc: Incentive) -> int:
+    """Who actually turns up: the share who hear about it (channels) × the average chance a person from this
+    population says yes (income-aware: the same reward means more to people with less) × not flaking."""
+    if eligible <= 0:
+        return 0
+    from population.config import load
+
+    try:
+        rows, _ = default_runner().run("SELECT income_band, COUNT(*) AS n FROM agents_latest GROUP BY 1", None, trusted=True)
+        mix = {str(r["income_band"]): float(r["n"]) for r in rows}
+    except Exception:  # noqa: BLE001 — fall back to an even mix
+        mix = {}
+    ranges = load("markets/indiranagar")["income_ranges"]
+    mix = {b: mix.get(b, 1.0) for b in ranges}
+    total = sum(mix.values())
+    rate = 0.0
+    for band, n in mix.items():
+        lo, hi = ranges[band]
+        value = outreach.incentive_value(inc, int((lo + hi) / 2), [], 0.5)
+        rate += n / total * outreach.attend_propensity(interest=0.3, free=0.6, extraversion=0.5, openness=0.5,
+                                                       incentive=value, channel="panel", closeness=0.0, dist_m=1200,
+                                                       fatigue=False, job_high=False)
+    reach = outreach.reach_share(channels, max_participants, eligible)
+    n = int(round(eligible * reach * rate * (1 - 0.06)))
+    return max(1, min(max_participants, n))
+
+
 def _invalid_question(e: ValidationError, raw: list[dict[str, Any]]) -> str:
     """Friendly message for a bad question ("Question 3 needs text")."""
     err = e.errors()[0]
@@ -173,14 +216,14 @@ def _plan(body: SurveyIn) -> tuple[Survey, int, int, dict[str, Any], list[Questi
         eligible = _eligible(body.cohort_filter, body.interest_filter)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(422, f"bad audience filter: {str(e)[:160]}") from e
-    expected = min(body.max_participants, int(round(eligible * ACCEPT_RATE)))
-    if eligible and expected == 0:
-        expected = 1
+    inc = body.incentive or Incentive(cash_inr=body.incentive_inr, goodies=[], note="")
+    expected = expected_attendance(eligible, body.max_participants, list(body.channels), inc)
     sid = "sv-" + hashlib.sha256(json.dumps([body.model_dump(mode="json"), _engine_state().get("t", 0)]).encode()
                                  ).hexdigest()[:8]
     s = Survey(survey_id=sid, title=body.title, mode=body.mode, product_id=body.product_id, topic=body.topic,
                questions=qs, cohort_filter=body.cohort_filter, interest_filter=body.interest_filter,
-               max_participants=body.max_participants, table_size=body.table_size, incentive_inr=body.incentive_inr,
+               max_participants=body.max_participants, table_size=body.table_size, incentive_inr=inc.cash_inr,
+               incentive=inc, channels=list(body.channels), product_ids=list(body.product_ids),
                start_at_t=body.start_at_t)
     est = recruit.estimate(s, expected or 1)
     s.estimate_usd = est["usd"]
@@ -192,7 +235,9 @@ def estimate_survey(body: SurveyIn) -> dict[str, Any]:
     """Size and cost a draft while the form is being edited: NO store write, NO model call (rule lint only)."""
     s, eligible, expected, est, qs = _plan(body)
     msg = "No agents match this audience — widen the filters." if eligible == 0 else None
-    return {"eligible": eligible, "expected_attendance": expected, "tables": max(1, math.ceil((expected or 1) / s.table_size)),
+    reach = int(round(eligible * outreach.reach_share(list(body.channels), body.max_participants, eligible)))
+    return {"eligible": eligible, "reach": reach, "expected_attendance": expected,
+            "tables": max(1, math.ceil((expected or 1) / s.table_size)),
             "estimate_usd": est["usd"], "estimate": est, "remaining_interactive_usd": remaining_interactive(),
             "lint": lint_rules(qs), "message": msg}
 

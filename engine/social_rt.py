@@ -105,6 +105,7 @@ class SocialRuntime:
         self.on_phone: Callable[[int, int], bool] = lambda aid, m: False         # is this person scrolling their phone now
         self.visible_fn: Callable[[float, float, int], tuple[str, str] | None] | None = None   # campaign board in view
         self._street_tried: dict[tuple[int, int], int] = {}
+        self.survey_hook: Callable[[int, int, float, str], None] | None = None   # survey invite passed on (set by the engine)
         self.errands: Any = None                                      # the commerce runtime's Errands (set by the engine)
         self._online = friends_online(self.rel)                      # who can text whom
         self._feed_at: dict[int, list[int]] | None = None            # minute of day → people starting a phone session
@@ -510,6 +511,8 @@ class SocialRuntime:
             bus.new("wom", t, listener, {"teller": teller, "kind": told.kind, "product_id": told.product_id,
                                          "attrs": told.attrs, "hint": told.hint}, other_id=teller,
                     product_id=told.product_id, rendered=False)
+            if told.kind == "survey_invite" and self.survey_hook is not None:     # a friend mentioned the paid session
+                self.survey_hook(listener, teller, closeness, told.about)
             self.remember(listener, told.memory, 3, "conversation", t, tag=told.hint or None)
             self._background(asyncio.to_thread(self._wom_memory, listener, teller, told, t))
 

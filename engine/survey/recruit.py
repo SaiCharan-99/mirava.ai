@@ -125,8 +125,7 @@ def estimate(s: Survey, expected: int) -> dict[str, Any]:
     tok = cfg()["tokens"]
     n = max(1, expected)
     q = len(s.questions)
-    eligible_rsvp = max(n, int(n * 2.2))
-    calls: dict[str, int] = {"rsvp": math.ceil(eligible_rsvp / int(cfg()["rsvp_batch"]))}
+    calls: dict[str, int] = {"rsvp": 0}                  # who comes is decided by rules (reasons are templated): no model calls
     focus = s.mode == "focus_group" and n >= 2
     tables = max(1, math.ceil(n / s.table_size))
     disc_q = sum(1 for x in s.questions if x.discuss) if focus else 0

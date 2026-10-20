@@ -155,6 +155,8 @@ class Engine:
             self.bus.listeners.append(self.commerce.on_event)
         if self.surveys is not None:
             self.bus.listeners.append(self.surveys.on_event)
+            if self.social is not None:
+                self.social.survey_hook = self.surveys.on_invite_told
         self.bus.listeners.append(self._highlight_event)
         self.world = w
         self.bus.new("engine_start", w.t, None, {"holder": self.lease.holder, "resumed_from": ck["t"] if ck else None,

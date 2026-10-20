@@ -85,7 +85,7 @@ def test_recruitment_rsvp_and_travel(ran):
     assert len(arrived & acc) >= max(1, int(0.6 * len(acc)))           # accepted agents actually walk there
     doc = store.get("surveys", "sv-fg")
     att = [p for p in doc["participants"] if p["rsvp"] == "attended"]
-    assert len(doc["tables"]) == math.ceil(len([p for p in doc["participants"] if p["rsvp"] in ("attended", "no_show")]) / 8)
+    assert len(doc["tables"]) == math.ceil(len(att) / 8)               # tables are made from who actually turned up
     assert att
 
 
@@ -148,7 +148,8 @@ def _people(n=6, marker_for=None):
         out.append(Person(agent_id=i, name=f"P{i}", age=25 + i, occupation="x", income_band="25-50k",
                           big5={"O": 0.5, "C": 0.6, "E": 0.2 + 0.12 * i, "A": 0.5, "N": 0.4}, style="plain",
                           card=f"card {i}" + (" SECRET-MARKER-91" if i == marker_for else ""), phone="B mid, 5 years, ok",
-                          attitude=0.1 * (i - 3), memories=[f"memory {i}" + (" SECRET-MARKER-91" if i == marker_for else "")]))
+                          attitude=0.1 * (i - 3), memories=[f"memory {i}" + (" SECRET-MARKER-91" if i == marker_for else "")],
+                          briefs="Pixel 10a: I like it — good: battery beats my phone" + (" BRIEF-MARKER-77" if i == marker_for else "")))
     return out
 
 
@@ -173,9 +174,14 @@ def test_marker_fact_isolation():
         return r
 
     r = asyncio.run(go())
+    mine = 0
     for purpose, owner, prompt in r.prompts:
         if owner != 2:
             assert "SECRET-MARKER-91" not in prompt, (purpose, owner)
+            assert "BRIEF-MARKER-77" not in prompt, (purpose, owner)           # my opinions of the products stay mine
+        elif "BRIEF-MARKER-77" in prompt:
+            mine += 1
+    assert mine > 0                                                           # …and are in my own prompts
     for it in r.items:
         if it["kind"] == "message":
             assert "SECRET-MARKER-91" not in it["payload"]["text"]
@@ -326,3 +332,57 @@ def test_estimate_endpoint_never_writes_and_gives_friendly_errors(monkeypatch):
     assert store.list("surveys") == []
     assert c.post("/api/surveys", json=body).status_code == 200          # create (on Launch) does write
     assert len(store.list("surveys")) == 1
+
+
+def _api(monkeypatch, eligible=300):
+    import api.main as m
+    import api.surveys as sv
+
+    store = MemoryStoreBackend()
+    monkeypatch.setattr(sv, "store", lambda: store)
+    monkeypatch.setattr(sv, "_eligible", lambda c, i: eligible)
+    monkeypatch.setattr(sv, "remaining_interactive", lambda: 5.0)
+    monkeypatch.setattr(sv, "_engine_state", lambda: {"t": 1})
+    return TestClient(m.app), store
+
+
+def test_builder_allows_two_to_four_options_only(monkeypatch):
+    c, store = _api(monkeypatch)
+    base = {"title": "Options check", "mode": "survey", "max_participants": 20}
+
+    def q(n):
+        return [{"question_id": "q1", "text": "Which would you pick?", "type": "single", "options": [f"Option {i}" for i in range(n)]}]
+
+    assert c.post("/api/surveys/estimate", json={**base, "questions": q(2)}).status_code == 200
+    assert c.post("/api/surveys/estimate", json={**base, "questions": q(4)}).status_code == 200
+    five = c.post("/api/surveys/estimate", json={**base, "questions": q(5)})
+    assert five.status_code == 422 and "more than 4 options" in five.json()["detail"]
+    assert c.post("/api/surveys/estimate", json={**base, "questions": q(1)}).status_code == 422     # needs at least 2
+    assert store.list("surveys") == []
+
+
+def test_estimate_reflects_reward_and_channels(monkeypatch):
+    c, _ = _api(monkeypatch, eligible=120)
+    body = {"title": "Reward check", "mode": "survey", "questions": QS, "max_participants": 100}
+    none = c.post("/api/surveys/estimate", json={**body, "incentive": {"cash_inr": 0, "goodies": [], "note": ""}}).json()
+    rich = c.post("/api/surveys/estimate", json={**body, "incentive": {"cash_inr": 1000, "goodies": [
+        {"kind": "voucher", "label": "shopping voucher", "value_inr": 1000}], "note": ""}}).json()
+    assert rich["expected_attendance"] > none["expected_attendance"] >= 1
+    panel_only = c.post("/api/surveys/estimate", json={**body, "channels": ["panel"]}).json()
+    everything = c.post("/api/surveys/estimate", json={**body}).json()
+    assert everything["reach"] >= panel_only["reach"] and everything["expected_attendance"] >= panel_only["expected_attendance"]
+    assert everything["expected_attendance"] <= 100 and everything["reach"] <= 120
+
+
+def test_products_incentive_and_channels_are_stored_on_launch(monkeypatch):
+    c, store = _api(monkeypatch)
+    r = c.post("/api/surveys", json={"title": "Two phones head to head", "mode": "focus_group", "questions": QS,
+                                     "max_participants": 20, "product_ids": ["pixel-10a", "galaxy-a57"],
+                                     "incentive": {"cash_inr": 300, "goodies": [{"kind": "food", "label": "lunch", "value_inr": 250}],
+                                                   "note": ""}, "channels": ["panel", "word_of_mouth"],
+                                     "start_at_t": 5000})
+    assert r.status_code == 200
+    doc = store.get("surveys", r.json()["survey_id"])
+    assert doc["product_ids"] == ["pixel-10a", "galaxy-a57"] and doc["product_id"] == "pixel-10a"
+    assert doc["incentive"]["goodies"][0]["label"] == "lunch" and doc["incentive_inr"] == 300
+    assert doc["channels"] == ["panel", "word_of_mouth"] and doc["start_at_t"] == 5000

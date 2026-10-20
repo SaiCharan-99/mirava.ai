@@ -7,11 +7,31 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 QType = Literal["single", "multi", "scale", "open"]
+Channel = Literal["panel", "community", "word_of_mouth", "store_flyer"]
+GoodieKind = Literal["voucher", "accessory", "food", "product_trial", "merch", "other"]
+ALL_CHANNELS: tuple[Channel, ...] = ("panel", "community", "word_of_mouth", "store_flyer")
+MAX_PRODUCTS = 5
 Mode = Literal["focus_group", "survey"]
 Status = Literal["draft", "recruiting", "gathering", "in_session", "balloting", "completed", "cancelled"]
 Influence = Literal["persuaded", "conformed", "reinforced", "unchanged", "reacted_against"]
 Why = Literal["relevance", "credibility", "emotion", "novelty", "agreement", "disagreement", "primacy", "recency"]
 MAX_PARTICIPANTS = 100
+
+
+class Goodie(BaseModel):
+    """Something besides cash that people get for coming (appeals differently to different people)."""
+
+    kind: GoodieKind = "other"
+    label: str = Field(min_length=1, max_length=60)
+    value_inr: int = Field(0, ge=0, le=20000)
+
+
+class Incentive(BaseModel):
+    """What participants get: cash and/or goodies."""
+
+    cash_inr: int = Field(0, ge=0, le=5000)
+    goodies: list[Goodie] = Field(default_factory=list, max_length=5)
+    note: str = Field("", max_length=140)
 
 
 class Scale(BaseModel):
@@ -30,6 +50,7 @@ class Question(BaseModel):
     text: str = Field(min_length=3, max_length=300)
     type: QType
     options: list[str] | None = None
+    option_source: Literal["custom", "products"] = "custom"     # "products": the options are the survey's products
     max_select: int | None = None
     scale: Scale | None = None
     discuss: bool = True
@@ -72,14 +93,17 @@ class Survey(BaseModel):
     survey_id: str
     title: str
     mode: Mode
-    product_id: str | None = None
+    product_id: str | None = None                       # legacy single product (= product_ids[0])
+    product_ids: list[str] = Field(default_factory=list, max_length=MAX_PRODUCTS)
     topic: str = ""
     questions: list[Question] = Field(min_length=1, max_length=10)
     cohort_filter: str | None = None
     interest_filter: InterestFilter | None = None
     max_participants: int = Field(ge=1, le=MAX_PARTICIPANTS)
     table_size: int = Field(8, ge=6, le=10)
-    incentive_inr: int = 500
+    incentive_inr: int = 500                            # legacy: mirrors incentive.cash_inr
+    incentive: Incentive | None = None
+    channels: list[Channel] = Field(default_factory=lambda: list(ALL_CHANNELS))     # how people hear about it
     start_at_t: int | None = None
     wave: int = 1
     panel_id: str | None = None
@@ -87,6 +111,27 @@ class Survey(BaseModel):
     status: Status = "draft"
     estimate_usd: float = 0.0
     actual_usd: float = 0.0
+
+
+    @model_validator(mode="after")
+    def _sync(self) -> Survey:
+        """Keep the legacy single-product and cash fields in step with the new ones."""
+        if self.product_id and not self.product_ids:
+            self.product_ids = [self.product_id]
+        elif self.product_ids:
+            self.product_id = self.product_ids[0]
+        if self.incentive is not None:
+            self.incentive_inr = self.incentive.cash_inr
+        else:
+            self.incentive = Incentive(cash_inr=self.incentive_inr, goodies=[], note="")
+        if not self.channels:
+            self.channels = list(ALL_CHANNELS)
+        return self
+
+    @property
+    def products(self) -> list[str]:
+        """Product ids this survey is about (may be empty)."""
+        return list(self.product_ids)
 
 
 class Participant(BaseModel):

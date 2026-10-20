@@ -29,6 +29,7 @@ class Told:
     attrs: dict[str, float]
     memory: str
     hint: str
+    about: str = ""
 
 
 def _pick(seed: int, key: str, options: list[str], t: int, a: int, b: int) -> str:
@@ -64,8 +65,9 @@ def tell(agenda: Agenda, opinion: OpinionEngine | None, teller: int, listener: i
         if opinion.private_attitude(listener, pid) > 0.2:
             agenda.add(listener, "opinion", t, hint=pname, product_id=pid, weight=0.3)
     else:
-        key = {"phone_trouble": "trouble", "purchase": "purchase", "store_visit": "store_visit"}.get(item.kind, "general")
+        key = {"phone_trouble": "trouble", "purchase": "purchase", "store_visit": "store_visit",
+               "survey_invite": "survey", "got_goodies": "survey"}.get(item.kind, "general")
         text = _pick(seed, key, tpl[key], t, teller, listener).format(teller=who, hint=item.public_hint or "lately")
         if item.kind == "phone_trouble":
             agenda.add(listener, "life_news", t, hint=f"{who}'s phone", weight=0.25)
-    return Told(teller, listener, item.kind, pid, attrs, text, item.public_hint)
+    return Told(teller, listener, item.kind, pid, attrs, text, item.public_hint, item.about)

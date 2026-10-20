@@ -220,6 +220,7 @@ export interface Product {
   launched_at_t?: number | null;
   understanding?: Record<string, unknown> | null;
   graph?: Record<string, unknown> | null;
+  specs?: Record<string, number> | null;
 }
 
 export interface SharePlan {
