@@ -130,6 +130,7 @@ class Engine:
             self.media.commerce = self.commerce
             if self.social is not None:
                 self.social.intent_hook = self.commerce.boost_intent
+                self.social.errands = self.commerce.errands
             if ck is not None and ck.get("commerce"):
                 self.commerce.load(ck["commerce"])
             else:
@@ -349,7 +350,9 @@ class Engine:
         xy = None
         if ev.agent_id is not None and 0 <= ev.agent_id < len(self.world.agents):
             xy = self.world.position(self.world.agents[ev.agent_id], float(ev.t))[:2]
-        self.highlights.on_event(ev, xy, self._first_line.pop(ev.session_id or "", ""))
+        # only the conversation event may consume the first line: a store visit emits private thoughts in between
+        first = self._first_line.pop(ev.session_id or "", "") if ev.kind == "conversation" else ""
+        self.highlights.on_event(ev, xy, first)
 
     # ------------------------------------------------------------------ views
     def _log_metrics(self, gs: Any) -> None:

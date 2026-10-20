@@ -61,6 +61,9 @@ export function tickerFor(e: LiveEvt, t: number, nameOf: (id: number) => string)
       html = `<span class="who">📅 ${who} &amp; ${b}</span> planned to meet${e.place ? ` at ${esc(String(e.place))}` : ""}${e.at ? ` · ${esc(String(e.at))}` : ""}`;
       break;
     }
+    case "store_visit":
+      html = `<span class="who">🏬 ${who}</span> is at a phone store${e.product ? ` asking about <b>${esc(productName(String(e.product)))}</b>` : ", looking around"}`;
+      break;
     case "campaign_ended":
       cls = "launch";
       html = `<span class="who">📣 ${esc(String(e.name ?? productName(String(e.product ?? ""))))}</span> paid campaign ended — still on sale; word of mouth, reviews and stores carry on`;
@@ -77,7 +80,9 @@ export function tickerFor(e: LiveEvt, t: number, nameOf: (id: number) => string)
       break;
     case "purchase":
       cls = "prod";
-      html = `<span class="who">🛍️ ${who}</span> bought <b>${esc(String(e.product ?? ""))}</b>`;
+      html = e.gift
+        ? `<span class="who">🎁 ${who}</span> was given a new phone: <b>${esc(String(e.product ?? ""))}</b>`
+        : `<span class="who">🛍️ ${who}</span> bought <b>${esc(String(e.product ?? ""))}</b>`;
       break;
     case "bubble": {
       const b = typeof e.b === "number" ? esc(nameOf(e.b)) : "";

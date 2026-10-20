@@ -1,0 +1,52 @@
+# Occasions that send someone shopping for a phone (phase 4). Labelled assumptions, tunable.
+assumed: true
+year_days: 365                # sim day 1 is 1 January
+gift:
+  window_days: [4, 12]        # a birthday this many days away starts the errand
+  p_base: 0.45                # × (0.5 + closeness) …
+  p_if_wants_phone: 1.0       # … when the birthday person is 12–30 or really needs a phone,
+  p_otherwise: 0.25           # … otherwise
+  age_range: [12, 30]
+  need_threshold: 0.4
+replacement:                  # a household member's phone was lost or cracked recently
+  recent_days: 3
+  young_below: 22             # young or old people don't buy it themselves …
+  old_above: 60               # … someone in the household does
+new_start:                    # students starting a term get a phone from the family
+  windows: [[150, 165], [330, 340]]   # day-of-year ranges
+  age_range: [17, 22]
+  p: 0.12
+festival:                     # a sale period: more people go shopping
+  every_days: 30
+  length_days: 5
+  offset: 20
+budget:
+  income_months: 0.4          # × monthly income × (0.7 + 0.6 × closeness)
+  floor_inr: 6000
+  cap_inr: 90000
+due_days: 3                   # an errand is due this many days after the birthday window closes, else its date
+default_requirements:         # when nobody has said what they want (attribute names)
+  child: [durable, camera, performance]
+  young: [performance, camera, battery]
+  adult: [battery, camera, software]
+  senior: [battery, display, software]
+requirement_labels:
+  battery: "a long-lasting battery"
+  camera: "a good camera"
+  display: "a nice screen"
+  performance: "something fast"
+  software: "easy, smooth software"
+  design: "good looks"
+  price_value: "good value for money"
+  brand: "a trusted brand"
+  durable: "something that survives drops"
+visits:                       # daily chance that someone goes to a phone store (07:00 planning)
+  base: 0.0003
+  need_sq: 0.015              # × need²
+  curious: 0.012              # any open consideration
+  payday: 0.005
+  weekend: 0.005
+  near_store: 0.001
+  festival: 0.012
+  cap: 0.9
+  errand_urgency: [0.25, 0.8] # by how close the due date is

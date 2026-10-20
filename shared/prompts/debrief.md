@@ -9,6 +9,8 @@ Return, from THIS person's point of view only:
   "product:<name>"; attribute one of battery, camera, display, performance, software, design, price_value, brand;
   direction "+" if they praised it, "-" if they criticised it; strength 0..1 for how firmly they said it). Only what is in
   the transcript; empty if nothing specific was said.
+- `requirements`: only if the other person SAID ALOUD what they would like in a phone (short phrases, at most 4, e.g.
+  "good camera", "battery that lasts"); empty otherwise. Never guess what they want.
 - `summary`: a first-person episodic memory of the chat (1–2 sentences), e.g. "Ravi says the camera is amazing,
   but he hasn't used it himself."
 - `importance`: 1–10.

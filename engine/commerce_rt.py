@@ -11,7 +11,10 @@ from typing import Any
 from commerce import purchase as buy
 from commerce.consideration import STAGES, TERMINAL, Pair, interest, next_stage
 from commerce.need import cfg, phone_need
+from commerce.occasions import DAY, Errand, Errands, best_for, festival_active, plan_errands, requirement_phrase
+from commerce.occasions import cfg as occ_cfg
 from commerce.stores import assign_staff, is_open, offers, on_shift, stock, stores_cfg
+from commerce.visits import visit_kind, visit_probability
 from engine.events import EventBus
 from engine.governor import BudgetGovernor
 from engine.planner import free_slot, insert_block
@@ -87,8 +90,13 @@ class CommerceRuntime:
         for p in w.profiles:
             if p.age <= 35 and stream(w.seed, "online_first", p.agent_id).random() < share:
                 self.online_first.add(p.agent_id)
+        self.errands = Errands()
+        self._households: dict[str, list[tuple[int, str]]] = {}
+        for p in w.profiles:
+            self._households.setdefault(p.household_id, []).append((p.agent_id, p.role_in_household))
         self.stats = {"transitions": 0, "inquiries": 0, "inquiries_unrendered": 0, "purchases": 0,
-                      "purchases_baseline": 0, "cost_usd": 0.0}
+                      "purchases_baseline": 0, "cost_usd": 0.0, "errands": 0, "errands_done": 0,
+                      "visits_browse": 0, "visits_errand": 0, "gifts": 0}
 
     # ------------------------------------------------------------------ helpers
     def _nearest_store(self, w: World, *place_ids: str | None) -> str | None:
@@ -204,6 +212,10 @@ class CommerceRuntime:
         m = simtime.minute_of_day(t)
         self._bus, self._now = bus, t
         await self._apply(w, bus, t)
+        if m == 6 * 60:
+            self._daily_occasions(w, bus, t)
+        elif m == 7 * 60:
+            self._plan_daily_visits(w, t)
         products = self._products()
         if m == WAKE_UP:                                   # wake-up planning: every live pair
             for k, pr in self.pairs.items():
@@ -240,6 +252,9 @@ class CommerceRuntime:
             elif v["day"] < simtime.day_of(t):             # missed visit: plan again tomorrow
                 pr = self.pairs.get(f"{aid}|{v['pid']}")
                 del self.visits[aid]
+                err = self.errands.items.get(v.get("errand") or "")
+                if err is not None and err.status == "planned":
+                    err.status = "open"                    # the errand is still to do; the daily roll will find it
                 if pr is not None and pr.stage == "inquiring":
                     self._plan_visit(w, t, aid, v["pid"], pr)
         for aid, place_id, _at in self.arrivals:
@@ -375,8 +390,85 @@ class CommerceRuntime:
             day += 1
             s = sv["earliest"] + int(stream(w.seed, "visit", day, aid).integers(0, 8 * 60))
         s = s - s % 5
-        self.visits[aid] = {"pid": pid, "store_id": store_id, "day": day, "s": s, "online": online,
+        self.visits[aid] = {"pid": pid, "kind": "inquiry", "store_id": store_id, "day": day, "s": s, "online": online,
                             "abs_t": (day - 1) * 1440 + s, "agenda": list(pr.open_questions)}
+
+    # ------------------------------------------------------------------ occasions, errands, browsing (phase 4)
+    def _role_label(self, w: World, buyer: int, ben: int) -> str:
+        role = w.profiles[ben].role_in_household
+        return "own" if buyer == ben else {"child": "child", "parent": "parent", "spouse": "partner", "head": "partner",
+                                           "flatmate": "flatmate"}.get(role, "friend")
+
+    def _daily_occasions(self, w: World, bus: EventBus, t: int) -> None:
+        """06:00: birthdays, a family member's lost/cracked phone and a new term become errands for someone in the household."""
+        day = simtime.day_of(t)
+
+        def closeness(a: int, b: int) -> float:
+            rel = self.social.rel.get((min(a, b), max(a, b))) if self.social is not None else None
+            return float((rel or {}).get("closeness", 0.6))
+
+        new = plan_errands(
+            day=day, t=t, seed=w.seed, members=self._households, ages=lambda a: w.profiles[a].age, closeness=closeness,
+            money=lambda a: self.money(w, a), phone_condition=lambda a: str(w.phones[a].get("condition", "ok")),
+            life_recent=lambda a: t - self.life_t.get(a, -10**9) <= 3 * DAY, need=lambda a: self.need(w, a),
+            is_student=lambda a: "student" in w.profiles[a].occupation.lower(), existing=self.errands)
+        for e in new:
+            if not self.errands.add(e):
+                continue
+            self.stats["errands"] += 1
+            bus.new("errand", t, e.buyer, {"errand_id": e.errand_id, "reason": e.reason, "budget_inr": e.budget_inr,
+                                           "due_t": e.due_t, "requirements": e.requirements}, other_id=e.beneficiary,
+                    rendered=False)
+            if self.social is not None:
+                name = w.profiles[e.beneficiary].name.split()[0]
+                self.social.agenda.add(e.buyer, "errand_question", t, hint="shopping for a phone", target_id=e.beneficiary,
+                                       about=f"find out what {name} would like in a phone", weight=0.8)
+                self.social.remember(e.buyer, f"I need to get {name} a phone ({e.reason.replace('_', ' ')}).", 6,
+                                     "life_event", t, tag="phone shopping")
+        self.errands.expire(t)
+
+    def _plan_daily_visits(self, w: World, t: int) -> None:
+        """07:00: a small chance per person that they go to a phone store today (browsing, or buying for someone)."""
+        day = simtime.day_of(t)
+        c = occ_cfg()
+        weekend = simtime.weekday(t) in ("Sat", "Sun")
+        fest = festival_active(day)
+        curious = {int(k.split("|", 1)[0]) for k, p in self.pairs.items() if p.stage in ("curious", "researching")}
+        for aid in range(len(w.agents)):
+            if w.profiles[aid].special_role == "salesperson" or aid in self.visits:
+                continue
+            errs = self.errands.open_for(aid)
+            err = errs[0] if errs else None
+            p = visit_probability(need=self.need(w, aid), curious=aid in curious,
+                                  payday=t - self.paid_t.get(aid, -10**9) <= 3 * DAY, weekend=weekend,
+                                  near_store=bool(self.near_store.get(aid)), festival=fest,
+                                  errand_days_left=(err.due_t - t) / DAY if err else None, cfg=c)
+            if float(stream(w.seed, "visit_roll", day, aid).random()) >= p:
+                continue
+            self._plan_extra_visit(w, t, aid, visit_kind(err is not None), err)
+
+    def _plan_extra_visit(self, w: World, t: int, aid: int, kind: str, err: Errand | None) -> None:
+        sv = cfg()["store_visit"]
+        online = aid in self.online_first or self.near_store.get(aid) is None
+        store_id = "ST-SHOPKART" if online else str(self.near_store[aid])
+        m = simtime.minute_of_day(t)
+        plan = w.agents[aid].plan
+        s = free_slot(plan, max(m + 30, sv["earliest"]), sv["latest"], sv["minutes"]) if plan else None
+        if s is None:
+            return                                         # no free time today
+        s -= s % 5
+        if err is not None:
+            ben = w.profiles[err.beneficiary].name.split()[0]
+            agenda = [f"I'm buying a phone as a present for my {self._role_label(w, aid, err.beneficiary)}, {ben}; "
+                      f"they'd like {requirement_phrase(err.requirements)}",
+                      f"my budget is around ₹{err.budget_inr:,}"]
+            err.status = "planned"
+        else:
+            agenda = ["see what phones are out there", "compare a few options in my price range"]
+        day = simtime.day_of(t)
+        self.visits[aid] = {"pid": None, "kind": kind, "errand": err.errand_id if err else None, "store_id": store_id,
+                            "day": day, "s": s, "online": online, "abs_t": (day - 1) * 1440 + s, "agenda": agenda}
+        self.stats[f"visits_{kind}"] += 1
 
     def _start_inquiry(self, w: World, bus: EventBus, t: int, aid: int, place_id: str | None) -> None:
         v = self.visits.pop(aid, None)
@@ -386,13 +478,20 @@ class CommerceRuntime:
         if st is None:
             return
         pid = v["pid"]
-        pr = self.pairs.get(f"{aid}|{pid}")
-        if pr is None or pr.stage != "inquiring" or self.media is None or pid not in self.media.live:
+        kind = v.get("kind", "inquiry")
+        pr = self.pairs.get(f"{aid}|{pid}") if pid else None
+        if self.media is None:
+            return
+        if kind == "inquiry" and (pr is None or pr.stage != "inquiring" or pid not in self.media.live):
             return                                         # product withdrawn (doc deleted) → visit dropped
+        err = self.errands.items.get(v.get("errand") or "")
         m = simtime.minute_of_day(t)
         seller = on_shift(st, self.staff.get(st.store_id, []), m)
         if seller is None or not is_open(st, m):
-            self._plan_visit(w, t, aid, pid, pr)
+            if kind == "inquiry" and pr is not None and pid:
+                self._plan_visit(w, t, aid, pid, pr)
+            elif err is not None and err.status == "planned":
+                err.status = "open"                        # closed or unstaffed: the daily roll tries again
             return
         sessions = self.social.sessions if self.social is not None else None
         sid = sessions.open([aid, seller], "store", t=t, timeout=INQUIRY_DELAY + 30) if sessions else \
@@ -400,10 +499,11 @@ class CommerceRuntime:
         if sid is None:                                    # salesperson busy: wait a few minutes
             self.visits[aid] = {**v, "online": True, "injected": True, "abs_t": t + 5}
             return
-        pr.inquired += 1
+        if pr is not None:
+            pr.inquired += 1
         if not st.kind == "online":
             w.agents[aid].talk_until = t + INQUIRY_DELAY
-        lp = self.media.live[pid]
+        lp = self.media.live[pid] if pid else None
         products = [x.p.model_dump() for x in self.media.live.values()]
         units = stock(st, products)
         for k2, n in self.stock_used.items():
@@ -412,20 +512,27 @@ class CommerceRuntime:
                 units[opt] = max(0, units[opt] - n)
         sp = w.profiles[seller]
         styles = [str(x) for x in stores_cfg()["salesperson_styles"]]
+        catalog = ([{"product_id": k, "name": c["name"], "price_inr": c["price"], "specs": c["specs"],
+                     "stock": units.get(k, 0)} for k, c in self.opinion.catalog.items() if k in units]
+                   if self.opinion is not None else [])
         sales = Salesperson(seller, sp.name.split()[0], styles[seller % len(styles)], st.store_id, st.name, pid,
-                            lp.p.name, product_facts(lp.p.model_dump()), units, offers(st.store_id))
+                            lp.p.name if lp else "phones in general", product_facts(lp.p.model_dump()) if lp else {},
+                            units, offers(st.store_id), catalog)
         prof = w.profiles[aid]
         cust = Customer(aid, prof.name.split()[0], prof.persona.speaking_style,
-                        f"{simtime.fmt(t)}; at {st.name}", v.get("agenda") or list(pr.open_questions))
-        meta = {"aid": aid, "pid": pid, "store_id": st.store_id, "seller": seller, "sid": sid}
+                        f"{simtime.fmt(t)}; at {st.name}",
+                        v.get("agenda") or (list(pr.open_questions) if pr is not None else []))
+        meta = {"aid": aid, "pid": pid, "store_id": st.store_id, "seller": seller, "sid": sid, "kind": kind,
+                "errand": err.errand_id if err else None}
         if not self.gov.allow("P0", EST_INQUIRY):
             self._unrendered_inquiry(w, bus, t, meta)
             return
         key = f"inq:{sid}"
         self._meta[key] = meta
         w.live_evts.append({"k": "store_visit", "a": aid, "store_id": st.store_id, "product": pid, "session_id": sid})
-        considered = [pid, *[k.split("|", 1)[1] for k, q in self.pairs.items()
-                             if k.startswith(f"{aid}|") and k.split("|", 1)[1] != pid and q.stage not in ("unaware", "rejected")]][:3]
+        considered = [*([pid] if pid else []), *[k.split("|", 1)[1] for k, q in self.pairs.items()
+                                                 if k.startswith(f"{aid}|") and k.split("|", 1)[1] != pid
+                                                 and q.stage not in ("unaware", "rejected")]][:3]
         opinions = self.opinion.brief_many(aid, considered) if self.opinion is not None else ""
         self.queue.submit(key, lambda: run_inquiry(sid, cust, sales, t, store=self.store, llm=self.llm,
                                                    decider=self.decider, opinions=opinions), t, INQUIRY_DELAY,
@@ -447,7 +554,7 @@ class CommerceRuntime:
 
     def _store_evidence(self, aid: int, pid: str, topics: list[str], dv: float) -> None:
         """Handling the phone and hearing the answers: strong evidence on the topics discussed (all on a general visit)."""
-        if self.opinion is None:
+        if self.opinion is None or not pid:
             return
         covered = [self._TOPIC_ATTR[x] for x in topics if x in self._TOPIC_ATTR]
         if covered:
@@ -461,6 +568,9 @@ class CommerceRuntime:
             self.social.sessions.close(sid)
 
     def _after_inquiry(self, w: World, bus: EventBus, t: int, meta: dict[str, Any], cause: str, dv: float) -> None:
+        if meta.get("kind", "inquiry") != "inquiry":
+            self._finish_visit(w, bus, t, meta, cause)
+            return
         pr = self.pairs.get(f"{meta['aid']}|{meta['pid']}")
         if pr is None or pr.stage != "inquiring":
             return
@@ -475,6 +585,97 @@ class CommerceRuntime:
         else:
             self._transition(w, bus, t, meta["aid"], meta["pid"], pr, "deciding", cause, "store inquiry done",
                              self.need(w, meta["aid"]))
+
+    def _note_mentioned(self, meta: dict[str, Any], seller_said: str, t: int, cause: str) -> None:
+        """Browsing or shopping for someone: phones the salesperson showed or named become things the customer knows
+        about (hands-on evidence, aware, worth considering later)."""
+        if self.media is None:
+            return
+        low = seller_said.lower()
+        for pid, lp in sorted(self.media.live.items()):
+            if lp.p.category.lower() in PHONE_CATS and lp.p.name.lower() in low:
+                pr = self.pair(meta["aid"], pid, t)
+                pr.aware = True
+                if self.opinion is not None:
+                    self.opinion.evidence(meta["aid"], pid, None, "store", strength=0.5)
+                self._touch(meta["aid"], pid, cause)
+
+    def _finish_visit(self, w: World, bus: EventBus, t: int, meta: dict[str, Any], cause: str) -> None:
+        """A browsing or errand visit is over: an errand turns into a purchase for the beneficiary (or tries again)."""
+        err = self.errands.items.get(meta.get("errand") or "")
+        if meta.get("kind") == "errand" and err is not None and err.status in ("open", "planned"):
+            self._complete_errand(w, bus, t, err, meta["store_id"], cause)
+
+    def _complete_errand(self, w: World, bus: EventBus, t: int, e: Errand, store_id: str, cause: str) -> None:
+        st = self.store_by_id.get(store_id)
+        products = self._products()
+        units = stock(st, list(products.values())) if st is not None else {}
+        for k2, n in self.stock_used.items():
+            s_id, opt = k2.split("|", 1)
+            if s_id == store_id and opt in units:
+                units[opt] = max(0, units[opt] - n)
+        cat = self.opinion.catalog if self.opinion is not None else {}
+        options = [{"id": k, "label": c["name"], "price_inr": c["price"], "specs": c["specs"]}
+                   for k, c in cat.items() if units.get(k, 0) > 0]
+        pick = best_for(e.requirements, e.budget_inr, options, self.money(w, e.buyer))
+        if pick is None:                                   # nothing fits the budget yet: try once more in two days
+            e.tries += 1
+            e.status = "expired" if e.tries >= 2 else "open"
+            e.due_t = t + 2 * DAY
+            return
+        self._give_phone(w, bus, t, e, pick, store_id, cause, products)
+
+    def _give_phone(self, w: World, bus: EventBus, t: int, e: Errand, pick: dict[str, Any], store_id: str, cause: str,
+                    products: dict[str, dict[str, Any]]) -> None:
+        """The buyer pays; the beneficiary gets the phone (their consideration of anything else ends)."""
+        ben, buyer, option = e.beneficiary, e.buyer, str(pick["id"])
+        price, method = int(pick["price_inr"]), str(pick["method"])
+        need = self.need(w, ben)
+        old = dict(w.phones[ben])
+        brand = products[option]["brand"] if option in products else old.get("brand", "familiar brand")
+        label = products[option]["name"] if option in products else option.split(":", 1)[1] + " phone (baseline)"
+        bname, bname_ben = w.profiles[buyer].name.split()[0], w.profiles[ben].name.split()[0]
+        ev = bus.new("purchase", t, ben, {"option": option, "store_id": store_id, "price_inr": price, "method": method,
+                                          "considered": None, "need": need, "life_event": e.reason == "replacement",
+                                          "reason": f"{e.reason.replace('_', ' ')} from {bname}",
+                                          "cause_event_id": cause, "buyer": buyer, "errand": e.errand_id,
+                                          "gift": True}, product_id=option if option in products else None)
+        self.stats["purchases"] += 1
+        self.stats["gifts"] += 1
+        self.stats["errands_done"] += 1
+        if option.startswith("baseline:"):
+            self.stats["purchases_baseline"] += 1
+        self.stock_used[f"{store_id}|{option}"] = self.stock_used.get(f"{store_id}|{option}", 0) + 1
+        if method == "cash":
+            self.spent[buyer] = self.spent.get(buyer, 0) + price
+        w.phones[ben] = {"brand": brand, "tier": buy.tier_of(option, products), "model_label": label, "bought_t": t,
+                         "condition": "ok", "battery_health": 1.0, "satisfaction": 0.9,
+                         "history": [*old.get("history", []), {"t": t, "event": "gift", "option": option, "from": buyer}]}
+        self.life_t.pop(ben, None)
+        if self.opinion is not None and option in products:
+            self.opinion.evidence(ben, option, None, "own_use")
+        if option in products:
+            pr = self.pair(ben, option, t)
+            pr.aware = True
+            if pr.stage not in TERMINAL:
+                self._transition(w, bus, t, ben, option, pr, "purchased", ev.event_id, f"a {e.reason.replace('_', ' ')} from {bname}", need)
+        for k, other in self.pairs.items():
+            if k.startswith(f"{ben}|") and k != f"{ben}|{option}" and other.stage not in TERMINAL:
+                self._transition(w, bus, t, ben, k.split("|", 1)[1], other, "rejected", ev.event_id, "got a phone", need)
+        e.status = "done"
+        w.live_evts.append({"k": "purchase", "a": ben, "product": option, "method": method, "gift": True})
+        if self.social is not None:
+            self.social.remember(ben, f"{bname} gave me a {label} ({e.reason.replace('_', ' ')}).", 7, "purchase", t, tag=label)
+            self.social.remember(buyer, f"I bought a {label} for {bname_ben} (₹{price:,}).", 6, "purchase", t, tag=label)
+            self.social.agenda.add(ben, "purchase", t, hint="new phone", product_id=option if option in products else None,
+                                   about=label)
+            self.social.agenda.add(buyer, "purchase", t, hint="a present for someone", about=label, weight=0.7)
+        for who, text in ((ben, f"{bname} gave me a {label} for {e.reason.replace('_', ' ')}."),
+                          (buyer, f"I bought a {label} for {bname_ben} (₹{price:,}).")):
+            self._background(MemoryStore(who, self.store, None).add(MemoryEntry(
+                mid=f"gift-{ev.event_id}-{who}", agent_id=who, t=t, kind="purchase", text=text[:300], importance=7,
+                source={"channel": "gift", "product_id": option, "event_id": ev.event_id}, entities=[label],
+                event_refs=[ev.event_id])))
 
     # ------------------------------------------------------------------ purchases
     def _queue_purchase(self, w: World, t: int, aid: int, pid: str, cause: str) -> None:
@@ -587,11 +788,13 @@ class CommerceRuntime:
         if self.opinion is not None:
             visit_topics: list[str] = next((e.payload["topics"] for e in emitted if e.kind == "inquiry"), [])
             self._store_evidence(meta["aid"], meta["pid"], visit_topics, dv)
+        if meta.get("kind", "inquiry") != "inquiry":
+            self._note_mentioned(meta, " ".join(m.text for m in out.messages if m.speaker == meta["seller"]), t, cause)
         conv = bus.new("conversation", t, meta["aid"], {
             "session_id": out.session_id, "participants": [meta["aid"], meta["seller"]], "place_id":
                 self.store_by_id[meta["store_id"]].place_id, "kind": "store", "t_start": t - INQUIRY_DELAY,
             "t_end": t, "topics": next((e.payload["topics"] for e in emitted if e.kind == "inquiry"), []),
-            "product_mentions": [meta["pid"]], "n_messages": len(out.messages), "rendered": True,
+            "product_mentions": [meta["pid"]] if meta["pid"] else [], "n_messages": len(out.messages), "rendered": True,
             "model": "flash-lite"}, other_id=meta["seller"], session_id=out.session_id, product_id=meta["pid"])
         emitted.append(conv)
         self.stats["inquiries"] += 1
@@ -674,7 +877,7 @@ class CommerceRuntime:
             del self.pairs[k]
             self.dirty.pop(k, None)
         for aid, v in list(self.visits.items()):
-            if v.get("pid") not in valid:
+            if v.get("pid") is not None and v["pid"] not in valid:      # browsing / errand visits name no product
                 del self.visits[aid]
         return len(dead)
 
@@ -682,7 +885,7 @@ class CommerceRuntime:
         """Checkpoint form."""
         return {"pairs": {k: p.to_dict() for k, p in self.pairs.items()}, "life_t": self.life_t,
                 "paid_t": self.paid_t, "spent": self.spent, "visits": self.visits, "stock_used": self.stock_used,
-                "stats": self.stats}
+                "stats": self.stats, "errands": self.errands.to_dict()}
 
     def load(self, d: dict[str, Any]) -> None:
         """Restore from to_dict."""
@@ -692,6 +895,7 @@ class CommerceRuntime:
         self.spent = {int(k): int(v) for k, v in (d.get("spent") or {}).items()}
         self.visits = {int(k): v for k, v in (d.get("visits") or {}).items()}
         self.stock_used = dict(d.get("stock_used") or {})
+        self.errands.load(d.get("errands") or {})
         self.stats.update(d.get("stats") or {})
 
     def seed_from_media(self, t: int) -> None:

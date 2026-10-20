@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -13,6 +14,7 @@ from media.screen import wrap
 from mind.context import build
 from mind.decision import DecisionAdapter
 from mind.memory import EventHook, MemoryStore
+from mind.opinion import attrs_in
 from shared.llm import LLMClient
 from shared.models import MODEL_LITE
 from shared.schemas.memory import MemoryEntry
@@ -48,7 +50,7 @@ class CustomerThink(BaseModel):
 class ToolCall(BaseModel):
     """A salesperson tool use (recorded in the private note; results are pre-fetched into one briefing)."""
 
-    tool: Literal["product_facts", "stock", "offers"]
+    tool: Literal["product_facts", "stock", "offers", "recommend"]
     topic: Literal["battery", "camera", "price", "display", "performance", "warranty", "general"] = "general"
 
 
@@ -98,9 +100,29 @@ class Salesperson:
     facts: dict[str, str] = field(default_factory=dict)
     stock: dict[str, int] = field(default_factory=dict)
     offers: list[str] = field(default_factory=list)
+    catalog: list[dict[str, Any]] = field(default_factory=list)   # {product_id, name, price_inr, specs, stock}: every phone here
+
+    def recommend(self, wants: list[str], budget: int | None) -> str:
+        """Up to 3 phones that fit what the customer has SAID they want and can spend (never their private agenda)."""
+        rows = []
+        for c in self.catalog:
+            if int(c.get("stock", 1)) <= 0 or (budget and int(c["price_inr"]) > budget * 1.15):
+                continue
+            specs = c.get("specs", {})
+            want = [specs.get(a, 0.5) for a in wants if a in specs]
+            rows.append(((sum(want) / len(want) if want else 0.5) + 0.15 * specs.get("price_value", 0.5), c))
+        rows.sort(key=lambda r: (-r[0], r[1]["name"]))
+        out = []
+        for _, c in rows[:3]:
+            top = [a.replace("_", " ") for a, v in sorted(c.get("specs", {}).items(), key=lambda kv: -kv[1])
+                   if a not in ("price_value", "brand") and v >= 0.6][:2]
+            out.append(f"{c['name']} ₹{int(c['price_inr']):,}" + (f" (strong on {', '.join(top)})" if top else ""))
+        return "recommended for what they asked: " + ("; ".join(out) or "nothing in stock fits; suggest looking online")
 
     def call(self, c: ToolCall) -> str:
         """Run one tool."""
+        if c.tool == "recommend":
+            return ""
         if c.tool == "stock":
             n = self.stock.get(self.product_id or "", 0)
             return f"stock: {self.product_name} {n} units" + ("" if n else " (out of stock; baseline phones available)")
@@ -137,6 +159,17 @@ def topics_in(text: str) -> list[str]:
     return [t for t, ks in keys.items() if any(k in low for k in ks)]
 
 
+def budget_in(text: str) -> int | None:
+    """A budget the customer said aloud ("around 20k", "under ₹25,000"), else None (last number in a phone-price range)."""
+    found = []
+    for m in re.finditer(r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s?k\b|\d{4,6})", text.lower()):
+        raw = m.group(1).replace(",", "")
+        v = float(raw[:-1]) * 1000 if raw.endswith("k") else float(raw)
+        if 3000 <= v <= 300000:
+            found.append(int(v))
+    return found[-1] if found else None
+
+
 def briefing(sales: Salesperson, msgs: list[Message]) -> tuple[str, list[ToolCall]]:
     """Pre-fetched tool results for one salesperson turn: general facts, stock, offers and every topic the customer
     has SAID out loud so far (never the private agenda)."""
@@ -144,7 +177,11 @@ def briefing(sales: Salesperson, msgs: list[Message]) -> tuple[str, list[ToolCal
     topics = topics_in(spoken)[:3]
     calls = [ToolCall(tool="product_facts", topic="general"), ToolCall(tool="stock"), ToolCall(tool="offers"),
              *(ToolCall(tool="product_facts", topic=t) for t in topics)]  # type: ignore[arg-type]
-    return "\n".join(sales.call(c) for c in calls), calls
+    text = "\n".join(sales.call(c) for c in calls)
+    if sales.catalog:
+        calls.append(ToolCall(tool="recommend"))
+        text += "\n" + sales.recommend(attrs_in(spoken), budget_in(spoken))
+    return text, calls
 
 
 def choose_candidate(cands: list[Candidate], turn: int, withhold: list[str], seed: str) -> Candidate:

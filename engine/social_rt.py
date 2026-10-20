@@ -17,6 +17,7 @@ from engine.tasks import TaskQueue
 from engine.world import World
 from mind.decision import DecisionAdapter, DecisionRequest, DecisionResult, FakeDecision
 from mind.memory import MemoryStore, embed_cached
+from mind.opinion import attrs_in
 from mind.reflect import THRESHOLD, day_importance, reflect
 from population.config import load
 from shared import time as simtime
@@ -104,6 +105,7 @@ class SocialRuntime:
         self.on_phone: Callable[[int, int], bool] = lambda aid, m: False         # is this person scrolling their phone now
         self.visible_fn: Callable[[float, float, int], tuple[str, str] | None] | None = None   # campaign board in view
         self._street_tried: dict[tuple[int, int], int] = {}
+        self.errands: Any = None                                      # the commerce runtime's Errands (set by the engine)
         self._online = friends_online(self.rel)                      # who can text whom
         self._feed_at: dict[int, list[int]] | None = None            # minute of day → people starting a phone session
         self._remote_last: dict[tuple[int, int], int] = {}
@@ -193,6 +195,8 @@ class SocialRuntime:
                      and t >= w.agents[o].talk_until
                      and t - self._remote_last.get((min(aid, o), max(aid, o)), -10**9) >= int(cfg["pair_cooldown_min"])}
             other = pick_partner(self._online[aid], awake, float(rng.random()))
+            if top and top[0].kind == "errand_question" and top[0].target_id in awake:
+                other = top[0].target_id                              # I'm buying them a phone: ask them
             if other is None:
                 continue
             self._remote_last[(min(aid, other), max(aid, other))] = t
@@ -470,6 +474,7 @@ class SocialRuntime:
                 self.remember(ev.agent_id or 0, p["summary"], int(p.get("importance", 3)), "conversation", t)
                 self._apply_heard(ev.agent_id, spec.get("other_id"), p)
                 self._apply_intents(ev.agent_id or 0, p, t)
+                self._note_requirements(ev.agent_id, spec.get("other_id"), p)
             elif spec["kind"] == "interaction":
                 for x in (spec["agent_id"], spec.get("other_id")):
                     if x is not None:
@@ -527,6 +532,16 @@ class SocialRuntime:
                 "awareness": "heard", "stage": "aware", "t": t, "sources_seen": {"word_of_mouth": 1},
                 "first_heard": {"channel": "word_of_mouth", "t": t, "person_id": teller}},
                 cause_event_id=f"wom-{t}-{teller}-{listener}")
+
+    def _note_requirements(self, listener: int | None, teller: int | None, payload: dict[str, Any]) -> None:
+        """If I am buying a phone for the person I just talked to and they SAID what they want, my errand now knows."""
+        if self.errands is None or listener is None or teller is None:
+            return
+        attrs = attrs_in(" ".join(str(x) for x in payload.get("requirements") or []))
+        if attrs and self.errands.note_requirements(listener, teller, attrs) is not None:
+            for it in self.agenda.items.get(listener, []):          # no need to keep asking
+                if it.kind == "errand_question" and it.target_id == teller:
+                    it.weight = 0.0
 
     def _apply_intents(self, aid: int, payload: dict[str, Any], t: int) -> None:
         """What the person decided in a debrief becomes agenda items and nudges commerce (rules on their own words)."""

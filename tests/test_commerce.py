@@ -140,7 +140,10 @@ def test_need_driven_purchase(bought):
     assert len(buys) >= 1
     theta = 0.5
     for b in buys:
-        assert b["payload"]["need"] >= theta or b["payload"]["life_event"]
+        if b["payload"].get("gift"):          # someone else decided to buy it (a present); the owner's need is irrelevant
+            assert b["payload"]["buyer"] != b["agent_id"]
+        else:
+            assert b["payload"]["need"] >= theta or b["payload"]["life_event"]
         assert b["payload"]["method"] in ("cash", "card", "emi")
         ph = e.world.phones[b["agent_id"]]
         assert ph["bought_t"] == b["t"] and ph["condition"] == "ok"
@@ -227,6 +230,10 @@ def test_prune_products_drops_deleted(bought):
     c.visits[1] = {"pid": "demo-gone", "day": 1}
     assert c.prune_products({pid}) >= 1
     assert "1|demo-gone" not in c.pairs and 1 not in c.visits
+    c.visits[2] = {"pid": None, "kind": "browse", "errand": None, "day": 1}
+    c.prune_products({pid})
+    assert 2 in c.visits                                          # browsing visits name no product: never pruned
+    del c.visits[2]
     assert any(k.endswith(f"|{pid}") for k in c.pairs)           # real product untouched
 
 
@@ -362,3 +369,25 @@ def test_zz_organic_life_continues_after_the_campaign_ends(bought):
     assert after["campaign_ended"] == 1                         # announced exactly once
     assert after["wom"] > before["wom"] and after["gate"] > before["gate"]
     assert e.media.campaigns(e.world.t)[pid]["active"] is False
+
+
+def test_errands_and_extra_store_visits_in_a_run(bought):
+    """Phase 4: gifts / replacements become errands, and people browse stores for their own reasons."""
+    e, sink, store, pid = bought
+    s = e.commerce.stats
+    errs = _ev(sink, "errand")
+    kinds = {}
+    for x in _ev(sink, "inquiry"):
+        k = (x["payload"].get("n_messages", 0) > 0)
+        kinds[k] = kinds.get(k, 0) + 1
+    print("errand stats", {k: s[k] for k in ("errands", "errands_done", "visits_browse", "visits_errand", "gifts")},
+          "errand events", len(errs), "open errands", len(e.commerce.errands.open_for(0)))
+    print("errands", [(x.errand_id, x.reason, x.status, x.tries, x.budget_inr, x.due_t) for x in e.commerce.errands.items.values() if x.reason != "skipped"],
+          "leftover visits", {a: (v.get("kind"), v.get("errand")) for a, v in e.commerce.visits.items() if v.get("kind") != "inquiry"})
+    assert s["visits_browse"] + s["visits_errand"] > 0, "nobody went shopping for their own reasons in 3 days"
+    for x in errs:
+        assert x["agent_id"] != x["other_id"] and x["payload"]["reason"] in ("gift", "replacement", "new_start")
+        assert x["payload"]["budget_inr"] >= 6000
+    for x in _ev(sink, "purchase"):
+        if x["payload"].get("gift"):
+            assert x["payload"]["buyer"] != x["agent_id"]

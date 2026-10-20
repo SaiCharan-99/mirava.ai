@@ -43,6 +43,7 @@ class DebriefOut(BaseModel):
     reaction: str
     belief_deltas: list[BeliefDelta]
     heard_claims: list[HeardClaim] = Field(default_factory=list)
+    requirements: list[str] = Field(default_factory=list)       # what the OTHER person said aloud they want in a phone
     summary: str
     importance: int = Field(ge=1, le=10)
     intents: list[str]
