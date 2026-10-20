@@ -19,6 +19,7 @@ from engine.tasks import TaskQueue
 from engine.world import World
 from media.attention import AttentionCtx, attend, attend_feed, attend_print, dwell_seconds, is_night, ots
 from media.audience import audience_ids
+from media.feed import SHARE_LIFE, Candidate, FeedAffinity, rank, score
 from mind.ad_thought import apply_thought, rule_thought, think_on_notice
 from mind.memory import embed_cached
 from mind.opinion import attrs_in
@@ -102,6 +103,9 @@ class MediaRuntime:
         self.reel_today: dict[str, int] = {}
         self.reel_impr: dict[str, int] = {}
         self.visited: set[str] = set()
+        self.affinity = FeedAffinity()                # what each person's feed has learned they like
+        self.shares: list[dict[str, Any]] = []        # reels friends sent each other (organic reach; outlives the campaign)
+        self.share_today: dict[int, int] = {}
         self.campaign_over: set[str] = set()          # products whose paid flight has ended (event emitted)
         self.commerce: Any = None                     # set by the engine once the commerce runtime exists
         self.reviews: list[dict[str, Any]] = []       # schedule + published reviews
@@ -254,6 +258,9 @@ class MediaRuntime:
             self.reel_today.clear()
             self.reel_impr.clear()
             self.visited.clear()
+            self.share_today.clear()
+            self.affinity.decay()
+            self.shares = [x for x in self.shares if t - x["t"] <= SHARE_LIFE]
         if self.site_day != simtime.day_of(t):
             self._assign_sites(w)
         if m % 30 == 0:
@@ -304,13 +311,17 @@ class MediaRuntime:
     def _source_of(channel: str) -> str:
         return {"review": "review", "community": "community"}.get(channel, "ad")
 
-    def _observe(self, aid: int, pid: str, channel: str, stim: StimulusRecord, strength: float = 1.0) -> None:
+    def _observe(self, aid: int, pid: str, channel: str, stim: StimulusRecord, strength: float = 1.0, *,
+                 shared_by_closeness: float | None = None) -> None:
         """A noticed creative becomes evidence about the attributes it talks about (generic ads: the brand only)."""
         if self.opinion is None:
             return
         text = " ".join([*stim.claims_carried, stim.hook, stim.description])
         covered = attrs_in(text) or ["brand"]
-        self.opinion.evidence(aid, pid, covered, self._source_of(channel), strength=strength)
+        if shared_by_closeness is not None:             # a friend sent it: believed like word of mouth, by closeness
+            self.opinion.evidence(aid, pid, covered, "word_of_mouth", closeness=shared_by_closeness, strength=strength)
+        else:
+            self.opinion.evidence(aid, pid, covered, self._source_of(channel), strength=strength)
 
     def _stim(self, pid: str, cid: str) -> StimulusRecord | None:
         if pid.startswith("baseline:"):
@@ -452,7 +463,8 @@ class MediaRuntime:
             return
         lp = self.live[pid]
         self.aware[pid].add(aid)
-        self._observe(aid, pid, channel, stim, 0.6 if outcome == "partial" else 1.0)
+        shared = (extra or {}).get("closeness") if (extra or {}).get("source") == "share" else None
+        self._observe(aid, pid, channel, stim, 0.6 if outcome == "partial" else 1.0, shared_by_closeness=shared)
         meta = {"aid": aid, "pid": pid, "cid": cid, "channel": channel, "site_id": site_id, "place": place,
                 "trigger": ev.event_id, "rel": ctx.relevance, "stim": stim,
                 "opinions": self.opinion.brief(aid, pid) if self.opinion is not None else ""}
@@ -570,8 +582,8 @@ class MediaRuntime:
     def _feed_session(self, w: World, bus: EventBus, t: int, aid: int, minutes: int, app: str) -> None:
         rng = stream(w.seed, "feed", t, aid)
         n_items = max(2, min(8, minutes // 4))
-        items: list[tuple[str, str, str, StimulusRecord, float]] = []   # (pid, cid, channel, stim, interest)
-        for pid, lp in sorted(self.live.items()):
+        cands: list[Candidate] = []
+        for pid, lp in sorted(self.live.items()):                 # paid reels: reach, frequency and daily caps still apply
             if not lp.in_flight(t) or lp.p.plan is None:
                 continue
             reel = lp.p.plan.reel or {}
@@ -587,7 +599,7 @@ class MediaRuntime:
             inter = self._relevance(aid, pid, lp.interests, aid in lp.audience)
             p_show = 0.85 if aid in lp.audience else 0.04 + 0.1 * inter
             if rng.random() < p_show:
-                items.append((pid, cid, "reel", stim, inter))
+                cands.append(Candidate(pid, cid, "reel", stim, inter, "paid"))
         follows = set(self.profiles[aid]["media"]["follows"])
         for r in self.reviews:
             if r["state"] == "published" and r["reviewer"] in follows and t - r["t_publish"] < 3 * 1440 \
@@ -598,23 +610,75 @@ class MediaRuntime:
                                           hook=r["title"], claims_carried=[], tone="review", readable_at_distance=True,
                                           description=f"A video review by a reviewer you follow: “{r['title']}”. "
                                                       f"{r['summary'][:200]}")
-                    items.append((r["product_id"], stim.creative_id, "review", stim,
-                                  self._relevance(aid, r["product_id"], lp.interests, aid in lp.audience)))
-        while len(items) < n_items and rng.random() < float(BASELINE["feed_share"]) * 2:
-            b = self.baseline[int(rng.integers(0, len(self.baseline)))]
-            items.append((f"baseline:{b['id']}", f"baseline-{b['id']}", "reel", self.baseline_stims[b["id"]],
-                          self._relevance(aid, "", set(b["interests"]), False)))
-        items = items[:n_items]
-        order: list[int] = [int(x) for x in rng.permutation(len(items))] if items else []
-        for idx, j in enumerate(order):
-            pid, cid, ch, stim, inter = items[int(j)]
-            ctx, _ = self._ctx(w, aid, pid, cid, mode="idle", dwell=15, lit_night=False, clutter=0, on_phone=True)
-            out = attend_feed(stim, inter, idx, ctx, stream(w.seed, "feed_item", t, aid, cid))
-            if ch == "reel" and not pid.startswith("baseline:"):
-                self.reel_today[f"{aid}|{pid}"] = self.reel_today.get(f"{aid}|{pid}", 0) + 1
-                self.reel_impr[pid] = self.reel_impr.get(pid, 0) + 1
-            self._exposure(w, bus, t, aid, pid, cid, ch, out, stim, ctx, place=app,
-                           extra={"app": app, "position": idx, "mode": "idle"})
+                    cands.append(Candidate(r["product_id"], stim.creative_id, "review", stim,
+                                           self._relevance(aid, r["product_id"], lp.interests, aid in lp.audience),
+                                           "review"))
+        for sh in self.shares:                                    # reels friends sent (they outlive the paid campaign)
+            lp = self.live.get(sh["pid"])
+            if sh["to"] != aid or lp is None or t - sh["t"] > SHARE_LIFE or f"{aid}|{sh['cid']}" in self.seen:
+                continue
+            stim = lp.stim.get(sh["cid"])
+            if stim is not None:
+                cands.append(Candidate(sh["pid"], sh["cid"], "reel", stim,
+                                       self._relevance(aid, sh["pid"], lp.interests, aid in lp.audience), "share",
+                                       closeness=float(sh["closeness"])))
+        for _ in range(3):                                        # a few ambient ads compete too
+            if rng.random() < float(BASELINE["feed_share"]) * 2:
+                b = self.baseline[int(rng.integers(0, len(self.baseline)))]
+                cands.append(Candidate(f"baseline:{b['id']}", f"baseline-{b['id']}", "reel", self.baseline_stims[b["id"]],
+                                       self._relevance(aid, "", set(b["interests"]), False), "baseline",
+                                       topic=str(b["interests"][0])))
+        if not cands:
+            return
+        interests = list(self.profiles[aid]["persona"]["interests"])
+        rnd = stream(w.seed, "feed_rank", t, aid)
+        scores = []
+        for c in cands:
+            lp = self.live.get(c.pid)
+            pair = self.commerce.pairs.get(f"{aid}|{c.pid}") if self.commerce is not None else None
+            scores.append(score(c, affinity=self.affinity.get(aid, c.topic, interests),
+                                need=self._need(w, aid, lp) if lp is not None else 0.0,
+                                in_audience=bool(lp and aid in lp.audience),
+                                curious=bool(pair and pair.stage in ("curious", "researching")),
+                                n_seen=self.seen.get(f"{aid}|{c.cid}", [0, 0])[0],
+                                noise=float(rnd.random() - 0.5) * 0.3))
+        for idx, c in enumerate(rank(cands, scores, n_items)):
+            ctx, _ = self._ctx(w, aid, c.pid, c.cid, mode="idle", dwell=15, lit_night=False, clutter=0, on_phone=True)
+            out = attend_feed(c.stim, c.interest, idx, ctx, stream(w.seed, "feed_item", t, aid, c.cid))
+            self.affinity.learn(aid, c.topic, out, interests)
+            if c.source == "paid":
+                self.reel_today[f"{aid}|{c.pid}"] = self.reel_today.get(f"{aid}|{c.pid}", 0) + 1
+                self.reel_impr[c.pid] = self.reel_impr.get(c.pid, 0) + 1
+            self._exposure(w, bus, t, aid, c.pid, c.cid, c.channel, out, c.stim, ctx, place=app,
+                           extra={"app": app, "position": idx, "mode": "idle", "source": c.source,
+                                  **({"closeness": round(c.closeness, 2)} if c.source == "share" else {})})
+            if out == "full" and c.source in ("paid", "share") and not c.pid.startswith("baseline:"):
+                self._maybe_share(w, bus, t, aid, c)
+
+    def _maybe_share(self, w: World, bus: EventBus, t: int, aid: int, c: Candidate) -> None:
+        """Someone who watched a reel to the end and likes the phone may send it to a couple of close online friends."""
+        if self.opinion is None or self.social is None or self.opinion.attitude(aid, c.pid) <= 0.3:
+            return
+        if self.share_today.get(aid, 0) >= 3:
+            return
+        e = float(self.profiles[aid]["persona"]["big5"].get("E", 0.5))
+        rng = stream(w.seed, "share", t, aid, c.cid)
+        if float(rng.random()) >= 0.15 + 0.3 * e:
+            return
+        friends = [(o, cl) for o, cl in self.social._online.get(aid, []) if cl >= 0.3
+                   and not any(s["to"] == o and s["cid"] == c.cid for s in self.shares)][:4]
+        if not friends:
+            return
+        lp = self.live[c.pid]
+        picked = [friends[int(i)] for i in rng.permutation(len(friends))[: 1 + int(rng.random() < 0.4)]]
+        for other, closeness in picked:
+            self.shares.append({"to": other, "from": aid, "pid": c.pid, "cid": c.cid, "t": t, "closeness": closeness})
+            bus.new("share", t, aid, {"to": other, "creative_id": c.cid, "closeness": round(closeness, 2)},
+                    other_id=other, product_id=c.pid)
+            self.social.agenda.add(other, "product_noticed", t, hint=lp.p.name, product_id=c.pid, weight=0.3,
+                                   about=f"{self.profiles[aid]['name'].split()[0]} sent me a reel about the {lp.p.name}")
+        self.share_today[aid] = self.share_today.get(aid, 0) + 1
+        del self.shares[:-600]                                    # the pool stays small
 
     def _newspaper(self, w: World, bus: EventBus, t: int, aid: int, day: int) -> None:
         for pid, lp in sorted(self.live.items()):
@@ -831,7 +895,8 @@ class MediaRuntime:
                 "reel_today": self.reel_today, "reel_impr": self.reel_impr, "visited": sorted(self.visited),
                 "reviews": [{**r, "state": "due" if r["state"] == "writing" else r["state"]} for r in self.reviews],
                 "threads": self.threads, "stats": self.stats, "pending": self.pending,
-                "campaign_over": sorted(self.campaign_over)}
+                "campaign_over": sorted(self.campaign_over), "affinity": self.affinity.to_dict(),
+                "shares": self.shares}
 
     def load(self, d: dict[str, Any]) -> None:
         """Restore from to_dict."""
@@ -846,3 +911,5 @@ class MediaRuntime:
         self.stats.update(d.get("stats") or {})
         self.pending = list(d.get("pending") or [])
         self.campaign_over = set(d.get("campaign_over") or [])
+        self.affinity.load(d.get("affinity") or {})
+        self.shares = list(d.get("shares") or [])

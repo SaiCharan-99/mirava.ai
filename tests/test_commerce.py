@@ -317,3 +317,48 @@ def test_phone_chats_and_meetups_in_a_real_run(bought):
         assert e.social.rel[(min(x["agent_id"], x["other_id"]), max(x["agent_id"], x["other_id"]))]["channel"] in ("online", "both")
     assert meets, "no friends planned to meet in 3 days"
     assert all(x["payload"]["act"] in ("cafe", "park") for x in meets)
+
+
+def test_feeds_rank_and_friends_share_reels(bought):
+    """Phase 3: feed items carry a source, and organic shares (friends' reels) flow without paid reach."""
+    e, sink, store, pid = bought
+    src = {}
+    for x in _ev(sink, "exposure"):
+        s = x["payload"].get("source")
+        if s:
+            src[s] = src.get(s, 0) + 1
+    shares = _ev(sink, "share")
+    print("feed sources", src, "shares", len(shares), "affinity people", len(e.media.affinity.v))
+    assert src.get("paid", 0) > 0 and src.get("baseline", 0) > 0 and e.media.affinity.v
+    for x in shares:
+        assert x["agent_id"] != x["other_id"] and x["payload"]["closeness"] >= 0.3
+        assert x["product_id"] == pid
+
+
+def test_zz_organic_life_continues_after_the_campaign_ends(bought):
+    """Phase 3.3: once the paid flight is over nothing paid reaches anyone, but conversations, word of mouth, reviews,
+    shares and store visits keep the world talking."""
+    e, sink, store, pid = bought
+
+    def counts():
+        paid = sum(1 for x in _ev(sink, "exposure") if x["payload"].get("source") == "paid")
+        return {"paid": paid, "wom": len(_ev(sink, "wom")), "gate": len(_ev(sink, "gate")),
+                "campaign_ended": len(_ev(sink, "campaign_ended"))}
+
+    before = counts()
+    e.media.live[pid].p.plan.flight_days = 0                    # the campaign is over, the product is still on sale
+
+    async def day():
+        for _ in range(1440):
+            await e.tick()
+        for _ in range(5):
+            await asyncio.sleep(0.05)
+        await e.bus.flush()
+
+    asyncio.run(day())
+    after = counts()
+    print("before", before, "after", after)
+    assert after["paid"] == before["paid"]                      # no paid reels after the flight
+    assert after["campaign_ended"] == 1                         # announced exactly once
+    assert after["wom"] > before["wom"] and after["gate"] > before["gate"]
+    assert e.media.campaigns(e.world.t)[pid]["active"] is False
