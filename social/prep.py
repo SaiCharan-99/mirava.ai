@@ -44,7 +44,10 @@ async def prep(agent_id: int, session_id: str, other_name: str, relationship: st
                now_t: int | None = None, stranger: bool = False, priority_class: str = "P3", opinions: str = "",
                mind: str = "", visible: str = "", stance: str = "") -> tuple[SharePlan, list[Candidate], float]:
     """Return this agent's SharePlan, its private candidates and the model cost."""
-    situation = f"I just ran into {other_name} ({relationship}) at {place}. Possible topics: {', '.join(topics)}."
+    if place == "WhatsApp":
+        situation = f"I'm texting {other_name} ({relationship}) on WhatsApp. Possible topics: {', '.join(topics)}."
+    else:
+        situation = f"I just ran into {other_name} ({relationship}) at {place}. Possible topics: {', '.join(topics)}."
     ctx = await build(agent_id, "prep", f"{other_name} {' '.join(topics)}", situation, store=store, llm=llm,
                       now=now, now_t=now_t, opinions=opinions)
     prompt = (PROMPT.read_text(encoding="utf-8").replace("{context}", ctx.render()).replace("{situation}", situation)

@@ -18,6 +18,7 @@ from engine.world import World
 from mind.decision import DecisionAdapter, DecisionRequest, DecisionResult, FakeDecision
 from mind.memory import MemoryStore, embed_cached
 from mind.reflect import THRESHOLD, day_importance, reflect
+from population.config import load
 from shared import time as simtime
 from shared.llm import LLMClient
 from shared.schemas.events import Event
@@ -26,7 +27,9 @@ from shared.store import DocStore
 from shared.subjects import canonical
 from social.agenda import Agenda
 from social.conversation import ConvExtras, Outcome, Participant, run_conversation, template_memories, unrendered
-from social.gate import Side, gate
+from social.gate import GateResult, Side, gate, topics_for
+from social.meetups import plan_meetups
+from social.remote import friends_online, pick_partner, wants_to_text
 from social.sessions import SessionRegistry
 from social.stop import LONG_MIN, MODE_RECOGNISE, QUICK_MIN, StopCtx, decide_stop, urgency
 from social.wom import tell
@@ -101,6 +104,13 @@ class SocialRuntime:
         self.on_phone: Callable[[int, int], bool] = lambda aid, m: False         # is this person scrolling their phone now
         self.visible_fn: Callable[[float, float, int], tuple[str, str] | None] | None = None   # campaign board in view
         self._street_tried: dict[tuple[int, int], int] = {}
+        self._online = friends_online(self.rel)                      # who can text whom
+        self._feed_at: dict[int, list[int]] | None = None            # minute of day → people starting a phone session
+        self._remote_last: dict[tuple[int, int], int] = {}
+        self._remote_today = 0
+        self._meet_pairs = [(a, b, float(r["closeness"])) for (a, b), r in sorted(self.rel.items())
+                            if r.get("kind") in ("friend", "partner") and float(r.get("closeness", 0.0)) >=
+                            float(load("social")["meetups"]["min_closeness"])]
         self.watched = watched or set()
         self.opinion = opinion                                     # OpinionEngine (None: no computed opinions)
         self.catalog_fn: Callable[[], dict[str, str]] | None = None   # product id → name (set by the engine)
@@ -149,8 +159,83 @@ class SocialRuntime:
         if pairs:
             await asyncio.gather(*(self._encounter(w, bus, a, b, t) for a, b in pairs))
         await self._street(w, bus, t)
+        await self._remote(w, bus, t)
+        if simtime.minute_of_day(t) == 7 * 60:
+            self._plan_meetups(w, bus, t)
         if simtime.minute_of_day(t) == REFLECT_AT:
             self._nightly(w, bus, t)
+
+    # ------------------------------------------------------------------ phone chats (people who are apart)
+    async def _remote(self, w: World, bus: EventBus, t: int) -> None:
+        """At the start of a phone session someone with something on their mind may text a friend."""
+        m = simtime.minute_of_day(t)
+        cfg = load("social")["remote"]
+        if m == 0:
+            self._remote_today = 0
+        if self._feed_at is None:
+            self._feed_at = {}
+            for p in w.profiles:
+                for start, _minutes, _app in p.media.feed_sessions:
+                    self._feed_at.setdefault(int(start), []).append(p.agent_id)
+        if self._remote_today >= int(cfg["max_per_day"]):
+            return
+        seed = int(getattr(self.opinion, "seed", 0))
+        for aid in self._feed_at.get(m, []):
+            a = w.agents[aid]
+            if a.activity == "sleep" or self.sessions.busy(aid) or t < a.talk_until or aid not in self._online:
+                continue
+            rng = stream(seed, "remote", t, aid)
+            top = self.agenda.top(aid, 1, None, t)
+            if not wants_to_text(top[0].weight if top else 0.0, float(w.needs[aid, 2]),
+                                 float(w.profiles[aid].persona.big5.get("E", 0.5)), float(rng.random()), cfg):
+                continue
+            awake = {o for o, _ in self._online[aid] if w.agents[o].activity != "sleep" and not self.sessions.busy(o)
+                     and t >= w.agents[o].talk_until
+                     and t - self._remote_last.get((min(aid, o), max(aid, o)), -10**9) >= int(cfg["pair_cooldown_min"])}
+            other = pick_partner(self._online[aid], awake, float(rng.random()))
+            if other is None:
+                continue
+            self._remote_last[(min(aid, other), max(aid, other))] = t
+            self._remote_today += 1
+            await self._phone_chat(w, bus, aid, other, t, float(cfg["est_cost_usd"]))
+            if self._remote_today >= int(cfg["max_per_day"]):
+                return
+
+    async def _phone_chat(self, w: World, bus: EventBus, ia: int, ib: int, t: int, est: float) -> None:
+        pair = (min(ia, ib), max(ia, ib))
+        rel = self.rel.get(pair)
+        topics, product = topics_for(self.side(w, ia), self.side(w, ib))
+        closeness = float((rel or {}).get("closeness", 0.0))
+        rendered = self.gov.allow("P4", est)
+        g = GateResult(pair, True, "social", topics, "phone chat", 2.0 * (product is not None) + closeness, "P4",
+                       rendered, product)
+        bus.new("gate", t, pair[0], {**g.payload(), "channel": "phone"}, other_id=pair[1], rendered=rendered)
+        await self._converse(w, bus, g, ia, ib, t, rel=rel, pname="WhatsApp", where="on WhatsApp", remote=True)
+
+    # ------------------------------------------------------------------ planned meetups
+    def _plan_meetups(self, w: World, bus: EventBus, t: int) -> None:
+        """07:00: friends who agree to meet get a café or park hour in both of today's plans."""
+        cfg = load("social")["meetups"]
+        day = simtime.day_of(t)
+        weekend = (day - 1) % 7 >= 5
+        seed = int(getattr(self.opinion, "seed", 0))
+        meets = plan_meetups(
+            self._meet_pairs, day=day, weekend=weekend, seed=seed, cfg=cfg,
+            extraversion=lambda x: float(w.profiles[x].persona.big5.get("E", 0.5)),
+            satisfaction=lambda x: float(w.needs[x, 2]),
+            plan_of=lambda x: w.agents[x].plan if w.agents[x].plan_day == day else [],
+            haunts=lambda x, k: list((w.metas[x].get("haunts") or {}).get(k) or []))
+        for mt in meets:
+            place = w.wm.place_by_id.get(mt.place_id)
+            pname = place.name if place else "a café"
+            for me, other in ((mt.a, mt.b), (mt.b, mt.a)):
+                ag = w.agents[me]
+                ag.plan = insert_block(ag.plan, mt.start, mt.start + mt.minutes, mt.act, mt.place_id)
+                self.remember(me, f"Meeting {self.name_of(other)} at {pname} later today.", 3, "conversation", t)
+            bus.new("meetup_planned", t, mt.a, {"place_id": mt.place_id, "act": mt.act, "start_minute": mt.start,
+                                                "minutes": mt.minutes}, other_id=mt.b, rendered=False)
+            w.live_evts.append({"k": "meetup_planned", "a": mt.a, "b": mt.b, "place": pname,
+                                "at": f"{mt.start // 60:02d}:{mt.start % 60:02d}"})
 
     # ------------------------------------------------------------------ street (people on the move who know each other)
     async def _street(self, w: World, bus: EventBus, t: int) -> None:
@@ -259,20 +344,32 @@ class SocialRuntime:
         bus.new("gate", t, pair[0], g.payload(), other_id=pair[1], rendered=g.rendered)
         if not g.talk:
             return
+        pname = "the street" if street else ((place.name if place else "the street")
+                                             if place and place.kind != "home" else "home")
+        where = "the street" if street else w._pname(w.agents[ia].place_id)
+        await self._converse(w, bus, g, ia, ib, t, rel=rel, pname=pname, where=where, street=street, vis=vis)
+
+    async def _converse(self, w: World, bus: EventBus, g: Any, ia: int, ib: int, t: int, *, rel: dict[str, Any] | None,
+                        pname: str, where: str | None, street: dict[str, Any] | None = None,
+                        vis: tuple[str, str] | None = None, remote: bool = False) -> None:
+        """Open the session, stop the people (unless it is a phone chat), then render the talk or note it briefly."""
         hold = int(street["hold"]) if street else 0
         delay = max(CONV_DELAY, hold)
         sid = self.sessions.open([ia, ib], g.kind, t=t, timeout=delay + 15)
         if sid is None:
             return
-        for x in (ia, ib):
-            if not (street and w.hold(w.agents[x], t, hold)):          # on the street: stop where they stand
-                w.agents[x].talk_until = t + delay
+        if not remote:
+            for x in (ia, ib):
+                if not (street and w.hold(w.agents[x], t, hold)):          # on the street: stop where they stand
+                    w.agents[x].talk_until = t + delay
         pa = self._participant(w, ia)
         pb = self._participant(w, ib)
         w.live_evts.append({"k": "talk", "a": ia, "b": ib, "session_id": sid, "topic": g.topics[0] if g.topics else "",
-                            "rendered": g.rendered, "place": "the street" if street else w._pname(w.agents[ia].place_id)})
+                            "rendered": g.rendered, "place": where})
         if not g.rendered:
             out = await unrendered(sid, pa, pb, g, t, None)
+            if remote:
+                out.events[0]["payload"]["channel"] = "phone"
             self._background(asyncio.to_thread(template_memories, self.store, sid, pa, pb, g, t))
             self._emit(w, bus, out, t, g.priority_class)
             return
@@ -281,8 +378,7 @@ class SocialRuntime:
                     if self.opinion is not None and pids else None)
         rel_label = REL_LABEL.get((rel or {}).get("kind", ""), "strangers")
         closeness = float((rel or {}).get("closeness", 0.0))
-        extras = self._extras(w, g, ia, ib, t, closeness, pids, vis, street)
-        pname = "the street" if street else ((place.name if place else "the street") if place and place.kind != "home" else "home")
+        extras = self._extras(w, g, ia, ib, t, closeness, pids, vis, street, remote)
         fallback_gate = g
 
         def fallback() -> Outcome:
@@ -299,7 +395,7 @@ class SocialRuntime:
         self._pclass[sid] = g.priority_class
 
     def _extras(self, w: World, g: Any, ia: int, ib: int, t: int, closeness: float, pids: list[str],
-                vis: tuple[str, str] | None, street: dict[str, Any] | None) -> ConvExtras:
+                vis: tuple[str, str] | None, street: dict[str, Any] | None, remote: bool = False) -> ConvExtras:
         """Per-agent texts built only from that agent's own state: what's on their mind, and what they'd say aloud."""
         minds: dict[int, str] = {}
         stances: dict[int, str] = {}
@@ -320,12 +416,15 @@ class SocialRuntime:
         if vis:
             visible = f"the {self.product_name_of(vis[0])} hoarding is right there" + (f": “{vis[1]}”" if vis[1] else "")
         watched = ia in self.watched or ib in self.watched
-        if street:
+        if remote:
+            cap = 3                                      # a text exchange is short
+        elif street:
             cap = 3 if street["kind"] == "quick" else 8
         else:
             cap = 6
-        return ConvExtras(minds=minds, stances=stances, visible=visible,
-                          turn_by_turn=bool(g.product) or watched, max_msgs=None if g.kind == "stranger" else cap)
+        return ConvExtras(minds=minds, stances=stances, visible="" if remote else visible,
+                          turn_by_turn=(bool(g.product) or watched) and not remote,
+                          max_msgs=None if g.kind == "stranger" else cap)
 
     def _participant(self, w: World, aid: int) -> Participant:
         prof = w.profiles[aid]

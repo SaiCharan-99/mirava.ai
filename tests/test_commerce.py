@@ -302,3 +302,18 @@ def test_visible_ad_finds_the_board_in_front_and_not_behind(bought):
     assert got is not None and got[0] == pid and got[1]
     assert media.visible_ad(*behind, t) is None or media.visible_ad(*behind, t)[0] != pid
     assert media.visible_ad(s.x + 500, s.y + 500, t) is None
+
+
+def test_phone_chats_and_meetups_in_a_real_run(bought):
+    """Phase 2d: people text friends from their phones, and friends plan to meet."""
+    e, sink, store, pid = bought
+    texts = [x for x in _ev(sink, "gate") if x["payload"].get("channel") == "phone"]
+    meets = _ev(sink, "meetup_planned")
+    print("phone chats", len(texts), "meetups", len(meets))
+    assert texts, "nobody texted anyone in 3 days"
+    for x in texts:
+        assert x["payload"]["conv_kind"] == "social"
+        assert (min(x["agent_id"], x["other_id"]), max(x["agent_id"], x["other_id"])) in e.social.rel
+        assert e.social.rel[(min(x["agent_id"], x["other_id"]), max(x["agent_id"], x["other_id"]))]["channel"] in ("online", "both")
+    assert meets, "no friends planned to meet in 3 days"
+    assert all(x["payload"]["act"] in ("cafe", "park") for x in meets)

@@ -56,6 +56,11 @@ export function tickerFor(e: LiveEvt, t: number, nameOf: (id: number) => string)
       html = `<span class="who">☕ ${who} &amp; ${b}</span> decided to grab a coffee${e.place ? ` at ${esc(String(e.place))}` : ""}`;
       break;
     }
+    case "meetup_planned": {
+      const b = typeof e.b === "number" ? esc(nameOf(e.b)) : "";
+      html = `<span class="who">📅 ${who} &amp; ${b}</span> planned to meet${e.place ? ` at ${esc(String(e.place))}` : ""}${e.at ? ` · ${esc(String(e.at))}` : ""}`;
+      break;
+    }
     case "campaign_ended":
       cls = "launch";
       html = `<span class="who">📣 ${esc(String(e.name ?? productName(String(e.product ?? ""))))}</span> paid campaign ended — still on sale; word of mouth, reviews and stores carry on`;
@@ -80,7 +85,8 @@ export function tickerFor(e: LiveEvt, t: number, nameOf: (id: number) => string)
       const topic = info?.topic ? ` talked about <b>${esc(info.topic.replace(/^product:/, ""))}</b>` : " talked";
       const place = info?.place ? ` · ${esc(info.place)}` : "";
       if (String(info?.topic ?? "").startsWith("product:")) cls = "prod";
-      html = `<span class="who">💬 ${who}${b ? ` &amp; ${b}` : ""}</span>${topic}${place}<div class="muted">“${esc(String(e.text ?? ""))}”</div>`;
+      const icon = info?.place === "on WhatsApp" ? "📱" : "💬";
+      html = `<span class="who">${icon} ${who}${b ? ` &amp; ${b}` : ""}</span>${topic}${place}<div class="muted">“${esc(String(e.text ?? ""))}”</div>`;
       talks.delete(String(e.session_id ?? ""));
       break;
     }

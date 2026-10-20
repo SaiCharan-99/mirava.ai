@@ -1,0 +1,18 @@
+# Remote chats and planned meetups (phase 2d). Labelled assumptions, tunable.
+assumed: true
+remote:                       # phone / WhatsApp chats between people who are apart
+  max_per_day: 250
+  pair_cooldown_min: 720      # the same two people do not text again for this long
+  base_p: 0.04                # chance a person with something on their mind texts at their next phone session …
+  p_per_extraversion: 0.16    # … plus this × extraversion
+  agenda_min_weight: 0.5      # something worth telling (weight ≥ this) …
+  social_need_below: 0.30     # … or lonely (social need satisfaction below this)
+  est_cost_usd: 0.004
+meetups:                      # friends who plan to meet (a café or park block in both plans)
+  min_closeness: 0.55
+  base_p_weekday: 0.02
+  base_p_weekend: 0.06
+  max_per_day: 40
+  minutes: 60
+  weekday_window: [1110, 1290]    # 18:30–21:30
+  weekend_window: [660, 1140]     # 11:00–19:00
