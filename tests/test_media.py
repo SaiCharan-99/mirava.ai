@@ -174,7 +174,7 @@ def test_every_rendered_notice_has_thought_memory_belief(launched):
         b = store.get(f"agents/{aid}/beliefs", f"product:{pid}")
         assert b and b["awareness"] in ("aware", "familiar") and b["first_heard"]
     assert any(t["kind"] == "thought" and t["private"] and t["product_id"] == pid for t in sink.texts)
-    assert e.social.salient_products
+    assert any(i.product_id for lst in e.social.agenda.items.values() for i in lst)   # noticed products are on people's minds
 
 
 def test_reviewer_publishes_and_community(launched):

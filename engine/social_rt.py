@@ -13,16 +13,19 @@ from engine.governor import BudgetGovernor
 from engine.tasks import TaskQueue
 from engine.world import World
 from mind.decision import DecisionAdapter, DecisionRequest, DecisionResult, FakeDecision
-from mind.memory import embed_cached
+from mind.memory import MemoryStore, embed_cached
 from mind.reflect import THRESHOLD, day_importance, reflect
 from shared import time as simtime
 from shared.llm import LLMClient
 from shared.schemas.events import Event
+from shared.schemas.memory import MemoryEntry
 from shared.store import DocStore
 from shared.subjects import canonical
+from social.agenda import Agenda
 from social.conversation import Outcome, Participant, run_conversation, template_memories, unrendered
 from social.gate import Side, gate
 from social.sessions import SessionRegistry
+from social.wom import tell
 
 log = logging.getLogger("engine.social")
 WM_MAX = 20
@@ -84,7 +87,10 @@ class SocialRuntime:
         self.sessions = SessionRegistry()
         self.queue = TaskQueue()
         self.wm: dict[int, list[dict[str, Any]]] = {}
-        self.salient_products: dict[int, list[str]] = {}   # product ids recently noticed (C-07 word of mouth)
+        self.agenda = Agenda()                             # what is on each person's mind to tell people
+        self.name_of: Callable[[int], str] = lambda aid: f"Agent {aid}"          # first name (set by the engine)
+        self.product_name_of: Callable[[str], str] = lambda pid: pid              # product display name (set by the engine)
+        self.intent_hook: Callable[[int, str], None] | None = None               # plan intents → commerce (set by the engine)
         self.watched = watched or set()
         self.opinion = opinion                                     # OpinionEngine (None: no computed opinions)
         self.catalog_fn: Callable[[], dict[str, str]] | None = None   # product id → name (set by the engine)
@@ -105,6 +111,7 @@ class SocialRuntime:
         if ev.kind == "life_event" and ev.agent_id is not None:
             typ = ev.payload.get("type", "")
             self.remember(ev.agent_id, f"My phone got {typ} today.", 5, "life_event", ev.t, tag=f"phone {typ}")
+            self.agenda.add(ev.agent_id, "phone_trouble", ev.t, hint=f"phone {typ}", about=typ)
 
     # ------------------------------------------------------------------ per tick
     def presences(self, w: World) -> list[Presence]:
@@ -117,8 +124,9 @@ class SocialRuntime:
         """Gate view of one agent (tags only, never private text)."""
         prof = w.profiles[aid]
         tags = [e["tag"] for e in self.wm.get(aid, []) if e.get("tag")]
-        return Side(aid, list(prof.persona.interests), salient=list(dict.fromkeys(tags))[-3:],
-                    products_salient=list(self.salient_products.get(aid, [])),
+        hints = self.agenda.hints(aid, 3, w.t)
+        return Side(aid, list(prof.persona.interests), salient=list(dict.fromkeys([*hints, *tags]))[-3:],
+                    products_salient=self.agenda.product_ids(aid, w.t),
                     free=FREE.get(w.agents[aid].activity, 0.3), watched=aid in self.watched)
 
     async def tick(self, w: World, bus: EventBus) -> None:
@@ -219,10 +227,13 @@ class SocialRuntime:
                 texts.append(("debrief", ev.agent_id or 0, ev.event_id, f"{p['reaction']} {p['summary']}", t))
                 self.remember(ev.agent_id or 0, p["summary"], int(p.get("importance", 3)), "conversation", t)
                 self._apply_heard(ev.agent_id, spec.get("other_id"), p)
+                self._apply_intents(ev.agent_id or 0, p, t)
             elif spec["kind"] == "interaction":
                 for x in (spec["agent_id"], spec.get("other_id")):
                     if x is not None:
                         self.remember(x, f"Chatted briefly about {p['topic']}.", 2, "conversation", t)
+                if spec.get("other_id") is not None:
+                    self._wom_exchange(bus, spec["agent_id"], spec["other_id"], t)
         self._background(asyncio.to_thread(self._persist, out, emitted, t))
         if out.messages:
             first = out.messages[0]
@@ -238,6 +249,56 @@ class SocialRuntime:
             self.stats["cost_usd"] += out.cost_usd
         if texts:
             self._background(self._texts(bus, texts, out.session_id))
+
+    def _wom_exchange(self, bus: EventBus, ia: int, ib: int, t: int) -> None:
+        """A chat nobody wrote: each side still brings up their strongest unheard item (rules, no model)."""
+        rel = self.rel.get((min(ia, ib), max(ia, ib)))
+        closeness = float((rel or {}).get("closeness", 0.1))
+        seed = int(getattr(self.opinion, "seed", 0))
+        for teller, listener in ((ia, ib), (ib, ia)):
+            told = tell(self.agenda, self.opinion, teller, listener, closeness, t, name_of=self.name_of,
+                        product_name=self.product_name_of, seed=seed)
+            if told is None:
+                continue
+            bus.new("wom", t, listener, {"teller": teller, "kind": told.kind, "product_id": told.product_id,
+                                         "attrs": told.attrs, "hint": told.hint}, other_id=teller,
+                    product_id=told.product_id, rendered=False)
+            self.remember(listener, told.memory, 3, "conversation", t, tag=told.hint or None)
+            self._background(asyncio.to_thread(self._wom_memory, listener, teller, told, t))
+
+    def _wom_memory(self, listener: int, teller: int, told: Any, t: int) -> None:
+        """Runs in a worker thread: the listener's own episodic memory of what they heard, and (for a product they had
+        not heard of) first-heard on their belief."""
+        ms = MemoryStore(listener, self.store)
+        ms.add_many([MemoryEntry(
+            mid=f"wom-{t}-{teller}-{listener}", agent_id=listener, t=t, kind="conversation", text=told.memory,
+            importance=3 if told.product_id else 2, source={"channel": "word_of_mouth", "person_id": teller},
+            entities=[self.name_of(teller)], event_refs=[])])
+        if told.product_id:
+            asyncio.run(self._first_heard(ms, listener, teller, told.product_id, t))
+
+    @staticmethod
+    async def _first_heard(ms: MemoryStore, listener: int, teller: int, pid: str, t: int) -> None:
+        prev = await ms.beliefs([f"product:{pid}"])
+        if not prev or prev[0].awareness == "unaware":
+            await ms.update_belief(f"product:{pid}", {
+                "awareness": "heard", "stage": "aware", "t": t, "sources_seen": {"word_of_mouth": 1},
+                "first_heard": {"channel": "word_of_mouth", "t": t, "person_id": teller}},
+                cause_event_id=f"wom-{t}-{teller}-{listener}")
+
+    def _apply_intents(self, aid: int, payload: dict[str, Any], t: int) -> None:
+        """What the person decided in a debrief becomes agenda items and nudges commerce (rules on their own words)."""
+        for raw in payload.get("intents") or []:
+            low = str(raw).lower()
+            if any(k in low for k in ("tell ", "share", "message ", "text ", "call ", "let ", "mention")):
+                target = next((o for (a, b) in self.rel if aid in (a, b) for o in [b if a == aid else a]
+                               if self.name_of(o).lower() in low), None)
+                self.agenda.add(aid, "wants_to_tell", t, hint="something to share", target_id=target,
+                                about=str(raw)[:80])
+            if any(k in low for k in ("store", "shop", "visit", "try", "check it")) and self.intent_hook:
+                self.intent_hook(aid, "visit")
+            if any(k in low for k in ("research", "look up", "read", "review", "compare")) and self.intent_hook:
+                self.intent_hook(aid, "research")
 
     def _apply_heard(self, listener: int | None, teller: int | None, payload: dict[str, Any]) -> None:
         """What the other person said aloud about a product becomes word-of-mouth evidence, weighted by closeness.
@@ -326,6 +387,7 @@ class SocialRuntime:
                 self.queue.submit(f"refl:{aid}", self._reflect_call(aid, list(eps), t), t, REFLECT_DELAY,
                                   lambda: None)
         self.wm = {}
+        self.agenda.nightly(t)
 
     def _reflect_call(self, aid: int, eps: list[dict[str, Any]], t: int) -> Callable[[], Awaitable[Any]]:
         """Bound reflection coroutine factory."""
@@ -336,14 +398,13 @@ class SocialRuntime:
         """Checkpoint form (open sessions, working memory, cool-downs, governor)."""
         return {"sessions": self.sessions.to_dict(), "wm": {str(k): v for k, v in self.wm.items()},
                 "last_met": [[a, b, t] for (a, b), t in self.tracker.last_met.items()], "governor": self.gov.to_dict(),
-                "salient_products": {str(k): v for k, v in self.salient_products.items()},
-                "stats": self.stats}
+                "agenda": self.agenda.to_dict(), "stats": self.stats}
 
     def load(self, d: dict[str, Any]) -> None:
         """Restore from to_dict (in-flight conversations are dropped; their sessions expire)."""
         self.sessions = SessionRegistry.from_dict(d.get("sessions") or {})
         self.wm = {int(k): v for k, v in (d.get("wm") or {}).items()}
-        self.salient_products = {int(k): v for k, v in (d.get("salient_products") or {}).items()}
+        self.agenda.load(d.get("agenda") or {})
         self.tracker.last_met = {(a, b): t for a, b, t in d.get("last_met", [])}
         self.gov.load(d.get("governor") or {})
         self.stats.update(d.get("stats") or {})

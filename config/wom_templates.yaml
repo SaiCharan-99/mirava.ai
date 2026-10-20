@@ -1,0 +1,28 @@
+# Word of mouth when no model writes the chat (phase 2a). Plain, varied sentences; {x} placeholders only.
+# Used for the LISTENER's episodic memory. Chosen deterministically per (time, pair).
+assumed: true
+praise:
+  - "{teller} was telling me the {product}'s {attr} is really good."
+  - "{teller} reckons the {product} is great for {attr}."
+  - "Bumped into {teller}; they had good things to say about the {product}, especially the {attr}."
+  - "{teller} said the {attr} on the {product} impressed them."
+criticism:
+  - "{teller} wasn't convinced by the {product}'s {attr}."
+  - "{teller} said the {product}'s {attr} is nothing special."
+  - "Heard from {teller} that the {product}'s {attr} disappoints."
+mention:
+  - "{teller} mentioned the {product} in passing."
+  - "{teller} asked if I'd seen the {product}."
+  - "{teller} brought up the {product}."
+trouble:
+  - "{teller}'s phone is giving them trouble; they're thinking of replacing it."
+  - "{teller} grumbled about their phone ({hint})."
+purchase:
+  - "{teller} just got a new phone."
+  - "{teller} treated themselves to a new phone and told me about it."
+store_visit:
+  - "{teller} had been to a phone shop to look around."
+  - "{teller} went to check phones out in a store."
+general:
+  - "{teller} and I caught up for a bit."
+  - "Had a quick chat with {teller}."

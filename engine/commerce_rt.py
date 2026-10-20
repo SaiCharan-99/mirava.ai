@@ -172,6 +172,10 @@ class CommerceRuntime:
                 if p.get("conv_kind") != "store":
                     pr.social = max(-1.0, min(1.0, pr.social + 2 * dv))
                 self._touch(aid, q, ev.event_id)
+        elif ev.kind == "wom" and pid and not pid.startswith("baseline:"):
+            pr = self.pair(aid, pid, ev.t)
+            pr.aware = True
+            self._touch(aid, pid, ev.event_id)
         elif ev.kind == "life_event" and p.get("category") == "phone":
             self.life_t[aid] = ev.t
             for k in [k for k in self.pairs if k.startswith(f"{aid}|")]:
@@ -180,6 +184,13 @@ class CommerceRuntime:
             self.paid_t[aid] = ev.t
         elif ev.kind == "arrive" and p.get("place_id") in self.store_by_place and aid in self.visits:
             self.arrivals.append((aid, str(p["place_id"]), ev.t))
+
+    def boost_intent(self, aid: int, kind: str) -> None:
+        """A plan from a debrief ("check it in a store", "read reviews") nudges this person's open considerations."""
+        for k, pr in self.pairs.items():
+            if k.startswith(f"{aid}|") and pr.stage in ("aware", "curious", "researching"):
+                pr.boost = min(0.5, pr.boost + (0.2 if kind == "visit" else 0.1))
+                self.dirty.setdefault(k, pr.cause or "")
 
     def _touch(self, aid: int, pid: str, cause: str) -> None:
         k = f"{aid}|{pid}"
@@ -533,6 +544,8 @@ class CommerceRuntime:
             event_refs=[ev.event_id])))
         if self.social is not None:
             self.social.remember(aid, text, 7, "purchase", t, tag=label)
+            self.social.agenda.add(aid, "purchase", t, hint="new phone", product_id=option if option in products else None,
+                                   about=label)
 
     # ------------------------------------------------------------------ apply queue
     async def _apply(self, w: World, bus: EventBus, t: int) -> None:
@@ -570,6 +583,7 @@ class CommerceRuntime:
                 if self.social is not None:
                     self.social.remember(meta["aid"], p["summary"], int(p.get("importance", 4)), "inquiry", t,
                                          tag="store visit")
+                    self.social.agenda.add(meta["aid"], "store_visit", t, hint="phone shop", product_id=meta["pid"])
         if self.opinion is not None:
             visit_topics: list[str] = next((e.payload["topics"] for e in emitted if e.kind == "inquiry"), [])
             self._store_evidence(meta["aid"], meta["pid"], visit_topics, dv)

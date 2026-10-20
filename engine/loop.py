@@ -111,6 +111,7 @@ class Engine:
             watched = {int(d["agent_id"]) for d in self.store.where("agents", "watched", True)}
             self.social = SocialRuntime(self.store, self.llm, get_decider(self.llm, self.s), self.gov,
                                         g["relationships"], watched=watched, opinion=self.opinion)
+            self.social.name_of = lambda aid: w.profiles[aid].name.split()[0]
             if ck is not None and ck.get("social"):
                 self.social.load(ck["social"])
         if self.media_enabled:
@@ -118,12 +119,15 @@ class Engine:
             if self.social is not None:
                 media = self.media
                 self.social.catalog_fn = lambda: {pid: lp.p.name for pid, lp in media.live.items()}
+                self.social.product_name_of = lambda pid: media.live[pid].p.name if pid in media.live else pid
             if ck is not None and ck.get("media"):
                 self.media.load(ck["media"])
         if self.commerce_enabled and self.media is not None:
             self.commerce = CommerceRuntime(self.store, self.llm, get_decider(self.llm, self.s), self.gov, w,
                                             media=self.media, social=self.social, opinion=self.opinion)
             self.media.commerce = self.commerce
+            if self.social is not None:
+                self.social.intent_hook = self.commerce.boost_intent
             if ck is not None and ck.get("commerce"):
                 self.commerce.load(ck["commerce"])
             else:

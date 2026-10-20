@@ -4,6 +4,7 @@ notes:
   - "Everything is simulated: 1,000 synthetic residents of Indiranagar, Bengaluru."
   - "Private thoughts (v_thoughts, store/survey private items, review private opinions) must be labelled 'private thought' when quoted."
   - "Money is integer rupees (INR). Product ids: e.g. pixel-10-pro, pixel-10a, galaxy-s26-ultra, galaxy-a57, iphone-17. Baseline options: baseline:<tier>."
+  - "Word of mouth happens even when no model writes the chat: a person brings up what is on their mind (a broken phone, a product they noticed, a purchase). v_first_heard channel 'word_of_mouth' counts people who first heard of a product from a friend."
   - "Stages: unaware → aware → curious → researching → inquiring → deciding → purchased | postponed | rejected."
 views:
   agents_latest:

@@ -447,12 +447,12 @@ class MediaRuntime:
         w.live_evts.append({"k": "notice", "a": aid, "site_id": meta["site_id"], "product": pid,
                             "channel": meta["channel"], "thought": out["thought"] if rendered else ""})
         if self.social is not None:
-            self.social.remember(aid, out["thought"], int(out["importance"]), "ad_thought", t, tag=lp.p.name)
-            self.social.salient_products.setdefault(aid, [])
-            sp = self.social.salient_products[aid]
-            if pid not in sp:
-                sp.append(pid)
-                del sp[:-3]
+            imp = int(out["importance"])
+            self.social.remember(aid, out["thought"], imp, "ad_thought", t, tag=lp.p.name)
+            self.social.agenda.add(aid, "product_noticed", t, hint=lp.p.name, product_id=pid, weight=0.25 + 0.06 * imp)
+            if str(out.get("wants_to_tell") or "").strip() or out.get("intent_change") == "tell_friend":
+                self.social.agenda.add(aid, "wants_to_tell", t, hint=lp.p.name, product_id=pid,
+                                       about=str(out.get("wants_to_tell") or "")[:80])
         doc = {"t": t, "label": simtime.fmt(t), "kind": "ad_thought", "agent_id": aid,
                "trigger": {"channel": meta["channel"], "site_id": meta["site_id"], "creative_id": meta["cid"]},
                "text": out["thought"], "product_id": pid, "attitude_delta": out["attitude_delta"],

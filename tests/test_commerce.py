@@ -257,3 +257,15 @@ def test_inquiry_round_uses_two_calls_and_salesperson_never_sees_agenda(bought):
     assert set(calls) <= {"salesperson_reply", "store_think", "inquiry_debrief"}
     assert all(marker not in p for p in seen["salesperson_reply"])
     assert len(calls) <= 2 * rounds + 1
+
+
+def test_word_of_mouth_flows_without_model_chats(bought):
+    """Phase 2a: unrendered chats still carry what's on people's minds; every wom event has a teller and a listener."""
+    e, sink, store, pid = bought
+    woms = _ev(sink, "wom")
+    print("wom events", len(woms), "conversations", e.world.counters["conversations_total"])
+    assert woms, "no word-of-mouth events in a 3-day run"
+    for x in woms:
+        assert x["other_id"] is not None and x["agent_id"] != x["other_id"] and x["rendered"] is False
+    assert any(x["payload"].get("product_id") for x in woms) or any(x["payload"]["kind"] == "phone_trouble" for x in woms)
+    assert e.social.agenda.items                                   # people have things on their minds
