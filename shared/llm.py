@@ -144,6 +144,21 @@ class _CachingClient:
 
 # ---------------------------------------------------------------- OpenRouter
 
+_STATUS: dict[str, Any] = {"out_of_credit": False, "since": None}
+
+
+def model_status() -> dict[str, Any]:
+    """Whether model calls in this process are failing because every provider key is out of credit."""
+    return dict(_STATUS)
+
+
+def _mark(out_of_credit: bool) -> None:
+    if out_of_credit and not _STATUS["out_of_credit"]:
+        _STATUS.update(out_of_credit=True, since=time.time())
+    elif not out_of_credit and _STATUS["out_of_credit"]:
+        _STATUS.update(out_of_credit=False, since=None)
+
+
 class OpenRouterClient(_CachingClient):
     """OpenRouter chat/completions + embeddings with strict structured output, usage accounting and retries."""
 
@@ -166,6 +181,8 @@ class OpenRouterClient(_CachingClient):
     def _exhausted(self, r: httpx.Response) -> bool:
         """True when the key is out of credit (402) or over its key limit; switches to the fallback if one exists."""
         out = r.status_code == 402 or (r.status_code in (401, 403) and "limit" in r.text.lower())
+        if out and (self.using_fallback or not self.s.openrouter_api_key_fallback.get_secret_value().strip()):
+            _mark(True)                                         # no key left with credit
         if out and not self.using_fallback and self.s.openrouter_api_key_fallback.get_secret_value().strip():
             self.using_fallback = True
             log.warning("OpenRouter main key exhausted (HTTP %s); switching to the fallback key", r.status_code)
@@ -201,11 +218,14 @@ class OpenRouterClient(_CachingClient):
                         raise LLMError(f"transport error: {type(e).__name__}") from e
                 else:
                     if r.status_code < 400:
+                        _mark(False)
                         return r.json()
                     if self._exhausted(r):
                         r = await client.post(f"{self.base_url}{path}", json=body, headers=self._headers())
                         if r.status_code < 400:
+                            _mark(False)
                             return r.json()
+                        self._exhausted(r)
                     if r.status_code not in RETRY_STATUS or attempt == self.max_retries:
                         raise LLMError(f"OpenRouter {path} HTTP {r.status_code}: {r.text[:300]}")
                 await asyncio.sleep(self.backoff_s * (2 ** attempt))

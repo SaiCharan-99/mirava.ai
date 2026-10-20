@@ -87,6 +87,17 @@ def healthz() -> dict:
     return {"ok": True, "service": "api", "env": s.env, "llm_backend": s.llm_backend}
 
 
+@api.get("/status/models")
+def model_status_endpoint() -> dict:
+    """Are the Gemini models reachable? Down when the engine's or this service's provider keys are out of credit."""
+    from shared.llm import model_status
+
+    eng = (_engine_get("/state") or {}).get("models") or {}
+    mine = model_status()
+    down = bool(eng.get("out_of_credit") or mine["out_of_credit"])
+    return {"down": down, "reason": "provider_credit" if down else None}
+
+
 @api.get("/world/state")
 def world_state() -> dict:
     """Clock, scale, status and budget (from the engine, else the last `world/state` doc)."""

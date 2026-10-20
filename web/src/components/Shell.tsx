@@ -2,7 +2,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useEffect, useState, type ReactNode } from "react";
 import { useWorld } from "../state/world";
 import { fmt, fmtInt } from "../lib/time";
-import { withMode } from "../lib/visualTest";
+import { isVisualTest, withMode } from "../lib/visualTest";
+import { getJSON } from "../lib/api";
 
 const THEME_KEY = "mirava_theme";
 
@@ -27,7 +28,22 @@ function useTheme(): [string, () => void] {
 }
 
 /** Top bar (56 px): logo, crumbs, LIVE pill, world clock, budget meter, theme toggle. */
+/** True while the Gemini models are unreachable because the provider credit ran out (polled every 30 s). */
+export function useModelsDown(): boolean {
+  const [down, setDown] = useState(false);
+  useEffect(() => {
+    if (isVisualTest) return;
+    let live = true;
+    const check = () => getJSON<{ down: boolean }>("/status/models").then((r) => live && setDown(r.down)).catch(() => undefined);
+    void check();
+    const h = setInterval(() => void check(), 30000);
+    return () => { live = false; clearInterval(h); };
+  }, []);
+  return down;
+}
+
 export function Header() {
+  const modelsDown = useModelsDown();
   const t = useWorld((s) => s.t);
   const agents = useWorld((s) => s.stats.agents);
   const budget = useWorld((s) => s.budget);
@@ -38,7 +54,15 @@ export function Header() {
       <div className="logo"><div className="logo-mark"><i /></div>mirava.ai</div>
       <div className="crumbs"><span>Agent World</span><span>/</span><b>Indiranagar, Bengaluru</b></div>
       <span className="chip"><span className="dotlive" />Live · {fmtInt(agents || 1000)} agents</span>
-      <div className="hspace" />
+      <div className="hspace" style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
+        {modelsDown && (
+          <div className="chip amber" data-testid="models-down" role="status"
+            title="The Gemini free tier has run out. Agents keep living, but their thoughts, chats and Ask answers use simple built-in rules until it is topped up."
+            style={{ fontWeight: 600, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+            ⚠ Gemini free tier has expired · AI replies paused, rules stand in
+          </div>
+        )}
+      </div>
       {budget.slowed && <span className="chip amber" data-testid="slowed-chip" style={{ whiteSpace: "nowrap" }}
         title="Background model spend would exceed the daily budget, so sim time runs slower">Slowed to save budget</span>}
       <div className="row" data-testid="header-clock" style={{ gap: 8 }} title="1 sim day = 1 real hour">

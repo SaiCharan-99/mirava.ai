@@ -25,7 +25,7 @@ from mind.opinion import OpinionEngine
 from population.genesis import genesis_bucket, unpack
 from shared import time as simtime
 from shared.files import Files
-from shared.llm import LLMClient, get_llm
+from shared.llm import LLMClient, get_llm, model_status
 from shared.schemas.agent import AgentProfile, AgentState
 from shared.schemas.events import Event
 from shared.settings import Settings
@@ -384,6 +384,7 @@ class Engine:
                 "scale": {"sim_min_per_real_s": self.clock.sim_min_per_real_s, "speed": self.clock.speed},
                 "slowed": self.clock.slowed, "status": self.status, "budget": self.budget(),
                 "surveys": self.surveys.status() if self.surveys else None,
+                "models": model_status(),
                 "interactive": {"used_usd": round(self.gov.interactive_today, 4),
                                 "cap_usd": float(self.gov.cfg["interactive_cap_usd"])},
                 "engine": {"holder": self.lease.holder, "lease_held": self.lease.held, "tick_p95_ms": p95,
