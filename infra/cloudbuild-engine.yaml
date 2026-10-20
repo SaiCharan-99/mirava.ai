@@ -22,7 +22,7 @@ steps:
     args: ["run", "deploy", "${_SERVICE}",
            "--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/world-engine:$BUILD_ID",
            "--region=${_REGION}", "--service-account=${_SA}@$PROJECT_ID.iam.gserviceaccount.com",
-           "--set-secrets=OPENROUTER_API_KEY=openrouter-api-key:latest,OPENROUTER_API_KEY_FALLBACK=openrouter-api-key-fallback:latest",
-           "--set-env-vars=ENV=cloud,LLM_BACKEND=openrouter,DECISION_BACKEND=openrouter,EVENT_SINK=pubsub,BQ_BACKEND=bigquery,BQ_DATASET=mirava,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=${_REGION},GCS_BUCKET_WORLDS=${_BUCKET_WORLDS},WORLD_SECONDS_PER_SIM_DAY=3600,DAILY_CAP_USD=15,ENGINE_ALLOWED_CALLERS=${_API_SA}@$PROJECT_ID.iam.gserviceaccount.com,ENGINE_AUTH_AUDIENCE=https://world-engine-kfh7v3hvjq-el.a.run.app",
+           "--set-secrets=OPENROUTER_API_KEY=openrouter-api-key:latest,OPENROUTER_API_KEY_FALLBACK=openrouter-api-key-fallback:latest,ICA_API_KEY=ica-api-key:latest",
+           "--set-env-vars=ENV=cloud,LLM_BACKEND=ica,DECISION_BACKEND=openrouter,EVENT_SINK=pubsub,BQ_BACKEND=bigquery,BQ_DATASET=mirava,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=${_REGION},GCS_BUCKET_WORLDS=${_BUCKET_WORLDS},WORLD_SECONDS_PER_SIM_DAY=3600,DAILY_CAP_USD=15,ENGINE_ALLOWED_CALLERS=${_API_SA}@$PROJECT_ID.iam.gserviceaccount.com,ENGINE_AUTH_AUDIENCE=https://world-engine-kfh7v3hvjq-el.a.run.app",
            "--min-instances=1", "--max-instances=1", "--no-cpu-throttling", "--cpu=2", "--memory=4Gi",
            "--timeout=3600", "--session-affinity", "--allow-unauthenticated"]

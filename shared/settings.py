@@ -19,12 +19,15 @@ class Settings(BaseSettings):
     gcp_region: str = "asia-south1"
     vertex_location: str = "global"
 
-    llm_backend: Literal["fake", "openrouter", "vertex"] = "fake"
+    llm_backend: Literal["fake", "openrouter", "vertex", "ica"] = "fake"
     decision_backend: Literal["fake", "openrouter"] = "fake"
     openrouter_api_key: SecretStr = SecretStr("")
     openrouter_api_key_fallback: SecretStr = SecretStr("")  # used once the main key is out of credit / over its limit
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_app_title: str = "mirava.ai"
+    ica_api_key: SecretStr = SecretStr("")  # IBM ICA (LLM_BACKEND=ica): chat via ICA, OpenRouter stays the fallback + embeddings
+    ica_base_url: str = "https://api.nextgen-beta.ica.ibm.com/ica/v1"
+    ica_model_id: str = "claude-haiku-4-5"
     engine_reasoning_effort: Literal["minimal", "low", "medium", "high"] = "low"
     llm_concurrency: int = 32
     decision_batch_size: int = 32
