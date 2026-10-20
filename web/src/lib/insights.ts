@@ -3,9 +3,11 @@ import type { LineEvent, LineSeries } from "../components/charts";
 
 /** Insights API shapes (api/insights.py) — dashboards return UI-ready rows. */
 export type KpiRow = [string, string, string];
+/** One cumulative funnel cell: people who reached at least this step, and % of the step above. */
+export interface FunnelCell { n: number; pct: number }
 export interface OverviewData {
   kpis: KpiRow[]; labels: string[]; series: LineSeries[]; events: LineEvent[]; ymax: number;
-  funnel: { cols: string[]; rows: (string | number)[][] }; note: string;
+  funnel: { cols: string[]; rows: (string | number | FunnelCell)[][] }; note: string;
 }
 export interface SourcesData { labels: string[]; cols: string[]; stacks: { label: string; parts: number[] }[]; paths: [string, number][]; note: string }
 export type SiteRow = [string, string, string, string, number, number, number, number | string, string];
@@ -24,7 +26,7 @@ export interface ConversationsData {
 export interface QuoteView { agent_id: number | null; name?: string | null; age?: number; text: string; kind: string; private: boolean }
 export interface AskAnswerView {
   steps: [string, string][]; html: string; bars?: [string, number, string][]; ymax?: number; barsNote?: string; sideHtml?: string;
-  quotes: QuoteView[]; sqlLabel?: string; sql?: string[]; caveats?: string; suggestions?: string[];
+  quotes: QuoteView[]; sqlLabel?: string; sql?: string[]; caveats?: string; suggestions?: string[]; failed?: boolean;
 }
 export interface PollResultView {
   question: string; optionsText: string; title: string; estimate: string; bars: [string, number, string][]; max: number;
@@ -33,7 +35,7 @@ export interface PollResultView {
 export interface AskAnswer {
   answer_md: string; numbers: { label: string; value: number; source_ref: string }[];
   charts: Record<string, unknown>[]; quotes: { agent_id: number | null; name: string | null; kind: string | null; t: number | null; text: string; private: boolean }[];
-  sql: string[]; caveats: string[]; suggestions: string[]; faithful?: boolean;
+  sql: string[]; caveats: string[]; suggestions: string[]; faithful?: boolean; error?: string;
 }
 
 export const getOverview = () => getJSON<OverviewData>("/insights/overview");
@@ -48,29 +50,46 @@ export function mdToHtml(md: string): string {
   return esc.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\n\n/g, "<br/><br/>");
 }
 
-/** POST /insights/ask as SSE; calls onStep for each step, resolves with the answer. */
+export const ASK_TIMEOUT_MSG = "The answer took too long, try a shorter question";
+
+/** Parse a block of SSE text into data items (comment lines such as `: ping` are skipped). */
+export function parseSse(chunk: string): unknown[] {
+  const out: unknown[] = [];
+  for (const block of chunk.split("\n\n")) {
+    const data = block.split("\n").filter((l) => l.startsWith("data: ")).map((l) => l.slice(6)).join("\n");
+    if (data.trim()) out.push(JSON.parse(data));
+  }
+  return out;
+}
+
+/** POST /insights/ask as SSE; calls onStep for each step, resolves with the answer.
+ *  Throws ASK_TIMEOUT_MSG when the stream closes without an answer (e.g. a proxy timeout). */
 export async function ask(question: string, onStep: (s: string) => void): Promise<AskAnswer> {
   const r = await fetch("/api/insights/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
-  if (!r.ok || !r.body) throw new Error(`ask: ${r.status}`);
+  if (!r.ok || !r.body) throw new Error(`The assistant is unavailable (HTTP ${r.status})`);
   const reader = r.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
   let answer: AskAnswer | null = null;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i: number;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const chunk = buf.slice(0, i).replace(/^data: /, "");
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const i = buf.lastIndexOf("\n\n");
+      if (i < 0) continue;
+      const items = parseSse(buf.slice(0, i + 2)) as { step?: string; answer?: AskAnswer; error?: string }[];
       buf = buf.slice(i + 2);
-      if (!chunk.trim()) continue;
-      const item = JSON.parse(chunk) as { step?: string; answer?: AskAnswer };
-      if (item.step) onStep(item.step);
-      if (item.answer) answer = item.answer;
+      for (const item of items) {
+        if (item.step) onStep(item.step);
+        if (item.error && !item.answer) onStep(`Problem: ${item.error}`);
+        if (item.answer) answer = item.answer;
+      }
     }
+  } catch {
+    if (!answer) throw new Error(ASK_TIMEOUT_MSG);
   }
-  if (!answer) throw new Error("no answer");
+  if (!answer) throw new Error(ASK_TIMEOUT_MSG);
   return answer;
 }
 

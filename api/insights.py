@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import statistics
 from collections.abc import AsyncIterator
 from typing import Any
@@ -21,6 +22,7 @@ from shared.llm import get_llm
 from shared.store import DocStore, get_store
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger(__name__)
 OOH = ("hoarding", "bus_shelter", "metro_panel")
 SOURCE_GROUPS = [("Hoardings", OOH), ("Reels", ("reel",)), ("Reviewers", ("review",)), ("Community", ("community",)),
                  ("Word of mouth", ("friend_chat",)), ("Newspaper", ("newspaper",)), ("Store", ("store_display",))]
@@ -46,11 +48,18 @@ def _engine_command(cmd: dict) -> dict | None:
 
 
 def _products() -> list[dict[str, Any]]:
-    return sorted([p for p in store().list("products", 200)], key=lambda p: p.get("launched_at_t") or 10**12)
+    """Active products (live + ready) — the only ones Insights shows or tells the assistant about."""
+    from shared.products import active_products
+
+    return active_products(store())
 
 
 def _live() -> list[dict[str, Any]]:
     return [p for p in _products() if p.get("status") == "live" and p.get("launched_at_t") is not None]
+
+
+def _active_ids() -> set[str]:
+    return {p["product_id"] for p in _products()}
 
 
 def _q(sql: str, params: dict | None = None) -> list[dict[str, Any]]:
@@ -88,22 +97,54 @@ class AskIn(BaseModel):
     session_id: str | None = None
 
 
+PING_S = 5.0
+
+
 @router.post("/insights/ask")
 async def ask(body: AskIn) -> StreamingResponse:
-    """Server-sent events: {"step"} items, then {"answer": AskAnswer}."""
+    """Server-sent events: {"step"} items, then exactly one {"answer": AskAnswer}; `: ping` comments keep it alive."""
     t = _now_t()
     tools = Tools(runner(), Ledger(), llm=get_llm(), store=store(), engine=None,
                   embed=_embedder())
-    prods = _products()
-    a = Assistant(tools, get_llm(), products=prods, window=f"Day 1 → {simtime.fmt(t)}")
+    a = Assistant(tools, get_llm(), products=_products(), window=f"Day 1 → {simtime.fmt(t)}")
+    a.known_ids = {str(x) for p in store().list("products", 200) for x in (p.get("product_id"), p.get("name")) if x}
 
     async def gen() -> AsyncIterator[bytes]:
-        async for item in a.ask(body.question):
-            yield f"data: {json.dumps(item, default=str, ensure_ascii=False)}\n\n".encode()
+        async for chunk in sse_with_pings(a.ask(body.question), PING_S):
+            yield chunk
         if body.session_id:
             store().set("insight_sessions", body.session_id, {"t": t, "question": body.question}, True)
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+async def sse_with_pings(items: AsyncIterator[dict[str, Any]], every: float) -> AsyncIterator[bytes]:
+    """SSE `data:` lines for each item, with a `: ping` comment whenever nothing arrived for `every` seconds."""
+    import asyncio
+
+    q: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+    async def pump() -> None:
+        try:
+            async for it in items:
+                await q.put(it)
+        finally:
+            await q.put(None)
+
+    task = asyncio.create_task(pump())
+    try:
+        while True:
+            try:
+                it = await asyncio.wait_for(q.get(), every)
+            except TimeoutError:
+                yield b": ping\n\n"
+                continue
+            if it is None:
+                break
+            yield f"data: {json.dumps(it, default=str, ensure_ascii=False)}\n\n".encode()
+    finally:
+        task.cancel()
 
 
 def _embedder() -> Any:
@@ -165,28 +206,51 @@ def overview() -> dict[str, Any]:
                   f"{d_aw:+.0f} pts today" if prev else f"live {win[-1] - ld + 1} days"],
                  [f"{p['name']} · curious+", f"{_pct(last.get('considering', 0), n):.0f}%",
                   f"{tot_inq} store inquiries · {tot_buy} bought"]]
-    stages = _q("SELECT product_id, stage, COUNT(*) AS n FROM beliefs_latest WHERE product_id IS NOT NULL "
-                "GROUP BY product_id, stage")
-    expo = _q("SELECT product_id, COUNT(DISTINCT agent_id) AS n FROM v_exposures WHERE product_id IS NOT NULL "
-              "GROUP BY product_id")
-    inq = _q("SELECT product_id, COUNT(DISTINCT agent_id) AS n FROM v_inquiries GROUP BY product_id")
-    buy = _q("SELECT option AS product_id, COUNT(*) AS n FROM v_purchases GROUP BY option")
-    st = {(r["product_id"], r["stage"]): int(r["n"]) for r in stages}
-
-    def g(rs: list[dict], pid: str) -> int:
-        return int(next((r["n"] for r in rs if r["product_id"] == pid), 0))
-
-    fun = [["Exposed (any channel)", *[g(expo, p["product_id"]) for p in live]],
-           ["Aware", *[sum(v for (q, s), v in st.items() if q == p["product_id"] and s != "unaware") for p in live]],
-           ["Curious", *[st.get((p["product_id"], "curious"), 0) for p in live]],
-           ["Researching", *[st.get((p["product_id"], "researching"), 0) for p in live]],
-           ["Inquired in store", *[g(inq, p["product_id"]) for p in live]],
-           ["Purchased", *[g(buy, p["product_id"]) for p in live]]]
+    fun = cumulative_funnel([p["product_id"] for p in live], n)
     ready = [p["name"] for p in _products() if p.get("status") == "ready"]
     ymax = max([60, *[v for s in series for v in s["v"] if v is not None]])
     return {"kpis": kpis[:4], "labels": [f"D{d}" for d in win], "series": series, "events": events,
             "ymax": int((ymax + 9) // 10 * 10), "funnel": {"cols": [p["name"] for p in live], "rows": fun},
             "note": f"{', '.join(ready)} is ready to launch — its line will start at launch." if ready else ""}
+
+
+FUNNEL_ROWS = ["Reached (saw an ad or heard of it)", "Aware", "Interested (curious or further)",
+               "Visited a store or bought", "Bought"]
+
+
+def funnel_sets(pids: list[str]) -> dict[str, list[set[int]]]:
+    """Per product, the agents who reached at least each funnel step (each set contains the next one)."""
+    ph = ", ".join(f"'{p}'" for p in pids if p.replace("-", "").replace("_", "").isalnum()) or "''"
+    expo = _q(f"SELECT DISTINCT product_id, agent_id FROM v_exposures WHERE product_id IN ({ph})")
+    bel = _q(f"SELECT product_id, agent_id, stage FROM beliefs_latest WHERE product_id IN ({ph})")
+    inq = _q(f"SELECT DISTINCT product_id, agent_id FROM v_inquiries WHERE product_id IN ({ph})")
+    buy = _q(f"SELECT DISTINCT option AS product_id, agent_id FROM v_purchases WHERE option IN ({ph})")
+    deeper = set(CURIOUS_PLUS)
+    out: dict[str, list[set[int]]] = {}
+    for pid in pids:
+        def ids(rows: list[dict[str, Any]], pid: str = pid) -> set[int]:
+            return {int(r["agent_id"]) for r in rows if r["product_id"] == pid and r["agent_id"] is not None}
+
+        bought = ids(buy)
+        visited = ids(inq) | bought
+        interested = {int(r["agent_id"]) for r in bel if r["product_id"] == pid and r["stage"] in deeper} | visited
+        aware = {int(r["agent_id"]) for r in bel if r["product_id"] == pid and r["stage"] != "unaware"} | interested
+        out[pid] = [ids(expo) | aware, aware, interested, visited, bought]
+    return out
+
+
+def cumulative_funnel(pids: list[str], n_agents: int) -> list[list[Any]]:
+    """Funnel rows "label, then per product: count with % of the step above" (never increases going down)."""
+    sets = funnel_sets(pids)
+    rows: list[list[Any]] = []
+    for i, label in enumerate(FUNNEL_ROWS):
+        row: list[Any] = [label]
+        for pid in pids:
+            k = len(sets[pid][i])
+            base = len(sets[pid][i - 1]) if i else n_agents
+            row.append({"n": k, "pct": _pct(k, base)})
+        rows.append(row)
+    return rows
 
 
 @router.get("/insights/sources")
@@ -316,45 +380,73 @@ def segments_tab(product: str = "") -> dict[str, Any]:
             "lifestyles": lifestyles}
 
 
+SAID_VS_THOUGHT_SQL = (
+    "SELECT e.session_id, e.agent_id, e.product_id, JSON_VALUE(e.payload, '$.thought') AS thought, m.text AS said, e.t "
+    "FROM events e JOIN v_messages m ON m.session_id = e.session_id AND m.speaker = e.agent_id AND m.t >= e.t "
+    "WHERE e.kind = 'store_thought' AND JSON_VALUE(e.payload, '$.thought') IS NOT NULL "
+    "QUALIFY ROW_NUMBER() OVER (PARTITION BY e.event_id ORDER BY m.t, m.seq) = 1 "
+    "ORDER BY e.t DESC LIMIT 40")
+
+
+def said_vs_thought(limit: int = 4) -> list[list[str]]:
+    """Store visits: a private thought next to the next thing the same person said out loud (active products)."""
+    names = {p["product_id"]: p["name"] for p in _products()}
+    out = []
+    for r in _q(SAID_VS_THOUGHT_SQL):
+        if r["product_id"] and r["product_id"] not in names:
+            continue
+        out.append([names.get(r["product_id"], "phone"), f"“{str(r['said'])[:80]}”", f"“{str(r['thought'])[:90]}”",
+                    "private thought vs what they said"])
+        if len(out) >= limit:
+            break
+    return out
+
+
 @router.get("/insights/conversations")
 def conversations() -> dict[str, Any]:
-    """Topics, said vs privately thought, reviewers private vs published, community threads (I-06)."""
-    topics = _q("SELECT first_topic AS topic, COUNT(*) AS n FROM v_inquiries WHERE first_topic IS NOT NULL "
-                "GROUP BY first_topic ORDER BY n DESC LIMIT 5")
-    chats = _q("SELECT COUNT(*) AS n FROM v_messages WHERE conv_kind IN ('social','store')")
-    tot = sum(int(x["n"]) for x in topics)
-    cols = ["#22c55e", "#f5b041", "#60a5fa", "#8b5cf6", "#94a3b8"]
-    tl = [[str(x["topic"]).capitalize(), round(_pct(int(x["n"]), tot)), cols[i]] for i, x in enumerate(topics)]
-    gap = []
-    r = runner()
-    try:
-        priv = r.texts("kind = 'store_thought'", {})[:400]
-    except Exception:  # noqa: BLE001
-        priv = []
-    said = _q("SELECT session_id, speaker, text FROM v_messages WHERE conv_kind = 'store' ORDER BY t, seq LIMIT 2000")
+    """Topics, said vs privately thought, reviewers, community threads (I-06). Each section fails on its own:
+    whatever worked is returned, with the failed section names in `errors`."""
+    out: dict[str, Any] = {"topics": [], "topics_note": "", "gap": [], "reviewers": [], "threads": [], "errors": []}
     names = {p["product_id"]: p["name"] for p in _products()}
-    for pt in priv:
-        s = next((m for m in said if m["session_id"] == pt["session_id"] and int(m["speaker"]) == int(pt["agent_id"])),
-                 None)
-        if s is None:
-            continue
-        gap.append([names.get(pt["product_id"], pt["product_id"] or "phone"), f"“{s['text'][:80]}”",
-                    f"“{pt['text'][:90]}”", "private thought vs what they said"])
-        if len(gap) >= 4:
-            break
-    rev = _q("SELECT r.reviewer, r.product_id, r.private_opinion, r.title, r.rating, a.name FROM v_reviews r "
-             "LEFT JOIN agents_latest a ON a.agent_id = r.reviewer WHERE r.title IS NOT NULL ORDER BY r.t_published DESC "
-             "LIMIT 3")
-    reviewers = [[x.get("name") or f"#{x['reviewer']}", names.get(x["product_id"], x["product_id"]),
-                  f"“{str(x['private_opinion'])[:120]}”", f"“{x['title']}” {float(x['rating'] or 0):.1f}/10"] for x in rev]
-    th = _q("SELECT p.thread_id, p.forum, p.title, p.upvotes, a.name, "
-            "(SELECT COUNT(*) FROM v_posts c WHERE c.kind = 'comment' AND c.thread_id = p.thread_id) AS comments "
-            "FROM v_posts p LEFT JOIN agents_latest a ON a.agent_id = p.author WHERE p.kind = 'thread' "
-            "ORDER BY p.upvotes DESC, p.t DESC LIMIT 3")
-    threads = [[x["forum"], x["title"], x.get("name") or "", f"{int(x['comments'])} comments · {int(x['upvotes'])} ▲",
-                x["thread_id"]] for x in th]
-    return {"topics": tl, "topics_note": f"Share of store questions by topic · {int(chats[0]['n']) if chats else 0} "
-                                         "messages logged", "gap": gap, "reviewers": reviewers, "threads": threads}
+
+    def section(name: str, fn: Any) -> None:
+        try:
+            out.update(fn())
+        except Exception:  # noqa: BLE001 — one broken query must not blank the tab
+            log.exception("insights conversations: section %s failed", name)
+            out["errors"].append(name)
+
+    def topics() -> dict[str, Any]:
+        rows = _q("SELECT first_topic AS topic, COUNT(*) AS n FROM v_inquiries WHERE first_topic IS NOT NULL "
+                  "GROUP BY first_topic ORDER BY n DESC LIMIT 5")
+        chats = _q("SELECT COUNT(*) AS n FROM v_messages WHERE conv_kind IN ('social','store')")
+        tot = sum(int(x["n"]) for x in rows)
+        cols = ["#22c55e", "#f5b041", "#60a5fa", "#8b5cf6", "#94a3b8"]
+        return {"topics": [[str(x["topic"]).capitalize(), round(_pct(int(x["n"]), tot)), cols[i]]
+                           for i, x in enumerate(rows)],
+                "topics_note": f"Share of store questions by topic · {int(chats[0]['n']) if chats else 0} messages logged"}
+
+    def reviewers() -> dict[str, Any]:
+        rev = _q("SELECT r.reviewer, r.product_id, r.private_opinion, r.title, r.rating, a.name FROM v_reviews r "
+                 "LEFT JOIN agents_latest a ON a.agent_id = r.reviewer WHERE r.title IS NOT NULL "
+                 "ORDER BY r.t_published DESC LIMIT 12")
+        return {"reviewers": [[x.get("name") or f"#{x['reviewer']}", names[x["product_id"]],
+                               f"“{str(x['private_opinion'])[:120]}”", f"“{x['title']}” {float(x['rating'] or 0):.1f}/10"]
+                              for x in rev if x["product_id"] in names][:3]}
+
+    def threads() -> dict[str, Any]:
+        th = _q("SELECT p.thread_id, p.forum, p.title, p.upvotes, a.name, "
+                "(SELECT COUNT(*) FROM v_posts c WHERE c.kind = 'comment' AND c.thread_id = p.thread_id) AS comments "
+                "FROM v_posts p LEFT JOIN agents_latest a ON a.agent_id = p.author WHERE p.kind = 'thread' "
+                "ORDER BY p.upvotes DESC, p.t DESC LIMIT 3")
+        return {"threads": [[x["forum"], x["title"], x.get("name") or "",
+                             f"{int(x['comments'])} comments · {int(x['upvotes'])} ▲", x["thread_id"]] for x in th]}
+
+    section("topics", topics)
+    section("said_vs_thought", lambda: {"gap": said_vs_thought()})
+    section("reviewers", reviewers)
+    section("threads", threads)
+    return out
 
 
 # ---------------------------------------------------------------- polls
@@ -445,11 +537,14 @@ async def interview(body: InterviewIn) -> dict[str, Any]:
 
 
 @router.get("/insights/interview/agents")
-def interview_agents(q: str = "") -> list[dict[str, Any]]:
-    """Agents to interview (search by name or job)."""
-    from api.main import list_agents
+def interview_agents(q: str = "", agent: int | None = None) -> list[dict[str, Any]]:
+    """Agents to interview (search by name or job); `agent` puts that person first."""
+    from api.main import list_agents_rows
 
-    return list_agents(q=q, page_size=20)["rows"]
+    rows = list_agents_rows(q=q, page=1, page_size=20)["rows"]
+    if agent is not None and all(r["agent_id"] != agent for r in rows):
+        rows = [*[r for r in list_agents_rows(page=1, page_size=5000)["rows"] if r["agent_id"] == agent], *rows][:20]
+    return [{k: r.get(k) for k in ("agent_id", "name", "age", "occupation", "phone")} for r in rows]
 
 
 __all__ = ["router", "age_band"]

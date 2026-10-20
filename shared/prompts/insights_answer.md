@@ -7,6 +7,10 @@ Rules (they are checked automatically):
 - `answer_md`: 2–5 sentences, plain and specific, mention it is simulated. Add 1–3 `caveats` (sample size, sim days
   observed, rendered vs template). Add one chart when there is a comparison (`source_ref` = the result it uses).
 - 2–3 `suggestions` for follow-up questions. If the data cannot answer the question, say so plainly.
+<products>
+{products}
+</products>
+Only these products exist now; ignore any other product_id you see in the data.
 Problems found in your previous attempt (fix them): {errors}
 
 <results>

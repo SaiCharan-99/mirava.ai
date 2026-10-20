@@ -7,8 +7,12 @@ and the faithfulness checks run without a model.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
+import os
 import re
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Literal
@@ -23,7 +27,17 @@ from shared.llm import FakeGemini, LLMClient
 from shared.models import MODEL_PRO
 
 PROMPTS = Path(__file__).resolve().parents[1] / "shared" / "prompts"
-MAX_ROUNDS = 5
+MAX_ROUNDS = 3
+CALL_TIMEOUT_S = 20.0            # one slow model call can't eat the whole budget
+log = logging.getLogger(__name__)
+
+
+def ask_budget_s() -> float:
+    """Seconds an Ask may take end to end (Firebase Hosting cuts proxied requests at 60 s)."""
+    try:
+        return float(os.environ.get("ASK_BUDGET_S", "45"))
+    except ValueError:
+        return 45.0
 ToolName = Literal["describe_data", "run_sql", "semantic_search", "cohort", "likely_buyers", "chart",
                    "survey_results"]
 
@@ -126,14 +140,17 @@ class Assistant:
     """One question → streamed steps + a faithful AskAnswer."""
 
     def __init__(self, tools: Tools, llm: LLMClient, *, products: list[dict[str, Any]] | None = None,
-                 window: str = "") -> None:
+                 window: str = "", budget_s: float | None = None, clock: Any = time.monotonic) -> None:
         self.tools, self.llm = tools, llm
+        self.budget_s = ask_budget_s() if budget_s is None else budget_s
+        self.clock = clock
         self.products = products or []
         self.window = window
         self.offline = isinstance(llm, FakeGemini)
         self.cost_usd = 0.0
         self.sql: list[str] = []
         self.last_cohort: str | None = None
+        self.known_ids: set[str] = set()         # every product id/name ever seen (to filter stale ones out)
 
     # ------------------------------------------------------------------ tool dispatch
     async def call(self, c: Call) -> tuple[str, Any]:
@@ -189,37 +206,58 @@ class Assistant:
             return
         yield {"step": "Reading the data dictionary"}
         results: list[dict[str, Any]] = []
-        if self.offline:
-            plan = self._rule_plan(question)
-            for c in plan:
-                yield {"step": _label(c)}
-                ref, res = await self.call(c)
-                results.append({"tool": c.tool, "args": c.args.model_dump(exclude_none=True), "ref": ref,
-                                "result": res})
-            ans = self._compose_offline(question, results)
-        else:
-            for _ in range(MAX_ROUNDS):
-                step = await self._plan(question, results)
-                if step.thought:
-                    yield {"step": step.thought[:160]}
-                for c in step.calls:
+        t0 = self.clock()
+        left = lambda: self.budget_s - (self.clock() - t0)  # noqa: E731
+        failure: str | None = None
+        ans: dict[str, Any] | None = None
+        try:
+            if self.offline:
+                for c in self._rule_plan(question):
                     yield {"step": _label(c)}
                     ref, res = await self.call(c)
                     results.append({"tool": c.tool, "args": c.args.model_dump(exclude_none=True), "ref": ref,
                                     "result": res})
-                if step.done or not step.calls:
-                    break
-            yield {"step": "Writing the answer"}
-            ans = await self._compose(question, results, None)
-            errs = faithfulness.check(ans, self.tools.ledger)
-            if errs:
-                yield {"step": f"Faithfulness check failed ({len(errs)}); regenerating once"}
-                ans = await self._compose(question, results, errs)
+                ans = self._compose_offline(question, results)
+            else:
+                for _ in range(MAX_ROUNDS):
+                    if left() < 12:                      # keep enough time to compose
+                        yield {"step": "Time budget reached; answering from what I have"}
+                        break
+                    step = await self._plan(question, results, timeout=min(CALL_TIMEOUT_S, left() - 10))
+                    if step.thought:
+                        yield {"step": step.thought[:160]}
+                    for c in step.calls:
+                        yield {"step": _label(c)}
+                        ref, res = await self.call(c)
+                        results.append({"tool": c.tool, "args": c.args.model_dump(exclude_none=True), "ref": ref,
+                                        "result": res})
+                    if step.done or not step.calls:
+                        break
+                yield {"step": "Writing the answer"}
+                ans = await self._compose(question, results, None, timeout=max(5.0, min(CALL_TIMEOUT_S, left())))
+                errs = faithfulness.check(ans, self.tools.ledger)
+                if errs and left() > 15:
+                    yield {"step": f"Faithfulness check failed ({len(errs)}); regenerating once"}
+                    ans = await self._compose(question, results, errs, timeout=min(CALL_TIMEOUT_S, left() - 2))
+        except Exception as e:  # noqa: BLE001 — the stream must always end with an answer
+            log.exception("insights ask failed")
+            failure = _reason(e)
+        if ans is None:
+            ans = self._compose_offline(question, results) if results else {
+                "answer_md": "I couldn't answer that question right now.", "numbers": [], "charts": [], "quotes": [],
+                "sql": [], "caveats": [], "suggestions": []}
+            ans["caveats"] = [c for c in ans.get("caveats", []) if not c.startswith("Offline mode")]
+            if failure:
+                ans["caveats"].insert(0, f"Partial answer: the model call failed ({failure})." if results else
+                                      f"The model call failed ({failure}).")
+                if not results:
+                    ans["error"] = failure
         errs = faithfulness.check(ans, self.tools.ledger)
         if errs:
             ans, _ = faithfulness.drop_unfaithful(ans, self.tools.ledger)
         ans["sql"] = list(dict.fromkeys([*self.sql, *ans.get("sql", [])]))
         ans["charts"] = [chart_option(c) if "series" in c and "xAxis" not in c else c for c in ans.get("charts", [])]
+        ans = self._only_active(ans)
         ans.setdefault("caveats", [])
         ans["caveats"] = [*ans["caveats"], f"Simulated data{(' · ' + self.window) if self.window else ''}."]
         ans["faithful"] = not faithfulness.check(ans, self.tools.ledger)
@@ -227,21 +265,41 @@ class Assistant:
         yield {"step": "Checked numbers and quotes against the data"}
         yield {"answer": ans}
 
-    async def _plan(self, question: str, results: list[dict[str, Any]]) -> Step:
+    def _only_active(self, ans: dict[str, Any]) -> dict[str, Any]:
+        """Drop numbers and charts that name a product that is not active any more."""
+        if not self.products:
+            return ans
+        active = {p["product_id"] for p in self.products} | {p.get("name", "") for p in self.products}
+        known = self.known_ids - active
+
+        def stale(text: str) -> bool:
+            return any(k and k in text for k in known)
+
+        ans["numbers"] = [n for n in ans.get("numbers", []) if not stale(str(n.get("label", "")))]
+        ans["charts"] = [c for c in ans.get("charts", []) if not stale(json.dumps(c, default=str))]
+        return ans
+
+    def _products_json(self) -> str:
+        return _compact([{k: p.get(k) for k in ("product_id", "name", "price_inr", "status")} for p in self.products])
+
+    async def _plan(self, question: str, results: list[dict[str, Any]], timeout: float = CALL_TIMEOUT_S) -> Step:
         prompt = (_p("insights_plan").replace("{dictionary}", _compact(self.tools.describe_data(), 9000))
-                  .replace("{products}", _compact([{k: p.get(k) for k in ("product_id", "name", "price_inr", "status")}
-                                                   for p in self.products]))
+                  .replace("{products}", self._products_json())
                   .replace("{results}", _compact(results, 12000)).replace("{question}", wrap(question, "question")))
-        res = await self.llm.generate(MODEL_PRO, prompt, Step, purpose="insights_plan", reasoning="low",
-                                      max_tokens=1200, priority_class="interactive")
+        res = await asyncio.wait_for(self.llm.generate(MODEL_PRO, prompt, Step, purpose="insights_plan",
+                                                       reasoning="low", max_tokens=1200,
+                                                       priority_class="interactive"), timeout)
         self.cost_usd += res.usage.cost_usd
         return res.data
 
-    async def _compose(self, question: str, results: list[dict[str, Any]], errs: list[str] | None) -> dict[str, Any]:
+    async def _compose(self, question: str, results: list[dict[str, Any]], errs: list[str] | None,
+                       timeout: float = CALL_TIMEOUT_S) -> dict[str, Any]:
         prompt = (_p("insights_answer").replace("{results}", _compact(results, 16000))
+                  .replace("{products}", self._products_json())
                   .replace("{errors}", "\n".join(errs or []) or "(none)").replace("{question}", wrap(question, "question")))
-        res = await self.llm.generate(MODEL_PRO, prompt, AskAnswer, purpose="insights_answer", reasoning="low",
-                                      max_tokens=2000, priority_class="interactive")
+        res = await asyncio.wait_for(self.llm.generate(MODEL_PRO, prompt, AskAnswer, purpose="insights_answer",
+                                                       reasoning="low", max_tokens=2000,
+                                                       priority_class="interactive"), timeout)
         self.cost_usd += res.usage.cost_usd
         out = res.data.model_dump()
         out["charts"] = [c for c in out["charts"]]
@@ -358,6 +416,18 @@ class Assistant:
                 "caveats": ["Small simulated samples; differences of a few agents are noise.",
                             "Offline mode: deterministic template answer (no model)."],
                 "suggestions": sugg}
+
+
+def _reason(e: BaseException) -> str:
+    """Short, key-free reason for a failed model call."""
+    if isinstance(e, asyncio.TimeoutError | TimeoutError):
+        return "timed out"
+    msg = str(e)
+    if "Key limit exceeded" in msg or "HTTP 402" in msg or "HTTP 403" in msg:
+        return "model provider credit exhausted"
+    if "did not validate" in msg:
+        return "model output did not validate"
+    return type(e).__name__
 
 
 def _fmt(v: Any) -> str:
