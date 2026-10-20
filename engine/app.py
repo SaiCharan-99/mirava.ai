@@ -103,6 +103,19 @@ async def commands(request: Request) -> dict:
     return _eng().command(await request.json())
 
 
+@app.get("/surveys/{survey_id}/live-state")
+def survey_live_state(survey_id: str, request: Request, table: str | None = None, private: int = 0) -> dict:
+    """The running survey's room from engine memory (private thoughts only for the IAM-authenticated api)."""
+    if private and not _authorised(request):
+        raise HTTPException(403, "forbidden")
+    e = _eng()
+    rt = getattr(e, "surveys", None)
+    st = rt.live_state(survey_id, table, bool(private)) if rt is not None else None
+    if st is None:
+        raise HTTPException(404, "not running")
+    return {**st, "sim_min_per_real_s": e.clock.sim_min_per_real_s}
+
+
 @app.get("/debug/stacks")
 async def debug_stacks(request: Request) -> dict:
     """IAM-only: every asyncio task's and thread's current stack (diagnosing a stalled tick)."""

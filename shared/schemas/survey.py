@@ -26,8 +26,15 @@ class Goodie(BaseModel):
     value_inr: int = Field(0, ge=0, le=20000)
 
 
+def default_goodies() -> list[Goodie]:
+    """What people get for coming when the builder doesn't say otherwise (no cash)."""
+    return [Goodie(kind="merch", label="Mirava goodie bag", value_inr=300),
+            Goodie(kind="food", label="Coffee at a café nearby", value_inr=250),
+            Goodie(kind="food", label="Snacks at the lounge", value_inr=150)]
+
+
 class Incentive(BaseModel):
-    """What participants get: cash and/or goodies."""
+    """What participants get: goodies (cash only on old surveys made before goodies replaced it)."""
 
     cash_inr: int = Field(0, ge=0, le=5000)
     goodies: list[Goodie] = Field(default_factory=list, max_length=5)
@@ -101,7 +108,7 @@ class Survey(BaseModel):
     interest_filter: InterestFilter | None = None
     max_participants: int = Field(ge=1, le=MAX_PARTICIPANTS)
     table_size: int = Field(8, ge=6, le=10)
-    incentive_inr: int = 500                            # legacy: mirrors incentive.cash_inr
+    incentive_inr: int = 0                              # legacy, ignored when reading: mirrors incentive.cash_inr
     incentive: Incentive | None = None
     channels: list[Channel] = Field(default_factory=lambda: list(ALL_CHANNELS))     # how people hear about it
     start_at_t: int | None = None
@@ -120,10 +127,9 @@ class Survey(BaseModel):
             self.product_ids = [self.product_id]
         elif self.product_ids:
             self.product_id = self.product_ids[0]
-        if self.incentive is not None:
-            self.incentive_inr = self.incentive.cash_inr
-        else:
-            self.incentive = Incentive(cash_inr=self.incentive_inr, goodies=[], note="")
+        if self.incentive is None:                     # old docs: a bare incentive_inr is ignored → default goodies
+            self.incentive = Incentive(cash_inr=0, goodies=default_goodies(), note="")
+        self.incentive_inr = self.incentive.cash_inr
         if not self.channels:
             self.channels = list(ALL_CHANNELS)
         return self

@@ -11,12 +11,12 @@ fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ args: ["--use-gl=swiftshader", "--enable-webgl", "--ignore-gpu-blocklist"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const shots = [
-  ["builder", "/insights/polls/survey/new?visualTest=1", null],
-  ["recruiting", "/insights/polls/survey/sv-demo?visualTest=1", ["recruiting", 0]],
-  ["discussion", "/insights/polls/survey/sv-demo?visualTest=1", ["discussion", 0.6]],
-  ["ballot", "/insights/polls/survey/sv-demo?visualTest=1", ["ballot", 0.5]],
-  ["results", "/insights/polls/survey/sv-demo?visualTest=1", ["results", 1]],
-  ["light", "/insights/polls/survey/sv-demo?visualTest=1", ["discussion", 0.6], true],
+  ["builder", "/insights/focus?visualTest=1", null],
+  ["recruiting", "/insights/focus/sv-demo/room?visualTest=1", ["recruiting", 0]],
+  ["discussion", "/insights/focus/sv-demo/room?visualTest=1", ["discussion", 0.6]],
+  ["ballot", "/insights/focus/sv-demo/room?visualTest=1", ["ballot", 0.5]],
+  ["results", "/insights/focus/sv-demo/room?visualTest=1", ["results", 1]],
+  ["light", "/insights/focus/sv-demo/room?visualTest=1", ["discussion", 0.6], true],
 ];
 for (const [name, route, freeze, light] of shots) {
   await page.goto(base + route, { waitUntil: "load" });

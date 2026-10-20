@@ -52,6 +52,7 @@ class SurveyRuntime:
         self.history: dict[int, int] = {}            # aid → last survey attended t (fatigue)
         self._bg: set[asyncio.Future] = set()
         self.frames: list[dict[str, Any]] = []       # survey frames to push after this tick
+        self.last_done: dict[str, Any] | None = None  # the survey that finished last (banner: "just finished")
         self._now = 0                                # sim minute of the current tick (for hooks called between ticks)
         self._seed = 0
         self.offline = isinstance(llm, FakeGemini)
@@ -121,8 +122,6 @@ class SurveyRuntime:
             arrived = sum(1 for p in a["participants"].values() if p["rsvp"] == "accepted" and p.get("arrived_t"))
             exp = sum(1 for p in a["participants"].values() if p["rsvp"] == "accepted")
             if a.pop("dirty", False) or t % 5 == 0:
-                w.live_evts.append({"k": "survey", "survey_id": a["id"], "status": "gathering", "venue": self.venue,
-                                    "arrived": arrived, "expected": exp, "name": self.venue_name, **self._xy(w)})
                 self._persist(a, {"outreach": self._outreach_doc(a)})
             if exp == 0 and t >= a["start_t"]:
                 self._finish(w, bus, a, empty=True)
@@ -139,6 +138,11 @@ class SurveyRuntime:
                 self._after(w, bus, a)
         elif st == "finishing" and a["post_fut"].done():
             self._finish(w, bus, a)
+        if self.active is not None and self.active["status"] in ("recruiting", "gathering", "in_session", "finishing"):
+            c = self.counts(self.active)                # at most once per sim minute, only when something changed
+            if c != self.active.get("last_counts"):
+                self.active["last_counts"] = c
+                w.live_evts.append(self._live_evt(w, self.active))
         if self.frames and self.hub is not None:
             frames, self.frames = self.frames, []
             await self.hub.send_survey(a["id"], frames)
@@ -189,8 +193,28 @@ class SurveyRuntime:
         self._persist(a, {"status": "recruiting", "eligible": len(pool), "start_at_t": start,
                           "start_label": simtime.fmt(start), "venue": self.venue, "venue_name": self.venue_name,
                           "outreach": self._outreach_doc(a)})
-        w.live_evts.append({"k": "survey", "survey_id": s.survey_id, "status": "recruiting", "venue": self.venue,
-                            "arrived": 0, "expected": 0, "name": self.venue_name, **self._xy(w)})
+        a["last_counts"] = self.counts(a)
+        w.live_evts.append(self._live_evt(w, a))
+
+    def counts(self, a: dict[str, Any]) -> dict[str, int]:
+        """Who is coming: invited (sent or about to see it) → replied → said yes → walking there → arrived."""
+        parts = a["participants"].values()
+        queued = {x[1] for x in a["queue"]} - a["decided"]
+        return {"invited": len(a["decided"]) + len(queued), "replied": len(a["decided"]),
+                "accepted": sum(1 for p in parts if p["rsvp"] in ("accepted", "attended")),
+                "waitlist": sum(1 for p in parts if p["rsvp"] == "waitlist"),
+                "walking": sum(1 for p in parts if p.get("injected") and not p.get("arrived_t")
+                               and p["rsvp"] == "accepted"),
+                "arrived": sum(1 for p in parts if p.get("arrived_t"))}
+
+    def _live_evt(self, w: World, a: dict[str, Any]) -> dict[str, Any]:
+        """The `survey` live event every viewer gets (banner, countdown, World pin)."""
+        c = a.get("last_counts") or self.counts(a)
+        return {"k": "survey", "survey_id": a["id"], "status": a["status"], "title": a["s"].title,
+                "mode": a["s"].mode, "start_at_t": a["start_t"], "counts": c, "venue": self.venue,
+                "arrived": c["arrived"], "expected": c["accepted"], "name": self.venue_name,
+                "q_index": a.get("q_index", -1), "n_questions": len(a["s"].questions),
+                "viewers": self.hub.viewers(a["id"]) if self.hub is not None else 0, **self._xy(w)}
 
     def _schedule_panel(self, w: World, a: dict[str, Any], t: int, n: int) -> None:
         """The agency messages a stratified sample; each person reads it at their own next phone session."""
@@ -217,7 +241,7 @@ class SurveyRuntime:
         if author is None:
             return
         reward = self._incentive_text(s)
-        media._new_thread(w, bus, int(author), "r/BangaloreTech", f"Paid {'focus group' if s.mode == 'focus_group' else 'survey'}: {s.title}",
+        media._new_thread(w, bus, int(author), "r/BangaloreTech", f"{'Focus group' if s.mode == 'focus_group' else 'Survey'} (goodies for coming): {s.title}",
                           f"At the {self.venue_name}, {simtime.fmt(a['start_t'])}. {reward}", None)
         for aid in a["pool"]:
             if not w.profiles[aid].media.community or float(stream(w.seed, "community_see", s.survey_id, aid).random()) >= 0.6:
@@ -229,8 +253,8 @@ class SurveyRuntime:
     @staticmethod
     def _incentive_text(s: Survey) -> str:
         inc = s.incentive
-        bits = ([f"₹{inc.cash_inr} for your time"] if inc and inc.cash_inr else []) + [g.label for g in (inc.goodies if inc else [])]
-        return ("You get " + " and ".join(bits) + ".") if bits else "No payment, just your opinion."
+        bits = [g.label for g in (inc.goodies if inc else [])]
+        return ("What you get: " + ", ".join(bits) + ".") if bits else "Nothing to take home, just your opinion."
 
     def on_invite_told(self, listener: int, teller: int, closeness: float, survey_id: str) -> None:
         """A friend brought the survey up in conversation: the listener hears about it now, trusting the friend."""
@@ -321,7 +345,8 @@ class SurveyRuntime:
             if status == "declined":
                 why = "The seats were already taken."
         rec: dict[str, Any] = {"agent_id": aid, "rsvp": status, "rsvp_reason": why, "arrived_t": None,
-                               "no_show": False, "channel": channel, "seen_t": t, "eta": eta}
+                               "no_show": False, "channel": channel, "seen_t": t, "eta": eta, "name": prof.name,
+                               "age": prof.age}
         if status == "accepted":
             c = float(b5.get("C", 0.5))
             buffer = outreach.leave_buffer(c, rng)
@@ -445,8 +470,8 @@ class SurveyRuntime:
         self.frames.append({"type": "survey", "survey_id": s.survey_id, "phase": "question", "question_id":
                             s.questions[0].question_id, "tables": [{"table_id": x["table"]["table_id"],
                                                                     "seats": x["table"]["present"]} for x in runners]})
-        w.live_evts.append({"k": "survey", "survey_id": s.survey_id, "status": "in_session", "venue": self.venue,
-                            "arrived": len(here), "expected": len(here), "name": self.venue_name, **self._xy(w)})
+        a["q_index"] = 0
+        w.live_evts.append(self._live_evt(w, a))
 
     def _person(self, w: World, aid: int, s: Survey, product_name: str) -> Person:
         prof = w.profiles[aid]
@@ -489,6 +514,10 @@ class SurveyRuntime:
             while x["cursor"] < len(r.items) and a["session_t"] + r.items[x["cursor"]]["dt"] <= t:
                 it = r.items[x["cursor"]]
                 x["cursor"] += 1
+                if it["kind"] == "survey_phase" and x is a["runners"][0]:
+                    a["phase"] = it["payload"]["phase"]
+                    qid = it["payload"].get("question_id")
+                    a["q_index"] = next((i for i, q in enumerate(a["s"].questions) if q.question_id == qid), 0)
                 if it["live"]:
                     self.frames.append({**it["live"], "t": t, **({"tables": [{"table_id": y["table"]["table_id"],
                                                                                "seats": y["table"]["present"]}
@@ -638,9 +667,10 @@ class SurveyRuntime:
         self._persist(a, {"status": "completed", "completed_t": t, "counts": counts, "actual_usd": cost,
                           "summaries": summaries, "discussion_skipped": skipped,
                           "participants": list(a["participants"].values())})
-        w.live_evts.append({"k": "survey", "survey_id": s.survey_id, "status": "completed", "venue": self.venue,
-                            "arrived": counts["attended"], "expected": counts["attended"], "name": self.venue_name,
-                            **self._xy(w)})
+        a["status"] = "completed"
+        w.live_evts.append({**self._live_evt(w, a), "status": "completed", "attended": counts["attended"],
+                            "answers": counts["answers"]})
+        self.last_done = {"survey_id": s.survey_id, "title": s.title, "t": t, "attended": counts["attended"]}
         self.active = None
 
     def _pay_incentives(self, w: World, bus: EventBus, a: dict[str, Any], t: int) -> None:
@@ -734,15 +764,55 @@ class SurveyRuntime:
         self._bg.add(fut)
         fut.add_done_callback(self._bg.discard)
 
+    def live_state(self, survey_id: str, table_id: str | None = None, include_private: bool = False,
+                   n_messages: int = 30) -> dict[str, Any] | None:
+        """The room as it is now, from engine memory (no analytics lag): phase, question, seats, the last public
+        messages per table, ballot progress, and — only when asked — the selected table's private thoughts."""
+        a = self.active
+        if a is None or a["id"] != survey_id:
+            return None
+        s: Survey = a["s"]
+        st = a["status"]
+        phase = {"recruiting": "gathering", "gathering": "gathering", "finishing": "results"}.get(st, a.get("phase", "question"))
+        out: dict[str, Any] = {"survey_id": survey_id, "status": st, "phase": phase, "start_at_t": a["start_t"],
+                               "now_t": self._now, "q_index": a.get("q_index", -1), "n_questions": len(s.questions),
+                               "counts": self.counts(a), "tables": [], "messages": {}, "ballots": {}, "private": [],
+                               "arrived_ids": sorted(aid for aid, p in a["participants"].items() if p.get("arrived_t")),
+                               "replies": [{"agent_id": p["agent_id"], "name": p.get("name"), "age": p.get("age"),
+                                            "rsvp": p["rsvp"], "channel": p.get("channel"), "t": p.get("seen_t"),
+                                            **({"reason": p.get("rsvp_reason"), "private": True} if include_private else {})}
+                                           for p in sorted(a["participants"].values(), key=lambda p: -int(p.get("seen_t") or 0))
+                                           ][:40],
+                               "viewers": self.hub.viewers(survey_id) if self.hub is not None else 0}
+        qid = s.questions[max(0, out["q_index"])].question_id if s.questions else None
+        for x in a.get("runners", []):
+            tb, r = x["table"], x["runner"]
+            tid = tb["table_id"]
+            done = r.items[:x["cursor"]]
+            out["tables"].append({"table_id": tid, "seats": tb["present"]})
+            out["messages"][tid] = [{**{k: it["payload"].get(k) for k in ("message_id", "speaker", "text", "seq",
+                                                                          "question_id")},
+                                     "t": a["session_t"] + it["dt"]} for it in done if it["kind"] == "message"][-n_messages:]
+            out["ballots"][tid] = sorted({it["agent_id"] for it in done
+                                          if it["kind"] == "survey_answer" and it["payload"].get("question_id") == qid})
+            if include_private and tid == (table_id or out["tables"][0]["table_id"]):
+                out["private"] = [{"agent_id": it["agent_id"], "kind": it["kind"], "question_id": it["payload"].get("question_id"),
+                                   "text": it["payload"].get("text") or it["payload"].get("gut_reason") or "",
+                                   "t": a["session_t"] + it["dt"], "private": True}
+                                  for it in done if it["kind"] in ("survey_thought", "survey_prestance")][-n_messages:]
+        return out
+
     def status(self) -> dict[str, Any]:
         """Engine view for the API (active survey + queue)."""
         a = self.active
         if a is None:
-            return {"active": None, "queue": list(self.queue)}
-        arrived = sum(1 for p in a["participants"].values() if p.get("arrived_t"))
-        return {"active": a["id"], "status": a["status"], "start_at_t": a["start_t"], "arrived": arrived,
-                "expected": sum(1 for p in a["participants"].values() if p["rsvp"] in ("accepted", "attended")),
-                "queue": list(self.queue), "venue": self.venue}
+            return {"active": None, "queue": list(self.queue), "last_done": self.last_done}
+        c = self.counts(a)
+        return {"active": a["id"], "status": a["status"], "start_at_t": a["start_t"], "arrived": c["arrived"],
+                "expected": c["accepted"], "counts": c, "title": a["s"].title, "mode": a["s"].mode,
+                "q_index": a.get("q_index", -1), "n_questions": len(a["s"].questions),
+                "viewers": self.hub.viewers(a["id"]) if self.hub is not None else 0,
+                "queue": list(self.queue), "venue": self.venue, "last_done": self.last_done}
 
     def to_dict(self) -> dict[str, Any]:
         """Checkpoint: queue + fatigue (an in-flight survey restarts from its Firestore doc after a restart)."""

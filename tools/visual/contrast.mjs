@@ -22,10 +22,10 @@ const themes = args.theme ? [String(args.theme)] : ["dark", "light"];
 const outRoot = path.join(root, "artifacts/visual/contrast");
 
 const EXTRA = [
-  { name: "40-survey-builder", route: "insights/polls/survey/new" },
-  { name: "41-survey-recruiting", route: "insights/polls/survey/sv-demo", actions: [{ eval: "window.__ll.surveyRoom('sv-demo','recruiting',0)" }, { wait: 1500 }] },
-  { name: "42-survey-discussion", route: "insights/polls/survey/sv-demo", actions: [{ eval: "window.__ll.surveyRoom('sv-demo','discussion',0.6)" }, { wait: 1500 }] },
-  { name: "43-survey-results", route: "insights/polls/survey/sv-demo", actions: [{ eval: "window.__ll.surveyRoom('sv-demo','results',1)" }, { wait: 1500 }] },
+  { name: "40-survey-builder", route: "insights/focus" },
+  { name: "41-survey-recruiting", route: "insights/focus/sv-demo/room", actions: [{ eval: "window.__ll.surveyRoom('sv-demo','recruiting',0)" }, { wait: 1500 }] },
+  { name: "42-survey-discussion", route: "insights/focus/sv-demo/room", actions: [{ eval: "window.__ll.surveyRoom('sv-demo','discussion',0.6)" }, { wait: 1500 }] },
+  { name: "43-survey-results", route: "insights/focus/sv-demo/room", actions: [{ eval: "window.__ll.surveyRoom('sv-demo','results',1)" }, { wait: 1500 }] },
 ];
 const screens = [...cfg.screens, ...EXTRA].filter((s) => !only || only.includes(s.name));
 

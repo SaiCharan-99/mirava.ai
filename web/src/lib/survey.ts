@@ -142,13 +142,13 @@ export const getTranscript = (id: string) => getJSON<{ table_id: string; questio
 export const getAgentDetail = (id: string, aid: number) => getJSON<{ items: { kind: string; t: number; private: boolean; payload: Record<string, any> }[] }>(`/surveys/${id}/agents/${aid}`);
 
 /** Live room frames: subscribes to one survey on the /live socket (old clients ignore these types). */
-export function subscribeSurvey(id: string, onFrame: (f: Record<string, any>) => void): () => void {
+export function subscribeSurvey(id: string, onFrame: (f: Record<string, any>) => void, onOpen?: () => void): () => void {
   let ws: WebSocket | null = null;
   let stopped = false;
   const open = () => {
     if (stopped) return;
     try { ws = new WebSocket(liveUrl()); } catch { return; }
-    ws.onopen = () => ws?.send(JSON.stringify({ type: "sub", survey_id: id }));
+    ws.onopen = () => { ws?.send(JSON.stringify({ type: "sub", survey_id: id })); onOpen?.(); };
     ws.onmessage = (e) => {
       try {
         const m = JSON.parse(String(e.data));

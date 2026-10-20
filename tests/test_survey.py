@@ -384,5 +384,5 @@ def test_products_incentive_and_channels_are_stored_on_launch(monkeypatch):
     assert r.status_code == 200
     doc = store.get("surveys", r.json()["survey_id"])
     assert doc["product_ids"] == ["pixel-10a", "galaxy-a57"] and doc["product_id"] == "pixel-10a"
-    assert doc["incentive"]["goodies"][0]["label"] == "lunch" and doc["incentive_inr"] == 300
+    assert doc["incentive"]["goodies"][0]["label"] == "lunch" and doc["incentive"]["cash_inr"] == 0  # goodies only
     assert doc["channels"] == ["panel", "word_of_mouth"] and doc["start_at_t"] == 5000

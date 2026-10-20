@@ -54,7 +54,8 @@ class LiveHub:
     def leave(self, ws: Any) -> None:
         """Forget a viewer."""
         self.clients.discard(ws)
-        self.survey_subs.pop(ws, None)
+        for sid in self.survey_subs.pop(ws, set()):
+            self._announce_viewers(sid)
 
     def on_client_message(self, ws: Any, text: str) -> None:
         """Client → server messages: {"type":"sub","survey_id":…} / {"type":"unsub",…}; anything else is ignored."""
@@ -65,10 +66,26 @@ class LiveHub:
         if not isinstance(msg, dict) or not msg.get("survey_id"):
             return
         sid = str(msg["survey_id"])
+        before = self.viewers(sid)
         if msg.get("type") == "sub":
             self.survey_subs.setdefault(ws, set()).add(sid)
         elif msg.get("type") == "unsub":
             self.survey_subs.get(ws, set()).discard(sid)
+        if self.viewers(sid) != before:
+            self._announce_viewers(sid)
+
+    def viewers(self, survey_id: str) -> int:
+        """How many open sockets are watching this survey's room."""
+        return sum(1 for subs in self.survey_subs.values() if survey_id in subs)
+
+    def _announce_viewers(self, survey_id: str) -> None:
+        """Tell the room's watchers how many they are (fire-and-forget; no running loop → skip)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(self.send_survey(survey_id, [{"type": "survey_viewers", "survey_id": survey_id,
+                                                       "n": self.viewers(survey_id)}]))
 
     async def send_survey(self, survey_id: str, frames: list[dict[str, Any]]) -> None:
         """Survey frames only to clients subscribed to that survey."""

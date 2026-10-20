@@ -110,7 +110,9 @@ def test_survey_schema_keeps_legacy_fields_in_step():
     q = [Question.model_validate({"question_id": "q1", "text": "Which one?", "type": "single", "options": ["a", "b"]})]
     s = Survey(survey_id="s", title="t", mode="survey", product_id="pixel-10a", questions=q, max_participants=5,
                incentive_inr=300)
-    assert s.product_ids == ["pixel-10a"] and s.incentive.cash_inr == 300 and set(s.channels) >= {"panel", "community"}
+    # an old doc's bare incentive_inr is ignored: people get the default goodies, no cash
+    assert s.product_ids == ["pixel-10a"] and s.incentive.cash_inr == 0 and set(s.channels) >= {"panel", "community"}
+    assert [g.label for g in s.incentive.goodies] == ["Mirava goodie bag", "Coffee at a café nearby", "Snacks at the lounge"]
     s2 = Survey(survey_id="s", title="t", mode="survey", product_ids=["a", "b"], questions=q, max_participants=5,
                 incentive=Incentive(cash_inr=700, goodies=[Goodie(kind="food", label="lunch", value_inr=250)], note=""))
     assert s2.product_id == "a" and s2.incentive_inr == 700

@@ -26,6 +26,7 @@ from shared.schemas.survey import (
     InterestFilter,
     Question,
     Survey,
+    default_goodies,
 )
 from shared.store import DocStore, get_store
 
@@ -71,9 +72,8 @@ class SurveyIn(BaseModel):
     max_participants: int = Field(40, ge=1, le=MAX_PARTICIPANTS)
     table_size: int = Field(8, ge=6, le=10)
     start_at_t: int | None = None
-    incentive_inr: int = Field(500, ge=0, le=5000)
     product_ids: list[str] = Field(default_factory=list, max_length=MAX_PRODUCTS)
-    incentive: Incentive | None = None
+    incentive: Incentive | None = None            # goodies only: any cash sent is ignored
     channels: list[Channel] = Field(default_factory=lambda: list(ALL_CHANNELS))
 
 
@@ -216,14 +216,14 @@ def _plan(body: SurveyIn) -> tuple[Survey, int, int, dict[str, Any], list[Questi
         eligible = _eligible(body.cohort_filter, body.interest_filter)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(422, f"bad audience filter: {str(e)[:160]}") from e
-    inc = body.incentive or Incentive(cash_inr=body.incentive_inr, goodies=[], note="")
+    inc = Incentive(cash_inr=0, goodies=body.incentive.goodies if body.incentive else default_goodies(),
+                    note=body.incentive.note if body.incentive else "")
     expected = expected_attendance(eligible, body.max_participants, list(body.channels), inc)
     sid = "sv-" + hashlib.sha256(json.dumps([body.model_dump(mode="json"), _engine_state().get("t", 0)]).encode()
                                  ).hexdigest()[:8]
     s = Survey(survey_id=sid, title=body.title, mode=body.mode, product_id=body.product_id, topic=body.topic,
                questions=qs, cohort_filter=body.cohort_filter, interest_filter=body.interest_filter,
-               max_participants=body.max_participants, table_size=body.table_size, incentive_inr=inc.cash_inr,
-               incentive=inc, channels=list(body.channels), product_ids=list(body.product_ids),
+               max_participants=body.max_participants, table_size=body.table_size, incentive=inc, channels=list(body.channels), product_ids=list(body.product_ids),
                start_at_t=body.start_at_t)
     est = recruit.estimate(s, expected or 1)
     s.estimate_usd = est["usd"]
@@ -248,7 +248,8 @@ async def create_survey(body: SurveyIn) -> dict[str, Any]:
     s, eligible, expected, est, qs = _plan(body)
     sid = s.survey_id
     warnings = await lint(qs)
-    doc = {**s.model_dump(mode="json"), "eligible": eligible, "expected_attendance": expected,
+    doc = {**s.model_dump(mode="json"), "created_t": int(_engine_state().get("t") or 0), "eligible": eligible,
+           "expected_attendance": expected,
            "tables_n": max(1, math.ceil((expected or 1) / s.table_size)), "estimate": est, "lint": warnings}
     store().set("surveys", sid, doc)
     msg = "No agents match this audience — widen the filters." if eligible == 0 else None
@@ -322,27 +323,118 @@ def rerun_survey(sid: str) -> dict[str, Any]:
     return {"survey_id": nid, "wave": wave, "panel": len(panel), "estimate_usd": est["usd"]}
 
 
+def timer(start_at_t: int | None, st: dict[str, Any] | None = None) -> dict[str, Any]:
+    """One clock for every viewer: seconds to start from the world clock and its real rate (slowed → adjusts)."""
+    st = st if st is not None else _engine_state()
+    now = int(st.get("t") or 0)
+    rate = float((st.get("scale") or {}).get("sim_min_per_real_s") or 0.4)
+    if st.get("slowed"):
+        rate = rate                      # the engine already reports its current (slowed) rate
+    secs = None if start_at_t is None else round(max(0.0, (int(start_at_t) - now) / max(1e-6, rate)), 1)
+    return {"now_t": now, "sim_min_per_real_s": rate, "seconds_to_start": secs,
+            "start_label": simtime.fmt(int(start_at_t)) if start_at_t is not None else None}
+
+
+def _counts_from_doc(doc: dict[str, Any]) -> dict[str, int]:
+    """Funnel counts from the persisted outreach doc (when the engine is not reachable)."""
+    o = doc.get("outreach") or {}
+    return {"invited": int(o.get("reached", 0)) + int(o.get("pending", 0)), "replied": int(o.get("reached", 0)),
+            "accepted": int(o.get("accepted", 0)), "waitlist": int(o.get("waitlist", 0)),
+            "walking": max(0, int(o.get("on_the_way", 0)) - int(o.get("checked_in", 0))),
+            "arrived": int(o.get("checked_in", 0))}
+
+
+@router.get("/surveys/config")
+def survey_config() -> dict[str, Any]:
+    """Builder limits and timings (lead time in sim minutes)."""
+    c = recruit.cfg()
+    return {"lead_min": int(c["timings"]["lead_min"]), "slot_round": int(c["timings"]["slot_round"]),
+            "max_participants": MAX_PARTICIPANTS, "max_questions": int(c["max_questions"]),
+            "venue": c["venue"]["name"], "default_goodies": [g.model_dump() for g in default_goodies()]}
+
+
+@router.get("/surveys/active")
+def active_survey() -> dict[str, Any] | None:
+    """The one survey that is recruiting, gathering or in session (or just finished), for the global banner."""
+    st = _engine_state()
+    sv = st.get("surveys") or {}
+    if sv.get("active"):
+        doc = store().get("surveys", str(sv["active"])) or {}
+        return {"survey_id": sv["active"], "title": sv.get("title") or doc.get("title"), "mode": sv.get("mode"),
+                "status": sv.get("status"), "start_at_t": sv.get("start_at_t"), "counts": sv.get("counts") or {},
+                "q_index": sv.get("q_index", -1), "n_questions": sv.get("n_questions"), "viewers": sv.get("viewers", 0),
+                **timer(sv.get("start_at_t"), st)}
+    last = sv.get("last_done")
+    if last and int(st.get("t") or 0) - int(last.get("t", 0)) <= 180:      # finished in the last 3 sim hours
+        return {"survey_id": last["survey_id"], "title": last.get("title"), "status": "completed",
+                "attended": last.get("attended"), **timer(None, st)}
+    if not st:                                    # engine unreachable: fall back to Firestore
+        for d in store().list("surveys", 200):
+            if d.get("status") in ("recruiting", "gathering", "in_session", "finishing"):
+                return {"survey_id": d["survey_id"], "title": d.get("title"), "mode": d.get("mode"),
+                        "status": d["status"], "start_at_t": d.get("start_at_t"), "counts": _counts_from_doc(d),
+                        **timer(d.get("start_at_t"), st)}
+    return None
+
+
+@router.get("/surveys/{sid}/live-state")
+def live_state(sid: str, table: str | None = None, include_private: int = 0) -> dict[str, Any]:
+    """The room right now, from the engine's memory (no analytics lag). 404 when it isn't running."""
+    from api.main import _engine_get
+
+    q = f"?private={1 if include_private else 0}" + (f"&table={table}" if table else "")
+    st = _engine_get(f"/surveys/{sid}/live-state{q}")
+    if st is None:
+        raise HTTPException(404, "not running")
+    return {**st, **timer(st.get("start_at_t"), {"t": st.get("now_t"), "scale": {"sim_min_per_real_s":
+                                                                                   st.get("sim_min_per_real_s")}})}
+
+
 @router.get("/surveys")
 def list_surveys() -> list[dict[str, Any]]:
-    """All surveys, newest first."""
+    """All surveys, newest first (sessions list)."""
+    from shared.products import active_products
+
+    names = {p["product_id"]: p["name"] for p in active_products(store(), include_ended=True, include_drafts=True)}
     rows = store().list("surveys", 200)
-    return sorted([{k: d.get(k) for k in ("survey_id", "title", "mode", "status", "wave", "panel_id", "product_id",
-                                          "start_at_t", "estimate_usd", "actual_usd", "eligible")} for d in rows],
-                  key=lambda r: r["survey_id"], reverse=True)
+    out = []
+    for d in rows:
+        r = {k: d.get(k) for k in ("survey_id", "title", "mode", "status", "wave", "panel_id", "product_id",
+                                   "product_ids", "start_at_t", "start_label", "estimate_usd", "actual_usd", "eligible",
+                                   "completed_t", "created_t", "max_participants")}
+        r["n_attended"] = (d.get("counts") or {}).get("attended")
+        r["product_name"] = " / ".join(names[p] for p in (d.get("product_ids") or ([d["product_id"]] if d.get("product_id")
+                                                                                   else [])) if p in names) or None
+        out.append(r)
+    return sorted(out, key=lambda r: (int(r.get("start_at_t") or r.get("created_t") or 0), r["survey_id"]), reverse=True)
 
 
 def results(sid: str, doc: dict[str, Any]) -> dict[str, Any]:
-    """Per-question distribution, prestance → final shift matrix, by-segment table, quotes, moderator summary."""
+    """Per question: distribution before (first private answer) and after (final ballot), prestance → final shift,
+    by age band, influence types, scale values, quotes; plus who-moved-whom edges and said-vs-answered pairs."""
+    from insights import survey_report as rep
+    from insights.likely_buyers import age_band
+
     r = default_runner()
     p = {"s": sid}
     ans, _ = r.run("SELECT a.*, g.age, g.income_band, g.name FROM v_survey_answers a LEFT JOIN agents_latest g "
                    "ON g.agent_id = a.agent_id WHERE a.survey_id = @s", p, trusted=True)
-    from insights.likely_buyers import age_band
-
+    try:
+        msgs, _ = r.run("SELECT message_id, speaker_id, question_id, text, t, seq FROM v_survey_messages "
+                        "WHERE survey_id = @s ORDER BY t, seq", p, trusted=True)
+    except Exception:  # noqa: BLE001 — results still work without the transcript
+        msgs = []
+    speaker_of = {str(m["message_id"]): (int(m["speaker_id"]) if m["speaker_id"] is not None else "moderator")
+                  for m in msgs}
+    said: dict[tuple[int, str], str] = {}
+    for m in msgs:                                         # the last thing each person said on each question
+        if m["speaker_id"] is not None:
+            said[(int(m["speaker_id"]), str(m["question_id"]))] = str(m["text"])
     out = []
     for q in doc.get("questions", []):
         rows = [a for a in ans if a["question_id"] == q["question_id"]]
         dist: dict[str, int] = {}
+        pre_dist: dict[str, int] = {}
         shift: dict[str, dict[str, int]] = {}
         seg: dict[str, dict[str, int]] = {}
         for a in rows:
@@ -350,20 +442,36 @@ def results(sid: str, doc: dict[str, Any]) -> dict[str, Any]:
             dist[v] = dist.get(v, 0) + 1
             if a.get("prestance") not in (None, "None"):
                 pre = str(a["prestance"]) if q["type"] != "open" else "answered"
+                pre_dist[pre] = pre_dist.get(pre, 0) + 1
                 shift.setdefault(pre, {})[v] = shift.setdefault(pre, {}).get(v, 0) + 1
             band = age_band(int(a.get("age") or 0))
             seg.setdefault(band, {})[v] = seg.setdefault(band, {}).get(v, 0) + 1
         quotes = [{"agent_id": a["agent_id"], "name": a.get("name"), "text": a["reason"], "tag": a["influence_type"],
-                   "private": False, "answer": a["answer"], "changed": a["changed_from_prestance"]}
+                   "private": False, "answer": a["answer"], "changed": a["changed_from_prestance"],
+                   "prestance": a.get("prestance")}
                   for a in sorted(rows, key=lambda a: (not a["changed_from_prestance"], a["agent_id"]))[:8]]
-        out.append({"question_id": q["question_id"], "text": q["text"], "type": q["type"], "options": q.get("options"),
-                    "distribution": dist, "shift": shift, "by_segment": seg, "quotes": quotes,
-                    "changed": sum(1 for a in rows if a["changed_from_prestance"]), "n": len(rows),
-                    "satisficed": sum(1 for a in rows if a["effort"] == "satisficed"),
-                    "gap": sum(1 for a in rows if a["public_private_gap"])})
+        item: dict[str, Any] = {
+            "question_id": q["question_id"], "text": q["text"], "type": q["type"], "options": q.get("options"),
+            "scale": q.get("scale"), "distribution": dist, "pre_distribution": pre_dist, "shift": shift,
+            "by_segment": seg, "quotes": quotes, "influence": rep.influence_counts(rows),
+            "changed": sum(1 for a in rows if a["changed_from_prestance"]), "n": len(rows),
+            "satisficed": sum(1 for a in rows if a["effort"] == "satisficed"),
+            "gap": sum(1 for a in rows if a["public_private_gap"])}
+        if q["type"] == "scale":
+            item["values_after"] = [float(a["answer_value"]) for a in rows if a.get("answer_value") is not None]
+            item["values_before"] = [float(a["prestance"]) for a in rows
+                                     if str(a.get("prestance")).replace(".", "", 1).lstrip("-").isdigit()]
+        if q["type"] == "open":
+            item["texts"] = [{"agent_id": a["agent_id"], "name": a.get("name"), "text": str(a["answer"])}
+                             for a in rows if a.get("answer")]
+        out.append(item)
     n = len({a["agent_id"] for a in ans})
     changed = sum(1 for a in ans if a["changed_from_prestance"])
     return {"questions": out, "n_attended": n, "changed_share": round(changed / max(1, len(ans)), 3),
+            "changed_people": len({a["agent_id"] for a in ans if a["changed_from_prestance"]}),
+            "gap_people": len({a["agent_id"] for a in ans if a["public_private_gap"]}),
+            "edges": rep.edges(ans, speaker_of), "gap_pairs": rep.gap_pairs(ans, said),
+            "seats": {str(a["agent_id"]): a.get("table_id") for a in ans},
             "summaries": doc.get("summaries") or {},
             "participation_effect": "Taking part is itself an experience: each participant now remembers the session, "
                                     "which can shift later answers (participation effect).",
@@ -371,8 +479,24 @@ def results(sid: str, doc: dict[str, Any]) -> dict[str, Any]:
                       if doc.get("discussion_skipped") else [])}
 
 
+async def report_extras(sid: str, doc: dict[str, Any], res: dict[str, Any]) -> None:
+    """Themes for open questions and three headline findings: computed once after completion, stored on the doc."""
+    from insights import survey_report as rep
+
+    cached: dict[str, Any] = dict(doc.get("report") or {})
+    if cached.get("findings") is None:
+        llm = get_llm()
+        th = {q["question_id"]: await rep.themes(q.get("texts") or [], llm) for q in res["questions"] if q["type"] == "open"}
+        cached = {"themes": th, "findings": await rep.findings(res, llm)}
+        store().set("surveys", sid, {"report": cached}, True)
+    res["findings"] = cached["findings"]
+    for q in res["questions"]:
+        if q["type"] == "open":
+            q["themes"] = dict(cached.get("themes") or {}).get(q["question_id"], [])
+
+
 @router.get("/surveys/{sid}")
-def get_survey(sid: str, include_private: int = 0) -> dict[str, Any]:
+async def get_survey(sid: str, include_private: int = 0) -> dict[str, Any]:
     """Definition, status, participants (reasons only with include_private=1, labelled), tables, results."""
     doc = store().get("surveys", sid)
     if doc is None:
@@ -382,14 +506,21 @@ def get_survey(sid: str, include_private: int = 0) -> dict[str, Any]:
         parts = [{k: v for k, v in p.items() if k != "rsvp_reason"} for p in parts]
     else:
         parts = [{**p, "rsvp_reason_label": "private"} for p in parts]
-    st = _engine_state().get("surveys") or {}
+    import asyncio
+
+    est = await asyncio.to_thread(_engine_state)
+    st = est.get("surveys") or {}
     live = st if st.get("active") == sid else None
-    out = {**{k: v for k, v in doc.items() if k != "participants"}, "participants": parts, "live": live}
-    if live is None and doc.get("status") in ("gathering", "recruiting") and doc.get("start_at_t"):
-        out["start_label"] = simtime.fmt(int(doc["start_at_t"]))
+    out = {**{k: v for k, v in doc.items() if k != "participants"}, "participants": parts, "live": live,
+           **timer(live.get("start_at_t") if live else doc.get("start_at_t"), est),
+           "counts": (live or {}).get("counts") or _counts_from_doc(doc)}
+    if live:
+        out["status"] = live.get("status", out.get("status"))
     if doc.get("status") in ("completed", "in_session", "balloting", "finishing"):
         try:
-            out["results"] = results(sid, doc)
+            out["results"] = await asyncio.to_thread(results, sid, doc)
+            if doc.get("status") == "completed":
+                await report_extras(sid, doc, out["results"])
         except Exception as e:  # noqa: BLE001
             out["results_error"] = str(e)[:200]
     if doc.get("parent_survey_id") or doc.get("panel_saved"):

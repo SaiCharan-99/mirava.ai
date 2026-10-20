@@ -6,8 +6,8 @@ table_size_default: 8
 table_size_range: [6, 10]
 max_questions: 10
 timings:                      # sim minutes
-  lead_min: 60                # default start ≥ 60 min ahead (travel time)
-  slot_round: 30              # start slots on the half hour
+  lead_min: 30                # default start ≥ 30 sim min ahead (≈75 real s at 1 sim day = 1 h): time to walk there
+  slot_round: 10              # start slots on the next 10 sim minutes
   gather_timeout: 20          # start when ≥ 90% arrived or 20 min after start_at
   gather_share: 0.9
   per_question_focus: 12

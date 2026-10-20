@@ -12,10 +12,11 @@ import {
   type SegmentsData, type SiteRow, type SourcesData,
 } from "../lib/insights";
 import { getJSON } from "../lib/api";
-import { SurveyEntry } from "./survey/SurveyEntry";
+import { FocusBuilder } from "./focus/FocusBuilder";
+import { ConversationsTab as ConversationsLive } from "./insights/ConversationsTab";
 
 const ITABS: [string, string][] = [["ask", "Ask"], ["overview", "Overview"], ["sources", "Sources"], ["hoardings", "Hoardings"],
-  ["segments", "Segments"], ["conversations", "Conversations"], ["polls", "Polls"], ["interview", "Interview"]];
+  ["segments", "Segments"], ["conversations", "Conversations"], ["focus", "Focus groups"], ["interview", "Interview"]];
 
 interface ProdInfo { name: string; hex: string }
 type Names = Record<number, { name: string; age: number; shirt?: string; job?: string; phoneAge?: number }>;
@@ -168,11 +169,11 @@ function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
         </form>
         <div className="sugg" data-testid="ask-suggestions" style={{ marginTop: 10 }}>{sugg.map((s) => <button key={s} onClick={() => void run(s)}>{s}</button>)}</div>
         {!isVisualTest && thread.length > 0 && (
-          <div className="xs muted" style={{ marginTop: 8 }}>Want to hear it from people directly? <a href="#" onClick={(e) => { e.preventDefault(); nav(withMode(`/insights/polls/survey/new?title=${encodeURIComponent(thread[thread.length - 1].q.slice(0, 80))}`)); }}>Open a focus group in the Survey Room</a> (the assistant never launches one itself).</div>
+          <div className="xs muted" style={{ marginTop: 8 }}>Want to hear it from people directly? <a href="#" onClick={(e) => { e.preventDefault(); nav(withMode(`/insights/focus?title=${encodeURIComponent(thread[thread.length - 1].q.slice(0, 80))}`)); }}>Run a focus group</a> (the assistant never launches one itself).</div>
         )}
       </div>
       <div className="grid" style={{ alignContent: "start" }}>
-        <div className="card"><h3>What the assistant can use</h3><div className="list small">{[["Raw log", "every thought, message, exposure, inquiry, purchase (BigQuery)"], ["Semantic search", "VECTOR_SEARCH over thoughts, chats, posts, reviews"], ["Cohorts", "any filter on agents: age, income, phone age, stage…"], ["Likely-buyer model", "need × interest × affordability × stage"], ["Poll / interview", "ask agents now (uses budget, asks first)"]].map(([h, t]) => <div key={h} className="item"><b>{h}</b><div className="xs muted">{t}</div></div>)}</div></div>
+        <div className="card"><h3>What the assistant can use</h3><div className="list small">{[["Raw log", "every thought, message, exposure, inquiry, purchase (BigQuery)"], ["Semantic search", "VECTOR_SEARCH over thoughts, chats, posts, reviews"], ["Cohorts", "any filter on agents: age, income, phone age, stage…"], ["Likely-buyer model", "need × interest × affordability × stage"], ["Focus groups / interview", "ask agents in person (uses budget, asks first)"]].map(([h, t]) => <div key={h} className="item"><b>{h}</b><div className="xs muted">{t}</div></div>)}</div></div>
         <div className="card"><h3>Faithfulness</h3><p className="small muted" style={{ margin: 0 }}>Every number comes from a tool result; quotes are verbatim and private thoughts are labelled. If a check fails, the answer is regenerated or the claim is dropped.</p></div>
       </div>
     </div>
@@ -341,59 +342,6 @@ function ConversationsTab() {
   );
 }
 
-// ---------------------------------------------------------------- Polls
-interface PollDoc { poll_id: string; status: string; question: string; options: string[]; n: number; distribution?: Record<string, number>;
-  by_phone_age?: { rows: string[]; cols: string[]; vals: number[][] }; quotes?: { agent_id: number; name: string; text: string }[]; t?: number; cost_usd?: number; seconds?: number }
-
-function PollsTab({ names }: { names: Names }) {
-  const [question, setQuestion] = useState(D.DEMO_POLL.question);
-  const [opts, setOpts] = useState(D.DEMO_POLL.optionsText);
-  const [cohort, setCohort] = useState("");
-  const [est, setEst] = useState<{ estimate_usd: number; n: number; seconds_est: number } | null>(null);
-  const [doc, setDoc] = useState<PollDoc | null>(null);
-  const [err, setErr] = useState("");
-  const options = opts.split("·").map((s) => s.trim()).filter(Boolean);
-  useEffect(() => {
-    if (isVisualTest) return;
-    const h = setTimeout(() => { postJSON<{ estimate_usd: number; n: number; seconds_est: number }>("/insights/poll", { question, options, cohort: cohort || null }).then(setEst).catch(() => setEst(null)); }, 400);
-    return () => clearTimeout(h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [question, opts, cohort]);
-  useEffect(() => { if (!isVisualTest) void getJSON<PollDoc[]>("/insights/polls").then((l) => l[0] && setDoc(l[0])).catch(() => undefined); }, []);
-  const runPoll = async () => {
-    setErr("");
-    try {
-      const r = await postJSON<{ poll_id: string }>("/insights/poll", { question, options, cohort: cohort || null, confirm: true });
-      const poll = async () => { const p = await getJSON<PollDoc>(`/insights/poll/${r.poll_id}`).catch(() => null); if (p) setDoc(p); if (!p || p.status !== "done") setTimeout(poll, 1500); };
-      void poll();
-    } catch (e) { setErr(String(e)); }
-  };
-  const view = isVisualTest ? D.DEMO_POLL : null;
-  const dist = doc?.distribution ?? {};
-  const total = Object.values(dist).reduce((a, b) => a + b, 0);
-  const cols = ["#94a3b8", "#60a5fa", "#22c55e", "#8b5cf6", "#f97316", "#f5b041", "#ec4899", "#2dd4bf"];
-  const bars = view ? view.bars : Object.entries(dist).sort((a, b) => b[1] - a[1]).map(([k, v], i): [string, number, string] => [k, Math.round((100 * v) / Math.max(1, total)), cols[i % 8]]);
-  const q0 = view ? view.quote : doc?.quotes?.[0] ? { agent_id: doc.quotes[0].agent_id, name: doc.quotes[0].name, text: doc.quotes[0].text, kind: "poll answer", private: false } : null;
-  const heat = view ? view.heat : doc?.by_phone_age;
-  return (
-    <div className="grid g12">
-      <div className="card"><h3>New poll</h3><label>Question</label><textarea value={question} onChange={(e) => setQuestion(e.target.value)} />
-        <label style={{ marginTop: 10 }}>Options</label><input value={opts} onChange={(e) => setOpts(e.target.value)} />
-        <label style={{ marginTop: 10 }}>Ask</label>
-        <select value={cohort} onChange={(e) => setCohort(e.target.value)}><option value="">{D.DEMO_POLL.cohorts[0]}</option><option value="phone_age_years > 5">{D.DEMO_POLL.cohorts[1]}</option></select>
-        <div className="item small" style={{ marginTop: 10 }}>Estimated cost <b>{view ? view.estimate : est ? `$${est.estimate_usd.toFixed(2)}` : "…"}</b> from the interactive budget · ~{est ? est.seconds_est : 60} s · answers come from each agent's own memory</div>
-        <button className="btn primary" style={{ marginTop: 10 }} onClick={() => void runPoll()}>Run poll</button>
-        {err && <div className="xs" style={{ color: "var(--red)", marginTop: 6 }}>{err}</div>}</div>
-      <div className="card"><div className="row between"><h3 style={{ margin: 0 }}>{view ? view.title : doc ? `Result · ${doc.status === "done" ? `${(doc.n || 0).toLocaleString("en-IN")} agents${doc.seconds ? ` · ${doc.seconds} s · $${(doc.cost_usd ?? 0).toFixed(3)}` : ""}` : doc.status}` : "No poll yet"}</h3></div>
-        {doc && !view && <div className="xs muted" style={{ marginTop: 4 }}>{doc.question}</div>}
-        <div style={{ marginTop: 10 }}><HBars rows={bars} max={view ? view.max : Math.max(10, ...bars.map((b) => b[1]))} /></div>
-        {heat && <><h3 style={{ marginTop: 14 }}>By phone age</h3><HeatTable rows={heat.rows} cols={heat.cols} vals={heat.vals} max={80} /></>}
-        {q0 && <Quote q={q0} names={names} />}
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------- Interview
 interface Turn { role: "me" | "ai"; text: string; mem?: string }
 interface IvAgent { agent_id: number; name: string; age?: number; occupation: string; phone: { age_years: number | null }; shirt?: string }
@@ -478,13 +426,13 @@ export function InsightsPage() {
   const chip = isVisualTest ? D.DEMO_DATA_CHIP : `Data: Day 1 → ${live.day || "…"} · ${live.n} product${live.n === 1 ? "" : "s"} live`;
   const body: Record<string, () => ReactNode> = {
     ask: () => <AskTab names={names} prodNames={Object.values(prods).map((p) => p.name)} />, overview: () => <OverviewTab />, sources: () => <SourcesTab />,
-    hoardings: () => <HoardingsTab prods={prods} fx={fx} />, segments: () => <SegmentsTab />, conversations: () => <ConversationsTab />,
-    polls: () => <PollsTab names={names} />, interview: () => <InterviewTab names={names} fx={fx} />,
+    hoardings: () => <HoardingsTab prods={prods} fx={fx} />, segments: () => <SegmentsTab />, conversations: () => (isVisualTest ? <ConversationsTab /> : <ConversationsLive />),
+    focus: () => <FocusBuilder />, interview: () => <InterviewTab names={names} fx={fx} />,
   };
   return (
     <div className="page">
       <PageTitle title="Insights" sub="Ask anything about what the world has seen, thought, said and bought. Answers come only from logged data."
-        right={<>{tab === "polls" && <span style={{ position: "relative", width: 0, height: 0, marginRight: -9 }}><span style={{ position: "absolute", right: "-180px", bottom: 22 }}><SurveyEntry /></span></span>}<span className="chip">{chip}</span></>} />
+        right={<span className="chip">{chip}</span>} />
       <div className="tabs" data-testid="insights-tabs">{ITABS.map(([k, l]) => (
         <button key={k} data-testid={`insights-tab-${k}`} className={tab === k ? "on" : ""} onClick={() => nav(withMode(`/insights/${k}`))}>{l}</button>
       ))}</div>

@@ -364,8 +364,8 @@
       "phase": 5
     },
     {
-      "name": "30-insights-polls",
-      "route": "insights/polls",
+      "name": "30-insights-focus",
+      "route": "insights/focus",
       "phase": 5
     },
     {

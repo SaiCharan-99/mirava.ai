@@ -5,3 +5,45 @@
 .globe.leaving .cobe{transform:scale(2.6)}
 /* OSM credit sits just above the minimap (171 px) so it never runs under the Ready-to-launch dock. */
 .stage .attrib{right:12px;bottom:189px}
+/* Focus groups, Survey Room, results, conversations (docs/ui-ref/mirava-focus-groups-reference.html). */
+.fg-banner{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:9px 28px;border-bottom:1px solid rgba(45,212,191,.35);background:linear-gradient(90deg,rgba(45,212,191,.16),rgba(45,212,191,.04));font-size:13px;backdrop-filter:blur(6px)}
+.fg-banner .t{font-family:"JetBrains Mono",monospace;font-weight:700;font-size:15px;color:var(--teal)}
+.fg-banner.live{border-color:rgba(74,222,128,.4);background:linear-gradient(90deg,rgba(74,222,128,.16),rgba(74,222,128,.03))}
+.fg-banner.live .t{color:var(--green)}
+.cd-ring{position:relative;width:250px;height:250px;margin:6px auto}
+.cd-ring svg{transform:rotate(-90deg)}
+.cd-ring .num{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.cd-ring .num b{font-family:"JetBrains Mono",monospace;font-size:52px;letter-spacing:-.03em;display:block}
+.funnel-row{display:grid;grid-template-columns:120px 1fr 48px;align-items:center;gap:10px;font-size:13px;margin:7px 0}
+.funnel-row .bar{height:14px}
+.sess{display:flex;flex-direction:column;gap:6px}
+.sess button{all:unset;cursor:pointer;display:block;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.sess button:hover{border-color:var(--muted)}
+.sess button.on{border-color:var(--teal);background:var(--teal-soft)}
+.sess .ttl{font-weight:600;font-size:13px}
+.goodie{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2);font-size:12.5px;cursor:pointer;color:var(--ink)}
+.goodie.on{border-color:var(--teal);background:var(--teal-soft)}
+.goodie .e{font-size:18px}
+.qtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.qtabs button{all:unset;cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid var(--line2);font-size:12px;font-weight:600;color:var(--ink2);background:var(--panel2)}
+.qtabs button.on{background:var(--teal);color:#05201c;border-color:var(--teal)}
+.verdict{border-left:4px solid var(--teal);padding:12px 14px;background:var(--panel2);border-radius:0 12px 12px 0}
+.verdict h4{margin:0 0 4px;font-size:15px}
+.gapmeter{height:10px;border-radius:99px;background:linear-gradient(90deg,var(--teal),var(--amber),var(--private))}
+.conv-list .cv{cursor:pointer;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);margin-bottom:8px}
+.conv-list .cv.on{border-color:var(--teal);background:var(--teal-soft)}
+.conv-list .cv:hover{border-color:var(--muted)}
+.pair{display:flex;align-items:center}
+.pair .avatar{width:26px;height:26px;font-size:10px;border:2px solid var(--panel)}
+.pair .avatar+.avatar{margin-left:-8px}
+.chatcol{display:flex;flex-direction:column;gap:8px}
+.bub{max-width:78%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.45}
+.bub.l{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
+.bub.r{align-self:flex-end;background:var(--teal-soft);border:1px solid rgba(45,212,191,.35)}
+.bub .who{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px}
+.privcard{border:1px dashed rgba(192,132,252,.6);background:var(--private-soft);border-radius:10px;padding:8px 11px;font-size:12.5px}
+.privcard .h{font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--private);margin-bottom:3px}
+.room-ctl{position:absolute;right:12px;top:12px;display:flex;gap:8px}
+.note{font-size:12px;color:var(--muted);border:1px dashed var(--line2);border-radius:8px;padding:8px 10px;margin-top:10px}
+.legend-sm{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.legend-sm i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}

@@ -4,6 +4,8 @@ import { getJSON, type PeoplePage } from "./api";
 import { fmtINR, shortT } from "./time";
 import { simClock, tracks } from "../world/tracks";
 import { useWorld } from "../state/world";
+import { useActiveSurvey } from "../state/activeSurvey";
+import { onTalk } from "../world/threads";
 import type { FixtureProduct, TickerItem } from "../visual-fixtures/types";
 import { studioApi, toWorldProduct, fromApi, useStudio } from "./studio";
 import { playLaunchFx } from "../world/launchFx";
@@ -201,7 +203,9 @@ export function applyLive(m: LiveMsg): void {
           if (tr && typeof e.act === "string") tr.act = e.act;
         }
         if (e.k === "launch") onLaunch(e);
+        if (e.k === "talk") onTalk(e as Record<string, unknown>, simClock.now());
         if (e.k === "survey") {
+          useActiveSurvey.getState().setFromEvent(e);
           const done = e.status === "completed" || e.status === "cancelled";
           useWorld.setState((s) => ({
             surveyPin: done ? null : { survey_id: String(e.survey_id), status: String(e.status), name: String(e.name ?? "Research Lounge"),
