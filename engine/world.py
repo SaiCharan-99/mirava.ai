@@ -89,7 +89,8 @@ class World:
         self.phones: list[dict[str, Any]] = [dict(p.possessions["phone"]) for p in profiles]
         self.counts = counts or {"agents": self.n, "households": len({p.household_id for p in profiles}),
                                  "relationships": 0}
-        self.counters = {"conversations_today": 0, "conversations_total": 0, "thoughts_today": 0}
+        self.counters = {"conversations_today": 0, "conversations_total": 0, "thoughts_today": 0,
+                         "chats_rendered_today": 0}
         self.new_segs: list[dict[str, Any]] = []      # segments started this tick (for /live)
         self.live_evts: list[dict[str, Any]] = []     # evt items this tick (for /live)
         self.products_live: list[dict[str, Any]] = []
@@ -145,6 +146,7 @@ class World:
         self.live_evts = []
         if m == 0:
             self.counters["conversations_today"] = 0
+            self.counters["chats_rendered_today"] = 0
             self.counters["thoughts_today"] = 0
         for a in self.agents:
             if a.plan_day != day:

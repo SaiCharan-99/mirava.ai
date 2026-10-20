@@ -45,6 +45,10 @@ export function tickerFor(e: LiveEvt, t: number, nameOf: (id: number) => string)
       html = `<span class="who">🚀 ${esc(String(e.name ?? e.product ?? ""))} launched</span> · ${sm.sites ?? 0} hoardings · ${sm.stores ?? 0} stores · reels to ~${sm.reel_audience ?? 0} agents · ${sm.reviewers ?? 0} reviewers`;
       break;
     }
+    case "campaign_ended":
+      cls = "launch";
+      html = `<span class="who">📣 ${esc(String(e.name ?? productName(String(e.product ?? ""))))}</span> paid campaign ended — still on sale; word of mouth, reviews and stores carry on`;
+      break;
     case "review":
       cls = "prod";
       html = `<span class="who">⭐ ${who}</span> published a review: <b>${esc(String(e.title ?? ""))}</b>`;
@@ -164,7 +168,7 @@ export function applyLive(m: LiveMsg): void {
       if (Math.floor(m.t) !== st.t) useWorld.setState({ t: Math.floor(m.t) });
       break;
     case "stats":
-      useWorld.setState({ stats: { ...st.stats, ...m.counts }, ...(m.budget ? { budget: m.budget } : {}), ...(m.awareness ? { awareShare: m.awareness } : {}),
+      useWorld.setState({ stats: { ...st.stats, ...m.counts }, ...(m.budget ? { budget: m.budget } : {}), ...(m.awareness ? { awareShare: m.awareness } : {}), ...(m.funnel ? { funnel: m.funnel } : {}), ...(m.campaigns ? { campaigns: m.campaigns } : {}),
         dayCounts: liveDayCounts(m.t, m.counts.conversations_today ?? 0, m.counts.conversations_total ?? 0) });
       break;
     case "evt": {

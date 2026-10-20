@@ -47,6 +47,10 @@ export interface WorldStore {
   lensProduct: string | null;
   /** stats.awareness: product id → share of agents aware. */
   awareShare: Record<string, number>;
+  /** stats.funnel: live per-product stage counts (replaces fixture-derived Curious+). */
+  funnel: Record<string, { aware: number; curious_plus: number; purchased: number }>;
+  /** stats.campaigns: paid-campaign flight per product. */
+  campaigns: Record<string, { ends_t: number; active: boolean }>;
   fx: LaunchFx | null;
   setLensProduct: (pid: string) => void;
   dayCounts: number[];
@@ -92,6 +96,8 @@ export const useWorld = create<WorldStore>((set, get) => ({
   aware: {},
   lensProduct: null,
   awareShare: {},
+  funnel: {},
+  campaigns: {},
   fx: null,
   setLensProduct: (lensProduct) => set({ lensProduct }),
   dayCounts: [],

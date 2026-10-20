@@ -1,7 +1,7 @@
 import { SurveyPin } from "../world/SurveyPin";
 import { useNavigate } from "react-router-dom";
 import { useWorld, type Lens, type SideTab } from "../state/world";
-import { fmt, fmtINR, fmtInt } from "../lib/time";
+import { dayOf, fmt, fmtINR, fmtInt } from "../lib/time";
 import { withMode } from "../lib/visualTest";
 import { WorldCanvas } from "../world/WorldCanvas";
 import { Minimap } from "../world/Minimap";
@@ -165,6 +165,10 @@ function SideBody() {
   const fx = useWorld((s) => s.fixtures);
   const hl = useWorld((s) => s.hl);
   const openP = useWorld((s) => s.openProfile);
+  const source = useWorld((s) => s.source);
+  const funnel = useWorld((s) => s.funnel);
+  const campaigns = useWorld((s) => s.campaigns);
+  const nAgents = useWorld((s) => s.stats.agents);
   if (tab === "now" && hl) {
     return (
       <>
@@ -195,19 +199,25 @@ function SideBody() {
   }
   const agents = fx?.agents ?? [];
   if (tab === "watching") return <Watching />;
-  const n = agents.length || 1;
+  const liveMode = source === "live";
+  const n = (liveMode ? nAgents : agents.length) || 1;
   const card = (p: FixtureProduct) => {
     const live = p.status === "live";
-    const liveAw = useWorld.getState().source === "live" ? useWorld.getState().awareShare[p.id] : undefined;
-    const aw = liveAw !== undefined ? liveAw * n : agents.filter((a) => a.beliefs[p.id] && a.beliefs[p.id].stage !== "unaware").length;
-    const cu = agents.filter((a) => a.beliefs[p.id] && CURIOUS_PLUS.includes(a.beliefs[p.id].stage)).length;
+    // live mode: counts come from the engine's funnel (never from the mockup fixture agents)
+    const liveAw = liveMode ? useWorld.getState().awareShare[p.id] : undefined;
+    const aw = liveAw !== undefined ? liveAw * n : liveMode ? (funnel[p.id]?.aware ?? 0)
+      : agents.filter((a) => a.beliefs[p.id] && a.beliefs[p.id].stage !== "unaware").length;
+    const cu = liveMode ? (funnel[p.id]?.curious_plus ?? 0)
+      : agents.filter((a) => a.beliefs[p.id] && CURIOUS_PLUS.includes(a.beliefs[p.id].stage)).length;
+    const camp = liveMode ? campaigns[p.id] : undefined;
+    const ended = !!camp && !camp.active;
     return (
       <div className="item" key={p.id}>
         <div className="row between"><span><span className="pdot" style={{ background: p.hex, marginRight: 6 }} /><b>{p.name}</b>{" "}
           <span className="muted xs">{p.brand} · {fmtINR(p.price)}</span></span>
-          <span className={`chip ${live ? "green" : "amber"}`} style={{ padding: "0 7px" }}>{live ? "live" : p.status}</span></div>
+          <span className={`chip ${live && !ended ? "green" : "amber"}`} style={{ padding: "0 7px" }}>{live ? (ended ? "on sale" : "live") : p.status}</span></div>
         {live && p.launched !== null ? (
-          <><div className="xs muted" style={{ margin: "6px 0 2px" }}>Launched {fmt(p.launched)}</div>
+          <><div className="xs muted" style={{ margin: "6px 0 2px" }}>Launched {fmt(p.launched)}{ended && camp ? ` · campaign ended Day ${dayOf(camp.ends_t)}, still on sale` : camp ? ` · campaign runs to Day ${dayOf(camp.ends_t)}` : ""}</div>
             <Meter label="Aware" v={aw / n} col={p.hex} /><Meter label="Curious+" v={cu / n} col={p.hex} /></>
         ) : <div className="xs muted" style={{ marginTop: 6 }}>Launch it from the dock on the map.</div>}
       </div>

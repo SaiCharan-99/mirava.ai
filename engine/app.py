@@ -64,7 +64,7 @@ def stats() -> dict:
     e = _eng()
     if e.world is None:
         raise HTTPException(503, "world not loaded")
-    return e.world.stats(e.budget())
+    return e.stats_frame()
 
 
 @app.get("/agents/{agent_id}/state")

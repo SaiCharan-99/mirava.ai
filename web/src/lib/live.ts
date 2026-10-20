@@ -7,7 +7,12 @@ export interface LiveCounts {
   agents: number; households: number; relationships: number; conversations_today: number;
   conversations_total: number; thoughts_today: number; products_live: number;
 }
-export interface LiveStats { t: number; counts: LiveCounts; budget?: { used_usd: number; cap_usd: number; slowed?: boolean }; awareness?: Record<string, number> }
+export interface LiveFunnelRow { aware: number; curious_plus: number; purchased: number }
+export interface LiveCampaign { ends_t: number; active: boolean }
+export interface LiveStats {
+  t: number; counts: LiveCounts; budget?: { used_usd: number; cap_usd: number; slowed?: boolean }; awareness?: Record<string, number>;
+  funnel?: Record<string, LiveFunnelRow>; campaigns?: Record<string, LiveCampaign>;
+}
 export type LiveEvt = { k: string; a?: number; b?: number; text?: string; product?: string | null; [key: string]: unknown };
 
 export type LiveMsg =
@@ -43,7 +48,8 @@ export function parseLive(raw: string): LiveMsg | null {
     case "evt":
       return Array.isArray(m.items) ? { type: "evt", items: m.items.filter((e: any) => e && typeof e.k === "string") } : null;
     case "stats":
-      return m.counts && typeof m.counts === "object" ? { type: "stats", t: num(m.t) ? m.t : 0, counts: m.counts, budget: m.budget, awareness: m.awareness } : null;
+      return m.counts && typeof m.counts === "object" ? { type: "stats", t: num(m.t) ? m.t : 0, counts: m.counts, budget: m.budget, awareness: m.awareness,
+        funnel: m.funnel && typeof m.funnel === "object" ? m.funnel : undefined, campaigns: m.campaigns && typeof m.campaigns === "object" ? m.campaigns : undefined } : null;
     case "clock":
       return num(m.t) ? { type: "clock", t: m.t, speed: num(m.speed) ? m.speed : 1 } : null;
     default:

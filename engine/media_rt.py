@@ -99,6 +99,8 @@ class MediaRuntime:
         self.reel_today: dict[str, int] = {}
         self.reel_impr: dict[str, int] = {}
         self.visited: set[str] = set()
+        self.campaign_over: set[str] = set()          # products whose paid flight has ended (event emitted)
+        self.commerce: Any = None                     # set by the engine once the commerce runtime exists
         self.reviews: list[dict[str, Any]] = []       # schedule + published reviews
         self.threads: list[dict[str, Any]] = []       # recent threads (≤ 60)
         self.queue = TaskQueue(concurrency=16)
@@ -115,6 +117,7 @@ class MediaRuntime:
             self.pending.append(pid)
 
     def _refresh(self, w: World, bus: EventBus, docs: list[dict[str, Any]]) -> None:
+        self._drop_removed(w, {d["product_id"] for d in docs})
         for d in sorted(docs, key=lambda d: d["product_id"]):
             pid = d["product_id"]
             if d.get("status") == "live" and d.get("launched_at_t") is None:
@@ -128,6 +131,38 @@ class MediaRuntime:
                 continue
             self._launch(w, bus, Product.model_validate(d))
         self._wire(w)
+
+    def _drop_removed(self, w: World, valid: set[str]) -> None:
+        """Products deleted in Launch Studio stop counting (awareness, attitudes, live sites, commerce pairs)."""
+        gone = [pid for pid in self.live if pid not in valid]
+        for pid in gone:
+            self.live.pop(pid, None)
+            self.aware.pop(pid, None)
+            self.campaign_over.discard(pid)
+            for k in [k for k in self.attitude if k.endswith(f"|{pid}")]:
+                del self.attitude[k]
+        for pid in [x for x in self.aware if x not in valid]:       # stale checkpoint entries (demo products)
+            self.aware.pop(pid, None)
+        if gone:
+            self.site_day = -1                                      # re-assign boards without them
+        if self.commerce is not None:
+            self.commerce.prune_products(valid)
+
+    def campaigns(self, t: int) -> dict[str, dict[str, Any]]:
+        """{product_id: {ends_t, active}} for live products (paid flight window)."""
+        out: dict[str, dict[str, Any]] = {}
+        for pid, lp in self.live.items():
+            flight = lp.p.plan.flight_days if lp.p.plan else 21
+            ends = int((lp.p.launched_at_t or 0) + flight * 1440)
+            out[pid] = {"ends_t": ends, "active": lp.in_flight(t)}
+        return out
+
+    def _campaign_end_events(self, w: World, bus: EventBus, t: int) -> None:
+        for pid, c in self.campaigns(t).items():
+            if not c["active"] and pid not in self.campaign_over:
+                self.campaign_over.add(pid)
+                bus.new("campaign_ended", t, None, {"product_id": pid, "ends_t": c["ends_t"]}, product_id=pid)
+                w.live_evts.append({"k": "campaign_ended", "product": pid, "name": self.live[pid].p.name})
 
     def _activate(self, w: World, p: Product) -> LiveProduct:
         aud = set(audience_ids(p.audience, self.profiles, w.t))
@@ -212,6 +247,8 @@ class MediaRuntime:
             self.visited.clear()
         if self.site_day != simtime.day_of(t):
             self._assign_sites(w)
+        if m % 30 == 0:
+            self._campaign_end_events(w, bus, t)
         self._hoardings(w, bus, t, m)
         self._feeds_and_print(w, bus, t, m)
         self._store_displays(w, bus, t)
@@ -699,7 +736,8 @@ class MediaRuntime:
         return {"seen": self.seen, "attitude": self.attitude, "aware": {k: sorted(v) for k, v in self.aware.items()},
                 "reel_today": self.reel_today, "reel_impr": self.reel_impr, "visited": sorted(self.visited),
                 "reviews": [{**r, "state": "due" if r["state"] == "writing" else r["state"]} for r in self.reviews],
-                "threads": self.threads, "stats": self.stats, "pending": self.pending}
+                "threads": self.threads, "stats": self.stats, "pending": self.pending,
+                "campaign_over": sorted(self.campaign_over)}
 
     def load(self, d: dict[str, Any]) -> None:
         """Restore from to_dict."""
@@ -713,3 +751,4 @@ class MediaRuntime:
         self.threads = list(d.get("threads") or [])
         self.stats.update(d.get("stats") or {})
         self.pending = list(d.get("pending") or [])
+        self.campaign_over = set(d.get("campaign_over") or [])

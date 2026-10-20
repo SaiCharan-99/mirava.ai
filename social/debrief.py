@@ -13,6 +13,7 @@ from shared.models import MODEL_LITE
 from shared.schemas.memory import MemoryEntry
 from shared.schemas.social import Message
 from shared.store import DocStore
+from shared.subjects import canonical
 
 PROMPT = Path(__file__).resolve().parents[1] / "shared" / "prompts" / "debrief.md"
 SUBJECT_PREFIXES = ("product:", "brand:", "category:")
@@ -43,7 +44,8 @@ def render_transcript(msgs: list[Message], names: dict[int, str]) -> str:
 
 async def debrief(agent_id: int, other_id: int, other_name: str, msgs: list[Message], names: dict[int, str], t: int,
                   *, store: DocStore, llm: LLMClient, now: str = "", product_ids: list[str] | None = None,
-                  on_event: EventHook | None = None, priority_class: str = "P3") -> tuple[DebriefOut, float]:
+                  on_event: EventHook | None = None, priority_class: str = "P3",
+                  catalog: dict[str, str] | None = None) -> tuple[DebriefOut, float]:
     """Run one agent's private debrief and write its own episodic memory and belief updates."""
     transcript = render_transcript(msgs, names)
     sid = msgs[0].session_id if msgs else ""
@@ -62,6 +64,11 @@ async def debrief(agent_id: int, other_id: int, other_name: str, msgs: list[Mess
     for d in out.belief_deltas:
         if not d.subject.startswith(SUBJECT_PREFIXES):
             continue
+        if catalog is not None:                        # one product = one subject; unknown products are dropped
+            canon = canonical(d.subject, catalog)
+            if canon is None:
+                continue
+            d = d.model_copy(update={"subject": canon})
         prev = await ms.beliefs([d.subject])
         att = (prev[0].attitude if prev else 0.0) + d.attitude_delta
         delta: dict = {"attitude": att, "t": t, "sources_seen": {"word_of_mouth": 1}}

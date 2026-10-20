@@ -85,6 +85,7 @@ class SocialRuntime:
         self.wm: dict[int, list[dict[str, Any]]] = {}
         self.salient_products: dict[int, list[str]] = {}   # product ids recently noticed (C-07 word of mouth)
         self.watched = watched or set()
+        self.catalog_fn: Callable[[], dict[str, str]] | None = None   # product id → name (set by the engine)
         self.embed_texts = embed_texts
         self._pclass: dict[str, str] = {}
         self._bg: set[asyncio.Future] = set()
@@ -164,7 +165,8 @@ class SocialRuntime:
                             "minutes": 5, "conv_kind": fallback_gate.kind, "fallback": True}}])
 
         self.queue.submit(sid, lambda: run_conversation(sid, pa, pb, g, rel_label, closeness, pname, t,
-                                                        store=self.store, llm=self.llm, decider=self.decider),
+                                                        store=self.store, llm=self.llm, decider=self.decider,
+                                                        catalog=self.catalog_fn() if self.catalog_fn else None),
                           t, CONV_DELAY, fallback)
         self._pclass[sid] = g.priority_class
 
@@ -219,8 +221,10 @@ class SocialRuntime:
             first = out.messages[0]
             w.live_evts.append({"k": "bubble", "session_id": out.session_id, "a": first.speaker, "b": first.listener,
                                 "text": first.text, "n": len(out.messages)})
-            w.counters["conversations_today"] += 1
-            w.counters["conversations_total"] = w.counters.get("conversations_total", 0) + 1
+            w.counters["chats_rendered_today"] = w.counters.get("chats_rendered_today", 0) + 1
+        # every talk counts (written chats and brief "interaction" ones), not just model-written dialogue
+        w.counters["conversations_today"] += 1
+        w.counters["conversations_total"] = w.counters.get("conversations_total", 0) + 1
         self.stats["rendered" if out.rendered else "unrendered"] += 1
         if out.cost_usd:
             self.gov.record(out.cost_usd, pclass)

@@ -25,6 +25,7 @@ from shared.llm import LLMClient
 from shared.schemas.events import Event
 from shared.schemas.memory import MemoryEntry
 from shared.store import DocStore
+from shared.subjects import canonical
 from social.conversation import Outcome
 from social.store_inquiry import Customer, Salesperson, product_facts, run_inquiry
 
@@ -34,6 +35,7 @@ EST_INQUIRY = 0.012
 EST_PURCHASE = 0.0004
 WAKE_UP = 7 * 60
 PHONE_CATS = {"smartphone", "phone", "phones"}
+CURIOUS_PLUS = ("curious", "researching", "inquiring", "deciding", "purchased")
 
 
 class CommerceRuntime:
@@ -148,9 +150,10 @@ class CommerceRuntime:
                 pr.review = max(pr.review, float(p.get("rating", 3.5)) / 5)
             self._touch(aid, pid, ev.event_id)
         elif ev.kind == "debrief":
+            catalog = {pid: lp.p.name for pid, lp in self.media.live.items()} if self.media is not None else {}
             for d in p.get("belief_deltas") or []:
-                subj = str(d.get("subject", ""))
-                if not subj.startswith("product:"):
+                subj = canonical(str(d.get("subject", "")), catalog) if catalog else str(d.get("subject", ""))
+                if not subj or not subj.startswith("product:"):
                     continue
                 q = subj.split(":", 1)[1]
                 pr = self.pair(aid, q, ev.t)
@@ -552,6 +555,33 @@ class CommerceRuntime:
     def stages_of(self, aid: int) -> dict[str, str]:
         """{product_id: stage} for one agent."""
         return {k.split("|", 1)[1]: p.stage for k, p in self.pairs.items() if k.startswith(f"{aid}|")}
+
+    def funnel(self) -> dict[str, dict[str, int]]:
+        """{product_id: {aware, curious_plus, purchased}} over live products (live stats; replaces fixture counts)."""
+        valid = set(self._products())
+        out: dict[str, dict[str, int]] = {pid: {"aware": 0, "curious_plus": 0, "purchased": 0} for pid in valid}
+        for k, p in self.pairs.items():
+            pid = k.split("|", 1)[1]
+            if pid not in valid or p.stage in ("unaware", "rejected"):
+                continue
+            row = out[pid]
+            row["aware"] += 1
+            if p.stage in CURIOUS_PLUS:
+                row["curious_plus"] += 1
+            if p.stage == "purchased":
+                row["purchased"] += 1
+        return out
+
+    def prune_products(self, valid: set[str]) -> int:
+        """Drop pairs and planned visits for products that no longer exist (deleted in Launch Studio)."""
+        dead = [k for k in self.pairs if k.split("|", 1)[1] not in valid]
+        for k in dead:
+            del self.pairs[k]
+            self.dirty.pop(k, None)
+        for aid, v in list(self.visits.items()):
+            if v.get("pid") not in valid:
+                del self.visits[aid]
+        return len(dead)
 
     def to_dict(self) -> dict[str, Any]:
         """Checkpoint form."""

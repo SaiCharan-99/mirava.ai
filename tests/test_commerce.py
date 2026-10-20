@@ -204,3 +204,27 @@ def test_all_views_run_on_duckdb(bought, tmp_path):
     assert db.query("SELECT COUNT(*) AS n FROM v_paths WHERE path LIKE '%store%'")[0]["n"] > 0
     for v in ("beliefs_latest", "beliefs_daily", "v_thoughts", "v_inquiries", "v_posts", "v_reviews"):
         db.query(f"SELECT * FROM {v} LIMIT 5")
+
+
+def test_funnel_counts_live_products_only(bought):
+    e, sink, store, pid = bought
+    f = e.commerce.funnel()
+    assert set(f) == {pid}
+    row = f[pid]
+    assert row["aware"] >= row["curious_plus"] >= row["purchased"] >= 0
+    assert row["aware"] == sum(1 for k, p in e.commerce.pairs.items()
+                               if k.endswith(f"|{pid}") and p.stage not in ("unaware", "rejected"))
+    frame = e.stats_frame()
+    assert frame["funnel"] == f and pid in frame["campaigns"] and frame["campaigns"][pid]["active"]
+
+
+def test_prune_products_drops_deleted(bought):
+    e, sink, store, pid = bought
+    c = e.commerce
+    from commerce.consideration import Pair
+
+    c.pairs["1|demo-gone"] = Pair(stage="aware", aware=True)
+    c.visits[1] = {"pid": "demo-gone", "day": 1}
+    assert c.prune_products({pid}) >= 1
+    assert "1|demo-gone" not in c.pairs and 1 not in c.visits
+    assert any(k.endswith(f"|{pid}") for k in c.pairs)           # real product untouched

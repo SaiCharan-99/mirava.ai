@@ -71,7 +71,7 @@ async def unrendered(sid: str, a: Participant, b: Participant, g: GateResult, t:
 
 async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResult, relationship: str,
                            closeness: float, place: str, t: int, *, store: DocStore, llm: LLMClient,
-                           decider: DecisionAdapter) -> Outcome:
+                           decider: DecisionAdapter, catalog: dict[str, str] | None = None) -> Outcome:
     """Rendered 3-step conversation; each private step only ever sees its own agent's context."""
     o = Outcome(sid)
     stranger = g.kind == "stranger"
@@ -107,9 +107,9 @@ async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResu
     t_end = t + o.minutes
     (da, xa), (db, xb) = await asyncio.gather(
         debrief(a.agent_id, b.agent_id, b.name, msgs, names, t_end, store=store, llm=llm, now=a.now,
-                product_ids=products, on_event=hook_for(a.agent_id), priority_class=pc),
+                product_ids=products, on_event=hook_for(a.agent_id), priority_class=pc, catalog=catalog),
         debrief(b.agent_id, a.agent_id, a.name, msgs, names, t_end, store=store, llm=llm, now=b.now,
-                product_ids=products, on_event=hook_for(b.agent_id), priority_class=pc))
+                product_ids=products, on_event=hook_for(b.agent_id), priority_class=pc, catalog=catalog))
     o.cost_usd += xa + xb
     for aid, d in ((a.agent_id, da), (b.agent_id, db)):
         o.ev("debrief", aid, d.model_dump())

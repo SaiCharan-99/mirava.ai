@@ -110,11 +110,15 @@ class Engine:
                 self.social.load(ck["social"])
         if self.media_enabled:
             self.media = MediaRuntime(self.store, self.llm, self.gov, w, social=self.social)
+            if self.social is not None:
+                media = self.media
+                self.social.catalog_fn = lambda: {pid: lp.p.name for pid, lp in media.live.items()}
             if ck is not None and ck.get("media"):
                 self.media.load(ck["media"])
         if self.commerce_enabled and self.media is not None:
             self.commerce = CommerceRuntime(self.store, self.llm, get_decider(self.llm, self.s), self.gov, w,
                                             media=self.media, social=self.social)
+            self.media.commerce = self.commerce
             if ck is not None and ck.get("commerce"):
                 self.commerce.load(ck["commerce"])
             else:
@@ -290,7 +294,17 @@ class Engine:
         while True:
             await asyncio.sleep(5)
             if self.world is not None:
-                await self.hub.send_all(self.world.stats(self.budget()))
+                await self.hub.send_all(self.stats_frame())
+
+    def stats_frame(self) -> dict[str, Any]:
+        """`stats` frame: world counts + budget + live product funnel."""
+        assert self.world is not None
+        frame = self.world.stats(self.budget())
+        if self.commerce is not None:
+            frame["funnel"] = self.commerce.funnel()
+        if self.media is not None:
+            frame["campaigns"] = self.media.campaigns(self.world.t)
+        return frame
 
     async def handoff(self) -> None:
         """Final flush + checkpoint + lease release, then stay idle."""
