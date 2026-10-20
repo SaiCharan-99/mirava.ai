@@ -170,7 +170,7 @@ export function FocusBuilder() {
     <div className="grid" data-testid="focus-builder" style={{ gridTemplateColumns: "1.55fr 1fr 340px", alignItems: "start" }}>
       <div className="grid" style={{ alignContent: "start" }}>
         <div className="card">
-          <div className="row between"><h3 style={{ margin: 0 }}>New {mode === "focus_group" ? "focus group" : "survey"}</h3>
+          <div className="row between"><h3 style={{ margin: 0 }}>New poll</h3>
             <div className="seg"><button className={mode === "focus_group" ? "on" : ""} onClick={() => setMode("focus_group")}>Focus group</button><button className={mode === "survey" ? "on" : ""} onClick={() => setMode("survey")}>Survey (written)</button></div></div>
           <div className="grid g2" style={{ marginTop: 12, gap: 10 }}>
             <div><label className="xs muted">Title</label><input value={title} placeholder="e.g. Pixel 10a — price & battery" onChange={(e) => setTitle(e.target.value)} /></div>

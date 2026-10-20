@@ -157,7 +157,7 @@ export function FocusResultsPage() {
   return (
     <div className="page" data-testid="focus-results">
       <PageTitle title={doc.title} sub={`${doc.mode === "focus_group" ? "Focus group" : "Survey"} · ${r?.n_attended ?? 0} people · ${doc.start_label?.split(" · ")[0] ?? ""} · Research Lounge${(doc.wave ?? 1) > 1 ? ` · wave ${doc.wave}` : ""}`}
-        right={<><button className="btn" onClick={() => nav(withMode("/insights/focus"))}>← Focus groups</button>
+        right={<><button className="btn" onClick={() => nav(withMode("/insights/focus"))}>← Polls</button>
           <button className="btn" onClick={() => nav(withMode(`/insights/focus/${surveyId}/room`))}>▶ Replay the room</button>
           <button className="btn primary" disabled={busy || notDone} onClick={() => void rerun()}>↻ Run again (wave {(doc.wave ?? 1) + 1})</button></>} />
       {notDone && <div className="card" style={{ marginBottom: 14 }}><b className="small">This session is {doc.status.replace("_", " ")}.</b> <span className="xs muted">Results fill in when everyone has answered.</span></div>}

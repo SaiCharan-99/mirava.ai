@@ -47,7 +47,7 @@ export function FocusWaitPage() {
   return (
     <div className="page" data-testid="focus-wait">
       <PageTitle title={doc.title} sub={`${doc.mode === "focus_group" ? "Focus group" : "Survey"} · ${doc.venue_name ?? "Research Lounge"}, 100 Feet Road · wave ${doc.wave ?? 1}`}
-        right={<button className="btn" onClick={() => nav(withMode("/insights/focus"))}>← Focus groups</button>} />
+        right={<button className="btn" onClick={() => nav(withMode("/insights/focus"))}>← Polls</button>} />
       {doc.status === "cancelled" && <div className="card" style={{ marginBottom: 14 }}><b>Cancelled.</b> <span className="xs muted">{doc.error ?? ""}</span></div>}
       <div className="grid" style={{ gridTemplateColumns: "1fr 1.2fr 340px", alignItems: "start" }}>
         <div className="card" style={{ textAlign: "center" }}>

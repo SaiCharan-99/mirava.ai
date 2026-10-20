@@ -16,7 +16,7 @@ import { FocusBuilder } from "./focus/FocusBuilder";
 import { ConversationsTab as ConversationsLive } from "./insights/ConversationsTab";
 
 const ITABS: [string, string][] = [["ask", "Ask"], ["overview", "Overview"], ["sources", "Sources"], ["hoardings", "Hoardings"],
-  ["segments", "Segments"], ["conversations", "Conversations"], ["focus", "Focus groups"], ["interview", "Interview"]];
+  ["segments", "Segments"], ["conversations", "Conversations"], ["focus", "Polls"], ["interview", "Interview"]];
 
 interface ProdInfo { name: string; hex: string }
 type Names = Record<number, { name: string; age: number; shirt?: string; job?: string; phoneAge?: number }>;
@@ -173,7 +173,7 @@ function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
         )}
       </div>
       <div className="grid" style={{ alignContent: "start" }}>
-        <div className="card"><h3>What the assistant can use</h3><div className="list small">{[["Raw log", "every thought, message, exposure, inquiry, purchase (BigQuery)"], ["Semantic search", "VECTOR_SEARCH over thoughts, chats, posts, reviews"], ["Cohorts", "any filter on agents: age, income, phone age, stage…"], ["Likely-buyer model", "need × interest × affordability × stage"], ["Focus groups / interview", "ask agents in person (uses budget, asks first)"]].map(([h, t]) => <div key={h} className="item"><b>{h}</b><div className="xs muted">{t}</div></div>)}</div></div>
+        <div className="card"><h3>What the assistant can use</h3><div className="list small">{[["Raw log", "every thought, message, exposure, inquiry, purchase (BigQuery)"], ["Semantic search", "VECTOR_SEARCH over thoughts, chats, posts, reviews"], ["Cohorts", "any filter on agents: age, income, phone age, stage…"], ["Likely-buyer model", "need × interest × affordability × stage"], ["Polls / interview", "ask agents in person (focus group or written survey; uses budget, asks first)"]].map(([h, t]) => <div key={h} className="item"><b>{h}</b><div className="xs muted">{t}</div></div>)}</div></div>
         <div className="card"><h3>Faithfulness</h3><p className="small muted" style={{ margin: 0 }}>Every number comes from a tool result; quotes are verbatim and private thoughts are labelled. If a check fails, the answer is regenerated or the claim is dropped.</p></div>
       </div>
     </div>
