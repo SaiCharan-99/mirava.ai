@@ -248,14 +248,14 @@ def eval_opinion(w: dict[str, Any]) -> dict[str, Any]:
     from commerce.need import affordability
 
     top: dict[str, dict[str, int]] = {}
-    for a in ids:                                    # what they would actually pick: liking × can I afford it
+    for a in ids:                                    # what they would actually buy: only what they can pay for, by liking
         band = profiles[a].income_band
         money = profiles[a].money.model_dump()
-
-        def utility(p: str, price: int, a: int = a, money: dict[str, Any] = money) -> float:
-            return (op.attitude(a, p) + 1) / 2 * (0.6 + 0.4 * affordability(price, money)[0])
-
-        pick = pid if utility(pid, base.price_inr) >= utility("lumen-pro", lumen.price_inr) else "lumen-pro"
+        can = {p: price for p, price in ((pid, base.price_inr), ("lumen-pro", lumen.price_inr))
+               if affordability(price, money)[1] is not None}      # same rule as commerce.purchase.gate
+        if not can:
+            continue
+        pick = max(can, key=lambda p: (op.attitude(a, p) + 1) / 2 * (0.6 + 0.4 * affordability(can[p], money)[0]))
         top.setdefault(band, {}).setdefault(pick, 0)
         top[band][pick] += 1
     lead = {b: max(c, key=lambda k: c[k]) for b, c in top.items() if sum(c.values()) >= 5}
@@ -298,7 +298,7 @@ def write(ins: dict[str, Any], sv: dict[str, Any], meta: dict[str, Any], op: dic
     if op is not None:
         lines += ["", "### Opinion engine (evals/run.py · phase 1)",
                   f"- Attitude spread across {op['n']} residents (std): {op['att_std']} (target ≥ 0.2) — {ok(op['att_std'] >= 0.2)}",
-                  f"- Phone they would pick (liking × affordability), by income band: {op['leader_by_income']} (target: not the same "
+                  f"- Phone they would buy (only what they can pay for, by liking), by income band: {op['leader_by_income']} (target: not the same "
                   f"everywhere) — "
                   f"{ok(len(set(op['leader_by_income'].values())) >= 2)}",
                   f"- Low-income residents who talk down an unaffordable premium phone: {op['gap_share_low_income']:.0%} "
