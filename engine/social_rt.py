@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from engine.encounters import EncounterTracker, Presence
 from engine.events import EventBus
 from engine.governor import BudgetGovernor
+from engine.planner import insert_block
+from engine.rng import stream
 from engine.tasks import TaskQueue
 from engine.world import World
 from mind.decision import DecisionAdapter, DecisionRequest, DecisionResult, FakeDecision
@@ -25,11 +28,15 @@ from social.agenda import Agenda
 from social.conversation import Outcome, Participant, run_conversation, template_memories, unrendered
 from social.gate import Side, gate
 from social.sessions import SessionRegistry
+from social.stop import LONG_MIN, MODE_RECOGNISE, QUICK_MIN, StopCtx, decide_stop, urgency
 from social.wom import tell
 
 log = logging.getLogger("engine.social")
 WM_MAX = 20
 CONV_DELAY = 10              # sim minutes until a conversation's result is applied (~25 s real at 1 day/h)
+STREET_RADIUS = 30.0         # metres: close enough to spot someone you know across the road
+STREET_COOLDOWN = 180        # sim minutes before the same pair can stop for each other again
+STREET_RETRY = 20            # a pair that passed without recognising each other is not re-drawn for this long
 REFLECT_DELAY = 30
 REFLECT_AT = 3 * 60
 FREE = {"cafe": 1.0, "eat": 0.9, "park": 1.0, "home": 0.8, "gym": 0.5, "shop": 0.6, "roam": 0.2}
@@ -91,13 +98,16 @@ class SocialRuntime:
         self.name_of: Callable[[int], str] = lambda aid: f"Agent {aid}"          # first name (set by the engine)
         self.product_name_of: Callable[[str], str] = lambda pid: pid              # product display name (set by the engine)
         self.intent_hook: Callable[[int, str], None] | None = None               # plan intents → commerce (set by the engine)
+        self.on_phone: Callable[[int, int], bool] = lambda aid, m: False         # is this person scrolling their phone now
+        self._street_tried: dict[tuple[int, int], int] = {}
         self.watched = watched or set()
         self.opinion = opinion                                     # OpinionEngine (None: no computed opinions)
         self.catalog_fn: Callable[[], dict[str, str]] | None = None   # product id → name (set by the engine)
         self.embed_texts = embed_texts
         self._pclass: dict[str, str] = {}
         self._bg: set[asyncio.Future] = set()
-        self.stats = {"rendered": 0, "unrendered": 0, "reflections": 0, "cost_usd": 0.0}
+        self.stats = {"rendered": 0, "unrendered": 0, "reflections": 0, "cost_usd": 0.0, "street_pairs": 0,
+                      "street_recognised": 0, "street_nod": 0, "street_quick": 0, "street_long": 0}
 
     # ------------------------------------------------------------------ working memory (L1)
     def remember(self, aid: int, text: str, importance: int, kind: str, t: int, tag: str | None = None) -> None:
@@ -137,27 +147,125 @@ class SocialRuntime:
         pairs = self.tracker.update(t, self.presences(w))
         if pairs:
             await asyncio.gather(*(self._encounter(w, bus, a, b, t) for a, b in pairs))
+        await self._street(w, bus, t)
         if simtime.minute_of_day(t) == REFLECT_AT:
             self._nightly(w, bus, t)
 
-    async def _encounter(self, w: World, bus: EventBus, ia: int, ib: int, t: int) -> None:
+    # ------------------------------------------------------------------ street (people on the move who know each other)
+    async def _street(self, w: World, bus: EventBus, t: int) -> None:
+        """Walkers (and riders) who pass someone they know may notice them; then decide to nod, stop briefly or chat."""
+        movers = [a for a in w.agents if a.route and not a.offmap and a.mode in MODE_RECOGNISE
+                  and not self.sessions.busy(a.id) and t >= a.talk_until]
+        if len(movers) < 2:
+            return
+        cell = STREET_RADIUS
+        pos = {a.id: w.position(a, float(t))[:2] for a in movers}
+        grid: dict[tuple[int, int], list[int]] = {}
+        for aid, (x, y) in pos.items():
+            grid.setdefault((int(x // cell), int(y // cell)), []).append(aid)
+        cands: set[tuple[int, int]] = set()
+        for (cx, cy), ids in grid.items():
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for q in grid.get((cx + dx, cy + dy), []):
+                        for p in ids:
+                            if p < q and (p, q) in self.rel and math.dist(pos[p], pos[q]) <= STREET_RADIUS:
+                                cands.add((p, q))
+        if not cands:
+            return
+        self._street_tried = {k: v for k, v in self._street_tried.items() if t - v < STREET_RETRY}
+        seed = int(getattr(self.opinion, "seed", 0))
+        m = simtime.minute_of_day(t)
+        used: set[int] = set()
+        for ia, ib in sorted(cands):
+            if ia in used or ib in used or (ia, ib) in self._street_tried:
+                continue
+            if t - self.tracker.last_met.get((ia, ib), -10**9) < STREET_COOLDOWN:
+                continue
+            a, b = w.agents[ia], w.agents[ib]
+            rel = self.rel[(ia, ib)]
+            closeness = float(rel.get("closeness", 0.0))
+            rng = stream(seed, "street", t, ia, ib)
+            self._street_tried[(ia, ib)] = t
+            self.stats["street_pairs"] += 1
+            p_rec = (0.75 * min(MODE_RECOGNISE[a.mode], MODE_RECOGNISE[b.mode]) * (0.6 + 0.4 * closeness)
+                     * (0.5 if (self.on_phone(ia, m) or self.on_phone(ib, m)) else 1.0))
+            if rng.random() >= p_rec:
+                continue
+            self.stats["street_recognised"] += 1
+            ua = urgency(w._block(a, m).get("act"), a.activity, a.mode)
+            ub = urgency(w._block(b, m).get("act"), b.activity, b.mode)
+            ta, tb = self.agenda.pick_to_tell(ia, ib, t), self.agenda.pick_to_tell(ib, ia, t)
+            last = self.tracker.last_met.get((ia, ib))
+            ctx = StopCtx(closeness=closeness, hurry=max(ua, ub), agenda=max(ta.weight if ta else 0.0, tb.weight if tb else 0.0),
+                          social_need=1.0 - float((w.needs[ia, 2] + w.needs[ib, 2]) / 2), mood=(a.mood + b.mood) / 2,
+                          days_since_met=7.0 if last is None else (t - last) / 1440.0,
+                          jitter=float(rng.random() - 0.5) * 0.16)
+            outcome = decide_stop(ctx)
+            if outcome == "ignore":
+                continue
+            used.update((ia, ib))
+            self.stats[f"street_{outcome}"] += 1
+            if outcome == "nod":
+                self.tracker.met((ia, ib), t)
+                self._greet(w, bus, ia, ib, t)
+                continue
+            lo, hi = QUICK_MIN if outcome == "quick" else LONG_MIN
+            hold = int(rng.integers(lo, hi + 1))
+            await self._encounter(w, bus, ia, ib, t, street={"hold": hold, "kind": outcome})
+            if outcome == "long":
+                self._maybe_coffee(w, ia, ib, t, hold, rng)
+
+    def _greet(self, w: World, bus: EventBus, ia: int, ib: int, t: int) -> None:
+        """A wave or a nod in passing: no model, a faint memory for each."""
+        bus.new("greet", t, ia, {"mode_a": w.agents[ia].mode, "mode_b": w.agents[ib].mode}, other_id=ib, rendered=False)
+        for me, other in ((ia, ib), (ib, ia)):
+            self.remember(me, f"Waved to {self.name_of(other)} on the road.", 1, "conversation", t)
+        if ia in self.watched or ib in self.watched:
+            w.live_evts.append({"k": "greet", "a": ia, "b": ib})
+
+    def _maybe_coffee(self, w: World, ia: int, ib: int, t: int, hold: int, rng: Any) -> None:
+        """After a long chat, friends with free time may go for a coffee together (a café block in both plans)."""
+        pa, pb = w.profiles[ia].persona.big5, w.profiles[ib].persona.big5
+        rel = self.rel.get((ia, ib)) or {}
+        p = 0.15 + 0.35 * float(rel.get("closeness", 0.0)) * (float(pa.get("E", 0.5)) + float(pb.get("E", 0.5)))
+        if float(rng.random()) >= p:
+            return
+        a = w.agents[ia]
+        cafes = [x for x in w.wm.places_near(a.x, a.y, 400, {"cafe"})]
+        m = simtime.minute_of_day(t)
+        start = m + hold + 8
+        if not cafes or start + 45 >= 1440:
+            return
+        cafe = cafes[int(rng.integers(len(cafes)))]
+        for x in (ia, ib):
+            ag = w.agents[x]
+            ag.plan = insert_block(ag.plan, start, start + 40, "cafe", cafe.place_id)
+        w.live_evts.append({"k": "meetup", "a": ia, "b": ib, "place": cafe.name})
+
+    async def _encounter(self, w: World, bus: EventBus, ia: int, ib: int, t: int,
+                         street: dict[str, Any] | None = None) -> None:
         self.tracker.met((ia, ib), t)
         pair = (min(ia, ib), max(ia, ib))
         rel = self.rel.get(pair)
-        place = w.wm.place_by_id.get(w.agents[ia].place_id or "")
-        g = await gate(self.side(w, ia), self.side(w, ib), rel, place.kind if place else None, t, self.gate_decider, self.gov)
+        place = None if street else w.wm.place_by_id.get(w.agents[ia].place_id or "")
+        g = await gate(self.side(w, ia), self.side(w, ib), rel, place.kind if place else None, t, self.gate_decider,
+                       self.gov, force_talk=street is not None)
         bus.new("gate", t, pair[0], g.payload(), other_id=pair[1], rendered=g.rendered)
         if not g.talk:
             return
-        sid = self.sessions.open([ia, ib], g.kind, t=t, timeout=CONV_DELAY + 15)
+        hold = int(street["hold"]) if street else 0
+        delay = max(CONV_DELAY, hold)
+        sid = self.sessions.open([ia, ib], g.kind, t=t, timeout=delay + 15)
         if sid is None:
             return
         for x in (ia, ib):
-            w.agents[x].talk_until = t + CONV_DELAY
+            if not (street and w.hold(w.agents[x], t, hold)):          # on the street: stop where they stand
+                w.agents[x].talk_until = t + delay
         pa = self._participant(w, ia)
         pb = self._participant(w, ib)
         w.live_evts.append({"k": "talk", "a": ia, "b": ib, "session_id": sid, "topic": g.topics[0] if g.topics else "",
-                            "rendered": g.rendered, "place": w._pname(w.agents[ia].place_id)})
+                            "rendered": g.rendered, "place": "the street" if street else w._pname(w.agents[ia].place_id)})
         if not g.rendered:
             out = await unrendered(sid, pa, pb, g, t, None)
             self._background(asyncio.to_thread(template_memories, self.store, sid, pa, pb, g, t))
@@ -168,7 +276,7 @@ class SocialRuntime:
                     if self.opinion is not None and pids else None)
         rel_label = REL_LABEL.get((rel or {}).get("kind", ""), "strangers")
         closeness = float((rel or {}).get("closeness", 0.0))
-        pname = (place.name if place else "the street") if place and place.kind != "home" else "home"
+        pname = "the street" if street else ((place.name if place else "the street") if place and place.kind != "home" else "home")
         fallback_gate = g
 
         def fallback() -> Outcome:
@@ -181,7 +289,7 @@ class SocialRuntime:
                                                         store=self.store, llm=self.llm, decider=self.decider,
                                                         catalog=self.catalog_fn() if self.catalog_fn else None,
                                                         opinions=opinions),
-                          t, CONV_DELAY, fallback)
+                          t, delay, fallback)
         self._pclass[sid] = g.priority_class
 
     def _participant(self, w: World, aid: int) -> Participant:

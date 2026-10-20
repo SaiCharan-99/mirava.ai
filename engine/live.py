@@ -23,7 +23,10 @@ def tick_frames(world: World, clock: Clock) -> list[dict[str, Any]]:
     """Frames produced by one tick."""
     out: list[dict[str, Any]] = []
     if world.new_segs:
-        out.append({"type": "seg", "items": world.new_segs})
+        frame: dict[str, Any] = {"type": "seg", "items": world.new_segs}
+        if world.replaced:
+            frame["replace"] = sorted(world.replaced)      # viewers drop these agents' queued segments first
+        out.append(frame)
     if world.live_evts:
         out.append({"type": "evt", "items": [_trim(e) for e in world.live_evts]})
     out.append({"type": "clock", "t": world.t, "speed": 0.0 if clock.paused else clock.speed})

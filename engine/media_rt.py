@@ -258,6 +258,8 @@ class MediaRuntime:
         if m % 30 == 0:
             self._campaign_end_events(w, bus, t)
         self._hoardings(w, bus, t, m)
+        if m % 5 == 0:
+            self._hoardings_standing(w, bus, t, m)
         self._feeds_and_print(w, bus, t, m)
         self._store_displays(w, bus, t)
         self._reviewers(w, bus, t)
@@ -347,28 +349,62 @@ class MediaRuntime:
                 self.last_pass[key] = t
                 done.add(key)
                 continue
-            faces = [asg["facing"]] if asg["facing"] is not None else list(s.facings)
-            got = next(((f, o) for f in faces if (o := ots(s, f, x, y, h, minute_of_day=m)) is not None), None)
-            if got is None:
+            if self._hit(w, bus, t, m, aid, x, y, h, s, asg, night, still=False):
+                done.add(key)
+                self.last_pass[key] = t
+
+    def _hit(self, w: World, bus: EventBus, t: int, m: int, aid: int, x: float, y: float, h: float, s: Any,
+             asg: dict[str, Any], night: bool, *, still: bool) -> bool:
+        """One person at (x, y) facing `h` near a board: line of sight → attention draw → exposure. True if it was in view."""
+        faces = [asg["facing"]] if asg["facing"] is not None else list(s.facings)
+        got = next(((f, o) for f in faces if (o := ots(s, f, x, y, h, still=still, minute_of_day=m)) is not None), None)
+        if got is None:
+            return False
+        f, o = got
+        a = w.agents[aid]
+        mode = "idle" if still else a.mode
+        stim = self._stim(asg["product_id"], asg["creative_id"])
+        if stim is None:
+            return True
+        ctx, lp = self._ctx(w, aid, asg["product_id"], asg["creative_id"], mode=mode,
+                            dwell=dwell_seconds(s, mode, still), lit_night=night and s.lit,
+                            clutter=self.clutter[s.site_id], on_phone=self._on_phone(w, aid, m))
+        out = attend(s, o, stim, ctx, stream(w.seed, "attend", t, aid, s.site_id))
+        ch = "bus_shelter" if s.kind == "bus_shelter" else ("metro_panel" if s.kind == "metro_panel" else "hoarding")
+        self._exposure(w, bus, t, aid, asg["product_id"], asg["creative_id"], ch, out, stim, ctx,
+                       site_id=s.site_id, place=s.area_label,
+                       extra={"distance_m": o.distance_m, "angle_deg": o.angle_deg, "dwell_s": round(ctx.dwell_s, 1),
+                              "facing": f, "mode": mode, "lit": s.lit, "standing": still,
+                              "target": bool(lp is not None and aid in lp.audience),
+                              "rate_inr_day": round(s.rate_card_inr_week / 7)})
+        return True
+
+    STANDING_KINDS = frozenset({"bus_stop", "shop", "cafe", "restaurant", "park", "metro", "mall", "store", "news_vendor"})
+    STANDING_GAP = 30                  # sim minutes before the same person can be exposed to the same board again
+
+    def _hoardings_standing(self, w: World, bus: EventBus, t: int, m: int) -> None:
+        """People waiting or lingering near a board (bus stop, café, park, shop front…) can see it too: they look
+        around at random, so only boards in front of where they happen to be facing can catch them."""
+        if not self.site_map or not self.sites:
+            return
+        night = is_night(m)
+        stand = [a for a in w.agents if not a.route and not a.offmap and a.place_id and a.activity != "sleep"
+                 and (w.wm.place_by_id.get(a.place_id) is not None
+                      and w.wm.place_by_id[a.place_id].kind in self.STANDING_KINDS)]
+        if not stand:
+            return
+        arr = np.array([[a.x, a.y] for a in stand])
+        d = np.hypot(arr[:, None, 0] - self.site_xy[None, :, 0], arr[:, None, 1] - self.site_xy[None, :, 1])
+        for ai, si in np.argwhere(d <= self.max_r).tolist():
+            a, s = stand[ai], self.sites[si]
+            asg = self.site_map.get(s.site_id)
+            key = (a.id, s.site_id)
+            last = self.last_pass.get(key)
+            if asg is None or (last is not None and t - last < self.STANDING_GAP):
                 continue
-            done.add(key)
-            self.last_pass[key] = t
-            f, o = got
-            a = w.agents[aid]
-            stim = self._stim(asg["product_id"], asg["creative_id"])
-            if stim is None:
-                continue
-            ctx, lp = self._ctx(w, aid, asg["product_id"], asg["creative_id"], mode=a.mode,
-                                dwell=dwell_seconds(s, a.mode, False), lit_night=night and s.lit,
-                                clutter=self.clutter[s.site_id], on_phone=self._on_phone(w, aid, m))
-            out = attend(s, o, stim, ctx, stream(w.seed, "attend", t, aid, s.site_id))
-            ch = "bus_shelter" if s.kind == "bus_shelter" else ("metro_panel" if s.kind == "metro_panel" else "hoarding")
-            self._exposure(w, bus, t, aid, asg["product_id"], asg["creative_id"], ch, out, stim, ctx,
-                           site_id=s.site_id, place=s.area_label,
-                           extra={"distance_m": o.distance_m, "angle_deg": o.angle_deg, "dwell_s": round(ctx.dwell_s, 1),
-                                  "facing": f, "mode": a.mode, "lit": s.lit,
-                                  "target": bool(lp is not None and aid in lp.audience),
-                                  "rate_inr_day": round(s.rate_card_inr_week / 7)})
+            heading = float(stream(w.seed, "gaze", t // self.STANDING_GAP, a.id).random() * 360.0)
+            if self._hit(w, bus, t, m, a.id, a.x, a.y, heading, s, asg, night, still=True):
+                self.last_pass[key] = t
 
     # ------------------------------------------------------------------ exposure → thought
     def _exposure(self, w: World, bus: EventBus, t: int, aid: int, pid: str, cid: str, channel: str, outcome: str,

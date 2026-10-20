@@ -269,3 +269,16 @@ def test_word_of_mouth_flows_without_model_chats(bought):
         assert x["other_id"] is not None and x["agent_id"] != x["other_id"] and x["rendered"] is False
     assert any(x["payload"].get("product_id") for x in woms) or any(x["payload"]["kind"] == "phone_trouble" for x in woms)
     assert e.social.agenda.items                                   # people have things on their minds
+
+
+def test_street_encounters_and_standing_exposures(bought):
+    """Phase 2b: people who know each other meet on the move, and people standing near boards can be exposed."""
+    e, sink, store, pid = bought
+    greets, talks = _ev(sink, "greet"), [x for x in _ev(sink, "gate") if x["payload"].get("reason", "").startswith("known")]
+    standing = [x for x in _ev(sink, "exposure") if x["payload"].get("standing")]
+    print("street stats", e.social.stats, "greets", len(greets), "gate talks", len(talks), "standing exposures", len(standing))
+    for g in greets:
+        assert g["other_id"] is not None and g["agent_id"] != g["other_id"]
+        assert (min(g["agent_id"], g["other_id"]), max(g["agent_id"], g["other_id"])) in e.social.rel
+    assert standing, "nobody standing near a board was ever exposed in 3 days"
+    assert all(x["payload"]["mode"] == "idle" for x in standing)

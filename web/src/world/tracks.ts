@@ -14,6 +14,14 @@ export class Tracks {
     this.push(segs);
   }
 
+  /** Drop queued segments of these agents (their route was re-timed: they stopped to talk). */
+  replace(ids: number[]): void {
+    for (const id of ids) {
+      const tr = this.byId.get(id);
+      if (tr) tr.segs.length = 0;
+    }
+  }
+
   /** Append segments (kept sorted by start time per agent). */
   push(segs: LiveSegment[]): void {
     for (const s of segs) {

@@ -92,6 +92,7 @@ class World:
         self.counters = {"conversations_today": 0, "conversations_total": 0, "thoughts_today": 0,
                          "chats_rendered_today": 0}
         self.new_segs: list[dict[str, Any]] = []      # segments started this tick (for /live)
+        self.replaced: set[int] = set()               # agents whose queued segments were replaced this tick (held)
         self.live_evts: list[dict[str, Any]] = []     # evt items this tick (for /live)
         self.products_live: list[dict[str, Any]] = []
         self.sites_live: list[dict[str, Any]] = []      # site → creative assignments (hello.sites)
@@ -143,6 +144,7 @@ class World:
         m = simtime.minute_of_day(t)
         day = simtime.day_of(t)
         self.new_segs = []
+        self.replaced = set()
         self.live_evts = []
         if m == 0:
             self.counters["conversations_today"] = 0
@@ -170,6 +172,23 @@ class World:
                     a.life_event_at = (day - 1) * 1440 + int(rng.integers(7 * 60, 22 * 60))
                     a.life_event_type = kind
                     break
+
+    def hold(self, a: Agent, t: int, minutes: int) -> bool:
+        """Stop a travelling agent where it stands for `minutes`, then let it continue (the rest of the route shifts
+        later). The agent keeps its position (a.x, a.y) during the hold; live viewers get replacement segments."""
+        idx = next((i for i, s in enumerate(a.route) if s.t0 <= t < s.t1), None)
+        if idx is None or minutes <= 0:
+            return False
+        cur = a.route[idx]
+        x, y = cur.at(float(t))
+        a.x, a.y = x, y
+        rest = [Seg(x, y, cur.x1, cur.y1, t + minutes, cur.t1 + minutes, cur.mode)]
+        rest += [Seg(s.x0, s.y0, s.x1, s.y1, s.t0 + minutes, s.t1 + minutes, s.mode) for s in a.route[idx + 1:]]
+        a.route = [*a.route[:idx], *rest]
+        a.talk_until = max(a.talk_until, t + minutes)
+        self.replaced.add(a.id)
+        self.new_segs.extend(s.wire(a.id) for s in rest)
+        return True
 
     def _block(self, a: Agent, m: int) -> dict[str, Any]:
         for b in a.plan:

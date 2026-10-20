@@ -45,6 +45,17 @@ export function tickerFor(e: LiveEvt, t: number, nameOf: (id: number) => string)
       html = `<span class="who">🚀 ${esc(String(e.name ?? e.product ?? ""))} launched</span> · ${sm.sites ?? 0} hoardings · ${sm.stores ?? 0} stores · reels to ~${sm.reel_audience ?? 0} agents · ${sm.reviewers ?? 0} reviewers`;
       break;
     }
+    case "greet": {
+      const b = typeof e.b === "number" ? esc(nameOf(e.b)) : "";
+      html = `<span class="who">👋 ${who}</span> and ${b} spotted each other on the road and waved`;
+      break;
+    }
+    case "meetup": {
+      const b = typeof e.b === "number" ? esc(nameOf(e.b)) : "";
+      cls = "prod";
+      html = `<span class="who">☕ ${who} &amp; ${b}</span> decided to grab a coffee${e.place ? ` at ${esc(String(e.place))}` : ""}`;
+      break;
+    }
     case "campaign_ended":
       cls = "launch";
       html = `<span class="who">📣 ${esc(String(e.name ?? productName(String(e.product ?? ""))))}</span> paid campaign ended — still on sale; word of mouth, reviews and stores carry on`;
@@ -161,6 +172,7 @@ export function applyLive(m: LiveMsg): void {
       void refreshProducts();
       break;
     case "seg":
+      if (m.replace?.length) tracks.replace(m.replace);
       tracks.push(m.items);
       break;
     case "clock":

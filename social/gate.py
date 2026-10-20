@@ -76,7 +76,7 @@ def topics_for(a: Side, b: Side) -> tuple[list[str], str | None]:
 
 
 async def gate(a: Side, b: Side, relationship: dict | None, place_kind: str | None, t: int,
-               decider: DecisionAdapter, governor: Governor) -> GateResult:
+               decider: DecisionAdapter, governor: Governor, *, force_talk: bool = False) -> GateResult:
     """Decide whether and how a co-located pair talks (sessions/busy/co-location rules are checked by the caller)."""
     pair = (min(a.agent_id, b.agent_id), max(a.agent_id, b.agent_id))
     known = relationship is not None and relationship.get("kind") != "follower"
@@ -90,13 +90,14 @@ async def gate(a: Side, b: Side, relationship: dict | None, place_kind: str | No
     if not known:
         product = None
         topics = [x for x in topics if not x.startswith("product:")][:2]
-    res = await decider.decide(DecisionRequest(agent_id=pair[0], kind="talk", options=["talk", "skip"],
-                                               context={"pair": list(pair), "t": t, "p_talk": round(p_talk, 3),
-                                                        "relationship": relationship, "place": place_kind,
-                                                        "topics": topics}))
     kind: Literal["social", "stranger"] = "social" if known else "stranger"
-    if res.choice != "talk":
-        return GateResult(pair, False, kind, topics, f"skip ({res.reason})", 0.0, "P5", False, product)
+    if not force_talk:
+        res = await decider.decide(DecisionRequest(agent_id=pair[0], kind="talk", options=["talk", "skip"],
+                                                   context={"pair": list(pair), "t": t, "p_talk": round(p_talk, 3),
+                                                            "relationship": relationship, "place": place_kind,
+                                                            "topics": topics}))
+        if res.choice != "talk":
+            return GateResult(pair, False, kind, topics, f"skip ({res.reason})", 0.0, "P5", False, product)
     watched = a.watched or b.watched
     priority = 2.0 * (product is not None) + 1.0 * watched + closeness
     pclass = "P0" if watched else ("P2" if product else "P4")   # §17: P0 watched, P2 product chats, P4 social

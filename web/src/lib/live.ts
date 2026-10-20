@@ -18,7 +18,7 @@ export type LiveEvt = { k: string; a?: number; b?: number; text?: string; produc
 export type LiveMsg =
   | { type: "hello"; t: number; scale: { sim_min_per_real_s: number }; slowed: boolean; agents: LiveAgent[];
       segments: LiveSegment[]; bubbles: LiveEvt[]; products: LiveProduct[]; sites: unknown[]; stats?: LiveStats | Partial<LiveCounts> }
-  | { type: "seg"; items: LiveSegment[] }
+  | { type: "seg"; items: LiveSegment[]; replace?: number[] }
   | { type: "evt"; items: LiveEvt[] }
   | ({ type: "stats" } & LiveStats)
   | { type: "clock"; t: number; speed: number };
@@ -44,7 +44,8 @@ export function parseLive(raw: string): LiveMsg | null {
         products: Array.isArray(m.products) ? m.products : [], sites: Array.isArray(m.sites) ? m.sites : [], stats: m.stats,
       };
     case "seg":
-      return Array.isArray(m.items) ? { type: "seg", items: m.items.filter(isSeg) } : null;
+      return Array.isArray(m.items) ? { type: "seg", items: m.items.filter(isSeg),
+        replace: Array.isArray(m.replace) ? m.replace.filter(num) : undefined } : null;
     case "evt":
       return Array.isArray(m.items) ? { type: "evt", items: m.items.filter((e: any) => e && typeof e.k === "string") } : null;
     case "stats":

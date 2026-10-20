@@ -109,3 +109,29 @@ describe("conversation ticker", () => {
     expect(it.cls).toBe("prod");
   });
 });
+
+describe("held routes (agents who stop to talk)", () => {
+  const seg = (a: number, t0: number, t1: number, x0: number, x1: number) => ({ a, x0, y0: 0, x1, y1: 0, t0, t1, mode: "walk" });
+
+  it("parses the replace list and ignores junk ids", () => {
+    const m = parseLive('{"type":"seg","items":[{"a":1,"x0":0,"y0":0,"x1":10,"y1":0,"t0":1,"t1":2,"mode":"walk"}],"replace":[1,"x",2]}');
+    expect(m && m.type === "seg" && m.replace).toEqual([1, 2]);
+    const plain = parseLive('{"type":"seg","items":[]}');
+    expect(plain && plain.type === "seg" && plain.replace).toBeUndefined();
+  });
+
+  it("replace() drops queued segments, so the agent stands still then walks the re-timed rest", () => {
+    const tr = new Tracks();
+    tr.reset([{ id: 1, x: 0, y: 0, h: 0, mode: "walk", act: "commute" }], [seg(1, 10, 20, 0, 100), seg(1, 20, 26, 100, 160)]);
+    tr.advance(15);
+    expect(tr.byId.get(1)!.x).toBeCloseTo(50);
+    tr.replace([1]);
+    tr.push([seg(1, 27, 32, 50, 100), seg(1, 32, 38, 100, 160)]);   // held 12 min at x = 50
+    tr.advance(20);
+    expect(tr.byId.get(1)!.x).toBeCloseTo(50);
+    expect(tr.byId.get(1)!.moving).toBe(false);
+    tr.advance(29.5);
+    expect(tr.byId.get(1)!.x).toBeCloseTo(75);
+    expect(tr.byId.get(1)!.moving).toBe(true);
+  });
+});
