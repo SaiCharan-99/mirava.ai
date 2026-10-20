@@ -21,7 +21,7 @@ export interface SegmentsData {
 }
 export interface ConversationsData {
   topics: [string, number, string][]; topics_note: string; gap: [string, string, string, string][];
-  reviewers: [string, string, string, string][]; threads: (string)[][];
+  reviewers: [string, string, string, string][]; threads: (string)[][]; kpis?: KpiRow[]; errors?: string[];
 }
 export interface QuoteView { agent_id: number | null; name?: string | null; age?: number; text: string; kind: string; private: boolean }
 export interface AskAnswerView {

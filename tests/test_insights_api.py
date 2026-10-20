@@ -93,3 +93,49 @@ def test_archive_endpoint(client):
     c, store = client
     assert c.post("/api/products/draft-y/archive").json()["status"] == "archived"
     assert "draft-y" not in [p["product_id"] for p in c.get("/api/products").json()]
+
+
+def _conv_events(db):  # noqa: F811
+    import json as _j
+
+    from tests.test_insights import _ev
+
+    evs = [_ev("conversation", 2900, 3, {"kind": "social", "place_id": "", "product_mentions": ["pulse-5"],
+                                         "topics": ["battery"], "n_messages": 2}, other_id=4, session_id="s-1"),
+           _ev("message", 2900, 3, {"seq": 0, "speaker": 3, "listener": 4, "text": "Seen the Pulse 5 hoarding?",
+                                    "conv_kind": "social"}, other_id=4, session_id="s-1"),
+           _ev("message", 2901, 4, {"seq": 1, "speaker": 4, "listener": 3, "text": "Yes, two-day battery.",
+                                    "conv_kind": "social"}, other_id=3, session_id="s-1", seq=1),
+           _ev("share_plan", 2899, 3, {"withheld_count": 1}, session_id="s-1"),
+           _ev("debrief", 2902, 3, {"belief_deltas": [{"subject": "product:pulse-5", "attitude_delta": 0.2}]},
+               session_id="s-1"),
+           _ev("conversation", 2000, 4, {"kind": "social", "product_mentions": ["pulse-5"], "n_messages": 2},
+               other_id=9, session_id="s-0"),
+           _ev("wom", 2950, 7, {"teller": 4, "product_id": "pulse-5"}, other_id=4, product_id="pulse-5")]
+    db.insert("events", [{**e, "payload": _j.dumps(e["payload"])} for e in evs])
+
+
+def test_conversation_list_detail_and_spread(client, db):  # noqa: F811
+    c, store = client
+    _conv_events(db)
+    store.set("conversations", "s-1", {"session_id": "s-1", "participants": [3, 4], "t": 2900,
+                                       "conversation": {"kind": "social", "product_mentions": ["pulse-5", "old-x"]},
+                                       "messages": [{"seq": 0, "speaker": 3, "listener": 4, "text": "Seen it?"}],
+                                       "private": {"3": {"share_plan": {"opening": "Hi", "points_to_share": ["hoarding"],
+                                                                        "candidates": [{"text": "hoarding", "tag": "opinion"},
+                                                                                       {"text": "can't afford it", "tag": "sensitive"}],
+                                                                        "withheld_count": 1},
+                                                         "debrief": {"summary": "Battery sounds good", "importance": 6}}}})
+    lst = c.get("/api/insights/conversations/list").json()
+    row = next(r for r in lst["rows"] if r["session_id"] == "s-1")
+    assert row["first_line"] == "Seen the Pulse 5 hoarding?" and row["products"][0]["name"] == "Pulse 5"
+    assert row["sentiment"] == "positive"
+    assert [r["session_id"] for r in c.get("/api/insights/conversations/list", params={"q": "two-day"}).json()["rows"]] == ["s-1"]
+    assert c.get("/api/insights/conversations/list", params={"kind": "store"}).json()["rows"] == []
+    d = c.get("/api/insights/conversations/s-1").json()
+    a = next(p for p in d["people"] if p["agent_id"] == 3)
+    assert a["plan"]["kept"] == ["can't afford it"] and a["plan"]["private"] and a["memory"]["importance"] == 6
+    assert [p["id"] for p in d["products"]] == ["pulse-5"]                       # archived product dropped
+    assert [x["agent_id"] for x in d["spread"]["chain"]] == [9, 4, 3]
+    k = c.get("/api/insights/conversations").json()
+    assert k["errors"] == [] and k["kpis"][3][1].endswith("people") and int(k["kpis"][3][1].split()[0]) >= 1

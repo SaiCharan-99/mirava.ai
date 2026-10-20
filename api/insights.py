@@ -442,6 +442,30 @@ def conversations() -> dict[str, Any]:
         return {"threads": [[x["forum"], x["title"], x.get("name") or "",
                              f"{int(x['comments'])} comments · {int(x['upvotes'])} ▲", x["thread_id"]] for x in th]}
 
+    def kpis() -> dict[str, Any]:
+        day = simtime.day_of(_now_t())
+        rows = _q("SELECT day, COUNT(*) AS n, SUM(CASE WHEN ARRAY_LENGTH(product_mentions) > 0 THEN 1 ELSE 0 END) AS prod "
+                  "FROM v_conversations GROUP BY day")
+        today = next((r for r in rows if int(r["day"]) == day), {"n": 0, "prod": 0})
+        total = sum(int(r["n"]) for r in rows)
+        kept = _q("SELECT COUNT(DISTINCT session_id) AS n FROM events WHERE kind = 'share_plan' AND day = @d "
+                  "AND CAST(JSON_VALUE(payload, '$.withheld_count') AS INT64) > 0", {"d": day})
+        rendered = _q("SELECT COUNT(*) AS n FROM v_conversations WHERE rendered AND day = @d", {"d": day})
+        ids = sorted(names)
+        ph = ", ".join(f"'{x}'" for x in ids) or "''"
+        wom = _q(f"SELECT COUNT(DISTINCT agent_id) AS n FROM (SELECT agent_id FROM v_first_heard WHERE channel = "
+                 f"'friend_chat' AND product_id IN ({ph}) UNION ALL SELECT agent_id FROM events WHERE kind = 'wom' "
+                 f"AND product_id IN ({ph}))")
+        n_today, n_r = int(today["n"] or 0), int(rendered[0]["n"]) if rendered else 0
+        return {"kpis": [["Conversations today", f"{n_today:,}", f"{total:,} since Day 1"],
+                         ["About our products", f"{round(_pct(int(today['prod'] or 0), n_today))}%",
+                          f"{int(today['prod'] or 0)} of {n_today} today"],
+                         ["Kept something private", f"{round(_pct(int(kept[0]['n']) if kept else 0, n_r))}%",
+                          f"of {n_r} written-out chats today"],
+                         ["Word of mouth", f"{int(wom[0]['n']) if wom else 0} people",
+                          "heard about a product from someone they know"]]}
+
+    section("kpis", kpis)
     section("topics", topics)
     section("said_vs_thought", lambda: {"gap": said_vs_thought()})
     section("reviewers", reviewers)
@@ -508,6 +532,135 @@ def get_poll(pid: str) -> dict[str, Any]:
 def list_polls() -> list[dict[str, Any]]:
     """Recent polls, newest first."""
     return sorted(store().list("polls", 50), key=lambda d: -int(d.get("t", 0)))
+
+
+CONV_KINDS = {"friends": ("social",), "strangers": ("stranger",), "store": ("store",), "focus": ("focus_group",)}
+PAGE = 30
+
+
+@router.get("/insights/conversations/list")
+def conversation_list(product: str = "", kind: str = "", q: str = "", page: int = 1) -> dict[str, Any]:
+    """Conversation cards, newest first, 30 per page: who, when, where, first line, product, topic, sentiment."""
+    from world.map import get_map
+
+    names = {p["product_id"]: p["name"] for p in _products()}
+    where, params = ["e.kind IN ('conversation', 'interaction')"], {}
+    kinds = CONV_KINDS.get(kind)
+    if kinds:
+        where.append("COALESCE(JSON_VALUE(e.payload, '$.kind'), JSON_VALUE(e.payload, '$.conv_kind')) IN (" +
+                     ", ".join(f"'{k}'" for k in kinds) + ")")
+    if product and product in names:
+        where.append("(e.product_id = @p OR TO_JSON_STRING(JSON_QUERY(e.payload, '$.product_mentions')) LIKE @pl)")
+        params.update({"p": product, "pl": f'%"{product}"%'})
+    if q.strip():
+        where.append("e.session_id IN (SELECT session_id FROM v_messages WHERE LOWER(text) LIKE @q)")
+        params["q"] = f"%{q.strip().lower()[:80]}%"
+    off = max(0, page - 1) * PAGE
+    rows = _q("SELECT e.session_id, e.kind AS ev_kind, e.agent_id, e.other_id, e.t, e.payload FROM events e WHERE "
+              + " AND ".join(where) + " QUALIFY ROW_NUMBER() OVER (PARTITION BY e.session_id ORDER BY e.t) = 1 "
+              f"ORDER BY e.t DESC LIMIT {PAGE + 1} OFFSET {off}", params or None)
+    more = len(rows) > PAGE
+    rows = rows[:PAGE]
+    sids = [r["session_id"] for r in rows if r["session_id"]]
+    first: dict[str, str] = {}
+    mood: dict[str, float] = {}
+    if sids:
+        ph = ", ".join(f"'{x}'" for x in sids if str(x).replace("-", "").replace(":", "").replace("_", "").isalnum())
+        if ph:
+            first = {r["session_id"]: r["text"] for r in _q(f"SELECT session_id, text FROM v_messages WHERE session_id "
+                                                            f"IN ({ph}) AND seq = 0")}
+            for r in _q(f"SELECT session_id, payload FROM events WHERE kind = 'debrief' AND session_id IN ({ph})"):
+                pl = r["payload"] if isinstance(r["payload"], dict) else json.loads(r["payload"] or "{}")
+                mood[r["session_id"]] = mood.get(r["session_id"], 0.0) + sum(float(d.get("attitude_delta", 0))
+                                                                             for d in pl.get("belief_deltas") or [])
+    who = {int(d["agent_id"]): d.get("row", {}) for d in store().list("agents", 5000)}
+    places = get_map().place_by_id
+    out = []
+    for r in rows:
+        pl = r["payload"] if isinstance(r["payload"], dict) else json.loads(r["payload"] or "{}")
+        ck = pl.get("kind") or pl.get("conv_kind") or "social"
+        prods = [x for x in (pl.get("product_mentions") or []) if x in names]
+        place = places.get(pl.get("place_id") or "")
+        a, b = r["agent_id"], r["other_id"]
+        out.append({"session_id": r["session_id"], "t": int(r["t"]), "label": simtime.fmt(int(r["t"])), "kind": ck,
+                    "rendered": r["ev_kind"] == "conversation",
+                    "a": {"agent_id": a, "name": (who.get(int(a)) or {}).get("name") if a is not None else None},
+                    "b": {"agent_id": b, "name": (who.get(int(b)) or {}).get("name") if b is not None else None},
+                    "place": ("Home" if place.kind == "home" else place.name) if place else pl.get("place") or "",
+                    "first_line": first.get(r["session_id"]) or "",
+                    "products": [{"id": x, "name": names[x]} for x in prods],
+                    "topic": (pl.get("topics") or [pl.get("topic")] or [""])[0],
+                    "sentiment": (None if r["session_id"] not in mood else
+                                  "positive" if mood[r["session_id"]] > 0.02 else
+                                  "negative" if mood[r["session_id"]] < -0.02 else "neutral")})
+    return {"rows": out, "page": page, "more": more}
+
+
+@router.get("/insights/conversations/{session_id}")
+def conversation_detail(session_id: str) -> dict[str, Any]:
+    """One conversation for the analyst: both people's private prep (what they meant to share and what they kept
+    back), what they said, and what each one remembers. Private parts are flagged so the UI shows them as PRIVATE."""
+    from world.map import get_map
+
+    doc = store().get("conversations", session_id)
+    if doc is None:
+        raise HTTPException(404, "unknown conversation")
+    who = {int(d["agent_id"]): d.get("row", {}) for d in store().list("agents", 5000)}
+    parts = [int(x) for x in doc.get("participants", [])]
+    conv = doc.get("conversation") or {}
+    place = get_map().place_by_id.get(conv.get("place_id") or "")
+    names = {p["product_id"]: p["name"] for p in _products()}
+    people = []
+    for aid in parts:
+        mine = (doc.get("private") or {}).get(str(aid), {})
+        plan = mine.get("share_plan") or {}
+        shared = set(plan.get("points_to_share") or [])
+        kept = [c["text"] for c in plan.get("candidates") or [] if c.get("text") not in shared
+                and c.get("tag") in ("sensitive", "personal", "opinion")][:3]
+        deb = mine.get("debrief") or {}
+        row = who.get(aid, {})
+        people.append({"agent_id": aid, "name": row.get("name"), "age": row.get("age"), "occupation": row.get("occupation"),
+                       "plan": {"opening": plan.get("opening"), "share": list(shared)[:3], "kept": kept,
+                                "withheld_count": plan.get("withheld_count", len(kept)), "private": True} if plan else None,
+                       "memory": {"text": deb.get("summary") or deb.get("reaction"), "importance": deb.get("importance"),
+                                  "private": True} if deb else None,
+                       "store_thoughts": [{"text": x.get("thought"), "private": True} for x in mine.get("store_thoughts") or []][:4]})
+    prods = [x for x in conv.get("product_mentions") or [] if x in names]
+    return {"session_id": session_id, "kind": conv.get("kind"), "t": doc.get("t"), "label": simtime.fmt(int(doc.get("t") or 0)),
+            "place": ("Home" if place.kind == "home" else place.name) if place else "",
+            "place_xy": {"x": place.entrances[0][0], "y": place.entrances[0][1]} if place else None,
+            "products": [{"id": x, "name": names[x]} for x in prods], "topics": conv.get("topics") or [],
+            "people": people, "messages": [{"seq": m["seq"], "speaker": m["speaker"], "text": m["text"]}
+                                           for m in doc.get("messages", [])],
+            "spread": word_spread(prods[0], parts, int(doc.get("t") or 0)) if prods else None}
+
+
+def word_spread(pid: str, people: list[int], t: int, hops: int = 4) -> dict[str, Any] | None:
+    """The chain of conversations that carried this product to these people: walk back from the conversation to the
+    earlier ones where one of them heard about it, a person at a time."""
+    rows = _q("SELECT agent_id, other_id, t FROM events WHERE kind IN ('conversation', 'wom') AND t <= @t AND "
+              "other_id IS NOT NULL AND (product_id = @p OR TO_JSON_STRING(JSON_QUERY(payload, '$.product_mentions')) LIKE @pl) "
+              "ORDER BY t DESC LIMIT 400", {"t": t, "p": pid, "pl": f'%"{pid}"%'})
+    best: tuple[list[int], int] = ([], t)
+    for start in people[:2]:                               # walk back from whichever of the two heard it first
+        rest = [x for x in people[:2] if x != start]
+        chain, cur, t_cur, seen = [start, *rest], start, t, set(people)
+        for _ in range(hops):
+            prev = next((r for r in rows if int(r["t"]) < t_cur and cur in (r["agent_id"], r["other_id"])
+                         and ({int(r["agent_id"]), int(r["other_id"])} - seen)), None)
+            if prev is None:
+                break
+            other = ({int(prev["agent_id"]), int(prev["other_id"])} - {cur}).pop()
+            chain.insert(0, other)
+            seen.add(other)
+            cur, t_cur = other, int(prev["t"])
+        if len(chain) > len(best[0]):
+            best = (chain, t_cur)
+    chain, t_cur = best
+    if len(chain) <= 2:
+        return None
+    who = {int(d["agent_id"]): d.get("row", {}).get("name") for d in store().list("agents", 5000)}
+    return {"chain": [{"agent_id": a, "name": who.get(a)} for a in chain], "days": round((t - t_cur) / 1440, 1)}
 
 
 # ---------------------------------------------------------------- interviews
