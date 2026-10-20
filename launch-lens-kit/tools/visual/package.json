@@ -1,0 +1,21 @@
+{
+  "name": "launch-lens-visual-check",
+  "private": true,
+  "type": "module",
+  "description": "Pixel-level UI verification: capture app screens with Playwright and compare them to docs/ui-reference (the mockup).",
+  "scripts": {
+    "install-browser": "playwright install chromium",
+    "capture:mockup": "node capture.mjs --target mockup",
+    "capture:app": "node capture.mjs --target app",
+    "compare": "node compare.mjs",
+    "check": "node capture.mjs --target app && node compare.mjs",
+    "fixtures": "node extract-fixtures.mjs"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.0.0",
+    "@fontsource/jetbrains-mono": "^5.0.0",
+    "playwright": "^1.48.0",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0"
+  }
+}

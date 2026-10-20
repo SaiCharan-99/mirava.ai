@@ -1,0 +1,411 @@
+{
+  "_doc": "Screens compared between the mockup (docs/ui-mockup.html) and the real app. Both targets must expose the same data-testid attributes and the same window.__ll hooks in visual-test mode. Fixtures for the app: node extract-fixtures.mjs. See tools/visual/README.md and docs/INTERFACES.md \u00a76.",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "targets": {
+    "mockup": {
+      "base": "docs/ui-mockup.html",
+      "query": "?freeze=1",
+      "router": "hash",
+      "outDir": "docs/ui-reference"
+    },
+    "app": {
+      "base": "http://localhost:5173",
+      "query": "?visualTest=1",
+      "router": "path",
+      "outDir": "artifacts/visual/app"
+    },
+    "selftest": {
+      "base": "docs/ui-mockup.html",
+      "query": "?freeze=1",
+      "router": "hash",
+      "outDir": "artifacts/visual/app"
+    }
+  },
+  "defaultMask": [
+    "[data-testid=event-ticker]"
+  ],
+  "defaultMaxLayout": 0.06,
+  "screens": [
+    {
+      "name": "01-globe",
+      "route": "globe",
+      "phase": 1,
+      "actions": [
+        {
+          "wait": 400
+        }
+      ],
+      "mask": []
+    },
+    {
+      "name": "02-world",
+      "route": "world",
+      "phase": 1
+    },
+    {
+      "name": "03-world-hover",
+      "route": "world",
+      "phase": 2,
+      "actions": [
+        {
+          "eval": "window.__ll.hoverAgent(window.__ll.featured())"
+        },
+        {
+          "wait": 300
+        }
+      ],
+      "maxLayout": 0.1,
+      "maxEdge": 0.1
+    },
+    {
+      "name": "04-profile-overview",
+      "route": "world",
+      "phase": 2,
+      "actions": [
+        {
+          "eval": "window.__ll.openAgent(window.__ll.featured(),'overview')"
+        },
+        {
+          "wait": 400
+        }
+      ],
+      "maxLayout": 0.1,
+      "maxEdge": 0.1
+    },
+    {
+      "name": "05-profile-relations",
+      "route": "world",
+      "phase": 2,
+      "actions": [
+        {
+          "eval": "window.__ll.openAgent(window.__ll.featured(),'relations')"
+        },
+        {
+          "wait": 400
+        }
+      ],
+      "maxLayout": 0.1,
+      "maxEdge": 0.1
+    },
+    {
+      "name": "06-profile-possessions",
+      "route": "world",
+      "phase": 2,
+      "actions": [
+        {
+          "eval": "window.__ll.openAgent(window.__ll.featured(),'possessions')"
+        },
+        {
+          "wait": 400
+        }
+      ],
+      "maxLayout": 0.1,
+      "maxEdge": 0.1
+    },
+    {
+      "name": "07-profile-thoughts",
+      "route": "world",
+      "phase": 3,
+      "actions": [
+        {
+          "eval": "window.__ll.openAgent(window.__ll.featured(),'thoughts')"
+        },
+        {
+          "wait": 400
+        }
+      ],
+      "maxLayout": 0.1,
+      "maxEdge": 0.1
+    },
+    {
+      "name": "08-profile-conversations",
+      "route": "world",
+      "phase": 3,
+      "actions": [
+        {
+          "eval": "window.__ll.openAgent(window.__ll.featured(),'conversations')"
+        },
+        {
+          "wait": 400
+        }
+      ],
+      "maxLayout": 0.1,
+      "maxEdge": 0.1
+    },
+    {
+      "name": "09-profile-memory",
+      "route": "world",
+      "phase": 3,
+      "actions": [
+        {
+          "eval": "window.__ll.openAgent(window.__ll.featured(),'memory')"
+        },
+        {
+          "wait": 400
+        }
+      ],
+      "maxLayout": 0.1,
+      "maxEdge": 0.1
+    },
+    {
+      "name": "10-world-watching",
+      "route": "world",
+      "phase": 2,
+      "actions": [
+        {
+          "click": "[data-testid=side-tab-watching]"
+        },
+        {
+          "wait": 200
+        }
+      ]
+    },
+    {
+      "name": "11-world-products",
+      "route": "world",
+      "phase": 4,
+      "actions": [
+        {
+          "click": "[data-testid=side-tab-products]"
+        },
+        {
+          "wait": 200
+        }
+      ]
+    },
+    {
+      "name": "12-world-highlights",
+      "route": "world",
+      "phase": 3,
+      "actions": [
+        {
+          "eval": "window.__ll.highlights(21)"
+        },
+        {
+          "wait": 200
+        }
+      ]
+    },
+    {
+      "name": "13-world-look",
+      "route": "world",
+      "phase": 2,
+      "actions": [
+        {
+          "eval": "window.__ll.focus(window.__ll.featured())"
+        }
+      ],
+      "mask": [],
+      "maxLayout": 0.4,
+      "reviewOnly": true,
+      "hide": [
+        "[data-testid=mockup-only]"
+      ]
+    },
+    {
+      "name": "14-world-night",
+      "route": "world",
+      "phase": 2,
+      "actions": [
+        {
+          "eval": "window.__ll.setTime(21.5)"
+        },
+        {
+          "eval": "window.__ll.focus(window.__ll.featured())"
+        }
+      ],
+      "mask": [],
+      "maxLayout": 0.4,
+      "reviewOnly": true,
+      "hide": [
+        "[data-testid=mockup-only]"
+      ]
+    },
+    {
+      "name": "15-world-lens-aware",
+      "route": "world",
+      "phase": 4,
+      "actions": [
+        {
+          "eval": "window.__ll.overview()"
+        },
+        {
+          "eval": "window.__ll.lens('aware')"
+        }
+      ],
+      "mask": [],
+      "maxLayout": 0.4,
+      "reviewOnly": true,
+      "hide": [
+        "[data-testid=mockup-only]"
+      ]
+    },
+    {
+      "name": "16-world-lens-hoardings",
+      "route": "world",
+      "phase": 4,
+      "actions": [
+        {
+          "eval": "window.__ll.overview()"
+        },
+        {
+          "eval": "window.__ll.lens('hoardings')"
+        }
+      ],
+      "mask": [],
+      "maxLayout": 0.4,
+      "reviewOnly": true,
+      "hide": [
+        "[data-testid=mockup-only]"
+      ]
+    },
+    {
+      "name": "17-world-launch-fx",
+      "route": "world",
+      "phase": 4,
+      "actions": [
+        {
+          "eval": "window.__ll.overview()"
+        },
+        {
+          "eval": "window.__ll.launchFx('nova-x1',0.45)"
+        }
+      ],
+      "mask": [],
+      "maxLayout": 0.4,
+      "reviewOnly": true,
+      "hide": [
+        "[data-testid=mockup-only]"
+      ]
+    },
+    {
+      "name": "18-launch-list",
+      "route": "launch",
+      "phase": 4
+    },
+    {
+      "name": "19-launch-details",
+      "route": "launch/nova-x1/details",
+      "phase": 4
+    },
+    {
+      "name": "20-launch-content",
+      "route": "launch/nova-x1/content",
+      "phase": 4
+    },
+    {
+      "name": "21-launch-understand",
+      "route": "launch/nova-x1/understand",
+      "phase": 4
+    },
+    {
+      "name": "21b-launch-graph",
+      "route": "launch/nova-x1/understand",
+      "phase": 4,
+      "actions": [
+        {
+          "eval": "document.querySelector('[data-testid=graph-toolbar]').scrollIntoView({block:'start'})"
+        },
+        {
+          "eval": "window.__ll.graphSelect('c_best')"
+        },
+        {
+          "wait": 900
+        }
+      ],
+      "mask": [],
+      "maxLayout": 0.4,
+      "reviewOnly": true,
+      "hide": [
+        "[data-testid=mockup-only]"
+      ]
+    },
+    {
+      "name": "22-launch-plan",
+      "route": "launch/nova-x1/plan",
+      "phase": 4
+    },
+    {
+      "name": "23-launch-ready",
+      "route": "launch/nova-x1/ready",
+      "phase": 4
+    },
+    {
+      "name": "24-insights-ask",
+      "route": "insights/ask",
+      "phase": 5
+    },
+    {
+      "name": "25-insights-overview",
+      "route": "insights/overview",
+      "phase": 5
+    },
+    {
+      "name": "26-insights-sources",
+      "route": "insights/sources",
+      "phase": 5
+    },
+    {
+      "name": "27-insights-hoardings",
+      "route": "insights/hoardings",
+      "phase": 5
+    },
+    {
+      "name": "28-insights-segments",
+      "route": "insights/segments",
+      "phase": 5
+    },
+    {
+      "name": "29-insights-conversations",
+      "route": "insights/conversations",
+      "phase": 5
+    },
+    {
+      "name": "30-insights-polls",
+      "route": "insights/polls",
+      "phase": 5
+    },
+    {
+      "name": "31-insights-interview",
+      "route": "insights/interview",
+      "phase": 5
+    },
+    {
+      "name": "32-people",
+      "route": "people",
+      "phase": 2
+    },
+    {
+      "name": "33-guide",
+      "route": "guide",
+      "phase": 1
+    },
+    {
+      "name": "34-people-light",
+      "route": "people",
+      "phase": 6,
+      "actions": [
+        {
+          "eval": "document.documentElement.dataset.theme='light'"
+        },
+        {
+          "wait": 200
+        }
+      ]
+    }
+  ],
+  "defaultMaxEdge": 0.06,
+  "defaultHide": [
+    "[data-testid=world-canvas]",
+    "[data-testid=minimap]",
+    "[data-testid=launch-fx]",
+    "[data-testid=globe-canvas]",
+    "[data-testid=graph-canvas]",
+    "[data-testid=plan-canvas]",
+    "[data-testid=sites-map]",
+    "[data-testid=mockup-only]"
+  ]
+}
