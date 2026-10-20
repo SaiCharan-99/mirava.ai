@@ -247,6 +247,7 @@ async def run_understanding(pid: str) -> dict:
     for c in p.creatives:
         c.stimulus = by_id.get(c.creative_id)
     p.understanding = out["understanding"]
+    p.specs = out["specs"]
     from world.map import get_map
 
     names = [s.name for s in get_map().stores if p.plan is None or s.store_id in p.plan.stores]

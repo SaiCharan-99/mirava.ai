@@ -60,6 +60,36 @@ class StimulusOut(BaseModel):
     description: str
 
 
+class SpecsOut(BaseModel):
+    """Neutral 0..1 rating per attribute (the product's 'truth' for the opinion engine)."""
+
+    battery: float = Field(ge=0, le=1)
+    camera: float = Field(ge=0, le=1)
+    display: float = Field(ge=0, le=1)
+    performance: float = Field(ge=0, le=1)
+    software: float = Field(ge=0, le=1)
+    design: float = Field(ge=0, le=1)
+    price_value: float = Field(ge=0, le=1)
+    brand: float = Field(ge=0, le=1)
+
+
+async def extract_specs(p: Product, llm: LLMClient | None = None) -> dict[str, float]:
+    """Truth specs per attribute: keyword rules always; a neutral Flash rating (blended 50/50) when a real model is on."""
+    from mind.opinion import heuristic_specs
+
+    rules = heuristic_specs(p.features, p.claims, p.price_inr, p.brand)
+    if llm is None or isinstance(llm, FakeGemini):
+        return rules
+    try:
+        res = await llm.generate(models.MODEL_FLASH, PROMPTS.joinpath("specs.md").read_text(encoding="utf-8")
+                                 .format(brief=wrap(_brief(p), "product")), SpecsOut, purpose="specs", max_tokens=200,
+                                 priority_class="P0")
+        got = res.data.model_dump()
+        return {a: round(0.5 * rules[a] + 0.5 * float(got[a]), 3) for a in rules}
+    except Exception:  # noqa: BLE001 — the rules are the fallback
+        return rules
+
+
 def rule_risk(claim: str) -> tuple[Risk, str]:
     """Heuristic claim risk: absolutes are red, vague superlatives amber, specific numbers green."""
     if _ABSOLUTE.search(claim):
@@ -138,4 +168,4 @@ async def understand(p: Product, llm: LLMClient) -> dict:
             except Exception:  # noqa: BLE001
                 pass
         stimuli.append(st)
-    return {"understanding": {**profile, "claims": claims}, "stimuli": stimuli}
+    return {"understanding": {**profile, "claims": claims}, "stimuli": stimuli, "specs": await extract_specs(p, llm)}

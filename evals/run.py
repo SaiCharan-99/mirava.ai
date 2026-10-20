@@ -217,7 +217,59 @@ def eval_survey(w: dict[str, Any]) -> dict[str, Any]:
             "satisfice_lowC": round(sat(low_c), 3), "satisfice_highC": round(sat(high_c), 3)}
 
 
-def write(ins: dict[str, Any], sv: dict[str, Any], meta: dict[str, Any]) -> None:
+def eval_opinion(w: dict[str, Any]) -> dict[str, Any]:
+    """Phase-1 opinion engine checks on the finished world: diversity, income divergence, ego gap, reference effect.
+
+    Adds one synthetic premium phone (better display and software, far pricier) to the catalog and shows it to every
+    agent as a review, then measures what each person now thinks."""
+    from statistics import mean, pstdev
+
+    from shared.schemas.product import Product
+
+    e, pid = w["engine"], w["pid"]
+    op = e.opinion
+    profiles = e.world.profiles
+    base = next(lp.p for lp in e.media.live.values() if lp.p.product_id == pid)
+    lumen = Product(product_id="lumen-pro", name="Lumen Pro", brand="Lumen", category="Smartphone", price_inr=92000,
+                    launch_offer=None, features=["6.7\" 144 Hz LTPO display", "Snapdragon 8 Gen 3",
+                                                 "7 years of OS updates", "5,000 mAh battery"], claims=[],
+                    target_personas=[], audience=[], strategy={}, creatives=[], plan=None, status="live", color="#fff")
+    op.set_catalog([base, lumen])
+    ids = [p.agent_id for p in profiles if p.special_role == "none"]
+    aware = [a for a in ids if op.aware_of(a, pid)]
+    for a in ids:                                    # everyone gets to know Pulse 5 as it is advertised …
+        if not op.aware_of(a, pid):
+            op.evidence(a, pid, ["battery", "camera", "display"], "ad")
+    before = {a: op.attitude(a, pid) for a in ids}
+    std_before = pstdev(list(before.values())) if len(before) > 2 else 0.0
+    for a in ids:                                    # … then a better, pricier phone
+        op.evidence(a, "lumen-pro", None, "review")
+    after = {a: op.attitude(a, pid) for a in ids}
+    from commerce.need import affordability
+
+    top: dict[str, dict[str, int]] = {}
+    for a in ids:                                    # what they would actually pick: liking × can I afford it
+        band = profiles[a].income_band
+        money = profiles[a].money.model_dump()
+
+        def utility(p: str, price: int, a: int = a, money: dict[str, Any] = money) -> float:
+            return (op.attitude(a, p) + 1) / 2 * (0.6 + 0.4 * affordability(price, money)[0])
+
+        pick = pid if utility(pid, base.price_inr) >= utility("lumen-pro", lumen.price_inr) else "lumen-pro"
+        top.setdefault(band, {}).setdefault(pick, 0)
+        top[band][pick] += 1
+    lead = {b: max(c, key=lambda k: c[k]) for b, c in top.items() if sum(c.values()) >= 5}
+    lows = [a for a in ids if profiles[a].income_band in ("<25k", "25-50k")]
+    gap = [a for a in lows if (lambda pub_priv: pub_priv[0] < pub_priv[1] - 0.1)(
+        (op.expressed(a, "lumen-pro")[0], op.private_attitude(a, "lumen-pro")))]
+    care = [a for a in ids if op.W[a, op.attrs.index("display")] > sorted(op.W[:, op.attrs.index("display")])[len(ids) // 2]]
+    drop = mean(after[a] - before[a] for a in care) if care else 0.0
+    return {"n": len(ids), "n_aware_from_run": len(aware), "att_std": round(std_before, 3),
+            "leader_by_income": lead, "gap_share_low_income": round(len(gap) / max(1, len(lows)), 3),
+            "drop_after_better_phone": round(drop, 3), "n_care_display": len(care)}
+
+
+def write(ins: dict[str, Any], sv: dict[str, Any], meta: dict[str, Any], op: dict[str, Any] | None = None) -> None:
     """Append a dated section to evals/RESULTS.md."""
     ok = lambda b: "PASS" if b else "FAIL"  # noqa: E731
     lines = [f"\n## Evals · {time.strftime('%Y-%m-%d %H:%M')} · backend {ins['backend']} · {meta}\n",
@@ -243,6 +295,16 @@ def write(ins: dict[str, Any], sv: dict[str, Any], meta: dict[str, Any]) -> None
               f"{ok(e['wave_explained'] is None or e['wave_explained'] >= 0.99)}",
               f"- Satisficing: late {e['satisfice_late']} vs first {e['satisfice_early']}; low-C {e['satisfice_lowC']} vs "
               f"high-C {e['satisfice_highC']} — {ok(e['satisfice_late'] >= e['satisfice_early'] and e['satisfice_lowC'] >= e['satisfice_highC'])}"]
+    if op is not None:
+        lines += ["", "### Opinion engine (evals/run.py · phase 1)",
+                  f"- Attitude spread across {op['n']} residents (std): {op['att_std']} (target ≥ 0.2) — {ok(op['att_std'] >= 0.2)}",
+                  f"- Phone they would pick (liking × affordability), by income band: {op['leader_by_income']} (target: not the same "
+                  f"everywhere) — "
+                  f"{ok(len(set(op['leader_by_income'].values())) >= 2)}",
+                  f"- Low-income residents who talk down an unaffordable premium phone: {op['gap_share_low_income']:.0%} "
+                  f"(band 5–25%) — {ok(0.05 <= op['gap_share_low_income'] <= 0.25)}",
+                  f"- Attitude to the first phone after a better one appears, for people who care about display: "
+                  f"{op['drop_after_better_phone']:+} (target < 0) — {ok(op['drop_after_better_phone'] < 0)}"]
     OUT.parent.mkdir(exist_ok=True)
     prev = OUT.read_text(encoding="utf-8") if OUT.exists() else "# Eval results\n"
     OUT.write_text(prev + "\n".join(lines) + "\n", encoding="utf-8")
@@ -258,8 +320,10 @@ def main() -> None:
         w = asyncio.run(build_world(a.agents, a.days, tmp))
         ins = asyncio.run(eval_insights(w))
         sv = eval_survey(w)
-        write(ins, sv, {"agents": a.agents, "days": a.days})
-        print(json.dumps({"insights": {k: v for k, v in ins.items() if k != "rows"}, "survey": sv}, indent=1, default=str))
+        op = eval_opinion(w)
+        write(ins, sv, {"agents": a.agents, "days": a.days}, op)
+        print(json.dumps({"insights": {k: v for k, v in ins.items() if k != "rows"}, "survey": sv, "opinion": op},
+                         indent=1, default=str))
 
 
 if __name__ == "__main__":

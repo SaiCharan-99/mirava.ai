@@ -21,6 +21,7 @@ from media.attention import AttentionCtx, attend, attend_feed, attend_print, dwe
 from media.audience import audience_ids
 from mind.ad_thought import apply_thought, rule_thought, think_on_notice
 from mind.memory import embed_cached
+from mind.opinion import attrs_in
 from population.possessions import phone_age_years
 from shared import time as simtime
 from shared.llm import LLMClient
@@ -71,8 +72,9 @@ class MediaRuntime:
     """Runs after World.step() (and the social runtime) every sim minute."""
 
     def __init__(self, store: DocStore, llm: LLMClient, governor: BudgetGovernor, w: World, *,
-                 social: Any = None, embed_texts: bool = True) -> None:
+                 social: Any = None, embed_texts: bool = True, opinion: Any = None) -> None:
         self.store, self.llm, self.gov, self.social = store, llm, governor, social
+        self.opinion = opinion                        # OpinionEngine (None: legacy summed attitudes)
         self.embed_texts = embed_texts
         self.sites = list(w.wm.sites)
         self.site_xy = np.array([[s.x, s.y] for s in self.sites]) if self.sites else np.zeros((0, 2))
@@ -169,6 +171,7 @@ class MediaRuntime:
         ints = {i for a in p.audience for i in a.filter.get("interests_any", [])}
         lp = LiveProduct(p, aud, ints)
         self.live[p.product_id] = lp
+        self._sync_catalog()
         self.aware.setdefault(p.product_id, set())
         self.site_day = -1
         return lp
@@ -204,7 +207,12 @@ class MediaRuntime:
             self._new_thread(w, bus, int(seed["author"]), seed.get("forum", "r/BangaloreTech"),
                              seed.get("title", f"{p.name} launches"), body, p.product_id)
 
+    def _sync_catalog(self) -> None:
+        if self.opinion is not None:
+            self.opinion.set_catalog(lp.p for lp in self.live.values())
+
     def _wire(self, w: World) -> None:
+        self._sync_catalog()
         w.products_live = [{"id": lp.p.product_id, "name": lp.p.name, "color": lp.p.color,
                             "launched_at_t": lp.p.launched_at_t} for lp in self.live.values()]
         w.awareness = {pid: round(len(s) / max(1, len(w.agents)), 3) for pid, s in self.aware.items()}
@@ -279,9 +287,27 @@ class MediaRuntime:
         n = self.seen.get(f"{aid}|{cid}", [0, 0])
         fatigue = float(w.needs[aid, 3]) if w.needs.shape[1] > 3 else 0.0
         return AttentionCtx(mode=mode, dwell_s=dwell, lit_night=lit_night, clutter=clutter, on_phone=on_phone,
-                            fatigue=min(1.0, fatigue), relevance=rel, attitude=self.attitude.get(f"{aid}|{pid}", 0.0),
+                            fatigue=min(1.0, fatigue), relevance=rel, attitude=self._attitude(aid, pid),
                             familiarity=1.0 if aid in self.aware.get(pid, set()) else 0.0,
                             need=self._need(w, aid, lp), n_seen=n[0], n_noticed=n[1]), lp
+
+    def _attitude(self, aid: int, pid: str) -> float:
+        """Current attitude of one agent to one product: computed by the opinion engine when it is on."""
+        if self.opinion is not None:
+            return float(self.opinion.attitude(aid, pid)) if pid in self.live else 0.0
+        return self.attitude.get(f"{aid}|{pid}", 0.0)
+
+    @staticmethod
+    def _source_of(channel: str) -> str:
+        return {"review": "review", "community": "community"}.get(channel, "ad")
+
+    def _observe(self, aid: int, pid: str, channel: str, stim: StimulusRecord, strength: float = 1.0) -> None:
+        """A noticed creative becomes evidence about the attributes it talks about (generic ads: the brand only)."""
+        if self.opinion is None:
+            return
+        text = " ".join([*stim.claims_carried, stim.hook, stim.description])
+        covered = attrs_in(text) or ["brand"]
+        self.opinion.evidence(aid, pid, covered, self._source_of(channel), strength=strength)
 
     def _stim(self, pid: str, cid: str) -> StimulusRecord | None:
         if pid.startswith("baseline:"):
@@ -368,8 +394,10 @@ class MediaRuntime:
             return
         lp = self.live[pid]
         self.aware[pid].add(aid)
+        self._observe(aid, pid, channel, stim, 0.6 if outcome == "partial" else 1.0)
         meta = {"aid": aid, "pid": pid, "cid": cid, "channel": channel, "site_id": site_id, "place": place,
-                "trigger": ev.event_id, "rel": ctx.relevance, "stim": stim}
+                "trigger": ev.event_id, "rel": ctx.relevance, "stim": stim,
+                "opinions": self.opinion.brief(aid, pid) if self.opinion is not None else ""}
         if self.gov.allow("P1", EST["P1"]):
             key = f"th:{ev.event_id}"
             self._meta[key] = meta
@@ -378,13 +406,15 @@ class MediaRuntime:
             out = rule_thought(stim, ctx.relevance, channel, lp.p.name, place)
             self._emit_thought(w, bus, t, meta, out, rendered=False)
             self._background(apply_thought(aid, pid, out, t=t, channel=channel, event_ref=ev.event_id, store=self.store,
-                                           llm=None, on_event=None, product_name=lp.p.name, place=place))
+                                           llm=None, on_event=None, product_name=lp.p.name, place=place,
+                                           set_attitude=self.opinion is None))
 
     def _think(self, meta: dict[str, Any], t: int) -> Any:
         lp = self.live[meta["pid"]]
         return lambda: think_on_notice(meta["aid"], meta["pid"], lp.p.name, meta["stim"], meta["channel"],
                                        meta["place"], t, store=self.store, llm=self.llm, now=simtime.fmt(t),
-                                       event_ref=meta["trigger"], on_event=self._hook(meta["aid"], t))
+                                       event_ref=meta["trigger"], on_event=self._hook(meta["aid"], t),
+                                       opinions=meta.get("opinions", ""), set_attitude=self.opinion is None)
 
     def _hook(self, aid: int, t: int) -> Any:
         bus = self._bus
@@ -407,7 +437,11 @@ class MediaRuntime:
                    "wants_to_tell": out["wants_to_tell"], "importance": out["importance"]}
         ev = bus.new("thought", t, aid, payload, product_id=pid, site_id=meta["site_id"], rendered=rendered)
         key = f"{aid}|{pid}"
-        self.attitude[key] = max(-1.0, min(1.0, self.attitude.get(key, 0.0) + float(out["attitude_delta"])))
+        if self.opinion is not None:                   # the model's reaction is a small nudge on a computed attitude
+            self.opinion.add_reaction(aid, pid, float(out["attitude_delta"]))
+            self.attitude[key] = self.opinion.attitude(aid, pid)
+        else:
+            self.attitude[key] = max(-1.0, min(1.0, self.attitude.get(key, 0.0) + float(out["attitude_delta"])))
         w.counters["thoughts_today"] += 1
         self.stats["thoughts_rendered" if rendered else "thoughts_unrendered"] += 1
         w.live_evts.append({"k": "notice", "a": aid, "site_id": meta["site_id"], "product": pid,
@@ -440,7 +474,8 @@ class MediaRuntime:
                     self._emit_thought(w, bus, t, meta, out, rendered=False)
                     self._background(apply_thought(meta["aid"], meta["pid"], out, t=t, channel=meta["channel"],
                                                    event_ref=meta["trigger"], store=self.store, llm=None,
-                                                   on_event=None, product_name=lp.p.name, place=meta["place"]))
+                                                   on_event=None, product_name=lp.p.name, place=meta["place"],
+                                                   set_attitude=self.opinion is None))
                     continue
                 out, cost = res
                 self._cost(cost, "P1")
@@ -660,6 +695,7 @@ class MediaRuntime:
             if out == "scroll":
                 continue
             self.aware[lp.p.product_id].add(aid)
+            self._observe(aid, lp.p.product_id, "community", stim, 1.0 if out == "full" else 0.6)
             opin = float(self.profiles[aid]["persona"]["disclosure"].get("opinions", 0.5))
             wants_comment = rng.random() < 0.10 + 0.25 * opin
             key = f"com:{aid}:{th['thread_id']}"

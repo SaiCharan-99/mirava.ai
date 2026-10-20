@@ -54,7 +54,7 @@ def rule_thought(stim: StimulusRecord, relevance: float, channel: str, product_n
 
 async def apply_thought(agent_id: int, product_id: str, out: dict[str, Any], *, t: int, channel: str,
                         event_ref: str, store: DocStore, llm: LLMClient | None, on_event: EventHook | None,
-                        product_name: str, place: str | None) -> None:
+                        product_name: str, place: str | None, set_attitude: bool = True) -> None:
     """L2 memory + L3 belief update (first_heard set once) for the agent's own stores."""
     ms = MemoryStore(agent_id, store, llm, on_event)
     await ms.add(MemoryEntry(mid=f"ad-{event_ref}-{agent_id}", agent_id=agent_id, t=t, kind="ad_thought",
@@ -64,9 +64,10 @@ async def apply_thought(agent_id: int, product_id: str, out: dict[str, Any], *, 
     subject = f"product:{product_id}"
     prev = await ms.beliefs([subject])
     b = prev[0] if prev else None
-    delta: dict[str, Any] = {"attitude": (b.attitude if b else 0.0) + float(out["attitude_delta"]), "t": t,
-                             "sources_seen": {channel: 1},
+    delta: dict[str, Any] = {"t": t, "sources_seen": {channel: 1},
                              "first_heard": {"channel": channel, "t": t, "ref": event_ref}}
+    if set_attitude:                       # off when the opinion engine computes (and mirrors) the attitude
+        delta["attitude"] = (b.attitude if b else 0.0) + float(out["attitude_delta"])
     for key in ("reasons_for", "reasons_against", "open_questions"):
         if out.get(key):
             delta[key] = list(dict.fromkeys([*out[key], *(getattr(b, key) if b else [])]))[:3]
@@ -82,11 +83,12 @@ async def apply_thought(agent_id: int, product_id: str, out: dict[str, Any], *, 
 
 async def think_on_notice(agent_id: int, product_id: str, product_name: str, stim: StimulusRecord, channel: str,
                           place: str | None, t: int, *, store: DocStore, llm: LLMClient, now: str,
-                          event_ref: str, on_event: EventHook | None = None) -> tuple[dict[str, Any], float]:
+                          event_ref: str, on_event: EventHook | None = None, opinions: str = "",
+                          set_attitude: bool = True) -> tuple[dict[str, Any], float]:
     """Rendered thought: own context + creative description → private thought, memory and belief update."""
     seen = describe(channel, product_name, place)
     ctx = await build(agent_id, "ad_thought", f"{product_name} {stim.hook}", f"Just noticed {seen}.",
-                      store=store, llm=llm, now=now, now_t=t)
+                      store=store, llm=llm, now=now, now_t=t, opinions=opinions)
     prompt = (PROMPT.read_text(encoding="utf-8").replace("{context}", ctx.render())
               .replace("{seen}", seen).replace("{creative}", wrap(stim.description + " Hook: " + stim.hook,
                                                                     "creative")))
@@ -95,5 +97,5 @@ async def think_on_notice(agent_id: int, product_id: str, product_name: str, sti
     out = res.data.model_dump()
     out["thought"] = out["thought"][:400]
     await apply_thought(agent_id, product_id, out, t=t, channel=channel, event_ref=event_ref, store=store, llm=llm,
-                        on_event=on_event, product_name=product_name, place=place)
+                        on_event=on_event, product_name=product_name, place=place, set_attitude=set_attitude)
     return out, res.usage.cost_usd

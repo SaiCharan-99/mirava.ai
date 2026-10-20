@@ -246,3 +246,31 @@ async def test_decision_batches_32_per_call() -> None:
     assert calls == [32, 32, 6] and all(r.choice == "talk" and r.engine == "openrouter" for r in res)
     await d.decide_batch(reqs)
     assert len(calls) == 3                # dedup cache
+
+
+async def test_opinion_brief_stays_in_the_owners_own_prompts() -> None:
+    """Phase 1: each agent's 'how I see these phones' goes only into THEIR prompts. It reaches the shared dialogue
+    prompt or the other agent's debrief only if the owner chose to say it (EchoLLM models that worst case by echoing
+    each prompt into the agent's own share plan)."""
+    store, llm, dec = MemoryStoreBackend(), EchoLLM(), FakeDecision()
+    for aid, nm in ((1, "Meera"), (2, "Arjun")):
+        profile(store, aid, nm)
+    alpha, beta = "OPINION-MARKER-ALPHA", "OPINION-MARKER-BETA"
+    out = await run_conversation("o1", Participant(1, "Meera", "casual"), Participant(2, "Arjun", "casual"),
+                                 gres(1, 2), "friends", 0.8, "cafe", 100, store=store, llm=llm, decider=dec,
+                                 opinions={1: f"{alpha} battery clearly better", 2: f"{beta} display worse"})
+    by_purpose: dict[str, list[str]] = {}
+    for purpose, text in llm.prompts:
+        by_purpose.setdefault(purpose, []).append(text)
+    preps = by_purpose["conv_prep"]
+    assert len([p for p in preps if alpha in p]) == 1 and len([p for p in preps if beta in p]) == 1
+    assert all(not (alpha in p and beta in p) for p in preps)               # before anything is said, nothing crosses
+    plans = {e["agent_id"]: json.dumps(e["payload"]) for e in out.events if e["kind"] == "share_plan"}
+    spoken = " ".join(m.text for m in out.messages)
+    for d in by_purpose["conv_dialogue"]:                                    # the writer sees only what was planned to be said
+        assert (alpha not in d) or alpha in plans[1]
+        assert (beta not in d) or beta in plans[2]
+    for p in by_purpose["conv_debrief"]:                                     # a debrief sees its own brief + the spoken lines
+        for marker in (alpha, beta):
+            if marker in p and marker not in spoken:
+                assert sum(marker in q for q in by_purpose["conv_debrief"]) == 1   # only the owner's own debrief

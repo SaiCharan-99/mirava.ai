@@ -20,6 +20,7 @@ from engine.tasks import TaskQueue
 from engine.world import World
 from mind.decision import DecisionAdapter
 from mind.memory import MemoryStore, embed_cached
+from mind.opinion import attrs_in
 from shared import time as simtime
 from shared.llm import LLMClient
 from shared.schemas.events import Event
@@ -42,8 +43,13 @@ class CommerceRuntime:
     """Runs after the media runtime each tick; one writer (the engine) for all buying state."""
 
     def __init__(self, store: DocStore, llm: LLMClient, decider: DecisionAdapter, governor: BudgetGovernor, w: World,
-                 *, media: Any, social: Any = None, embed_texts: bool = True) -> None:
+                 *, media: Any, social: Any = None, embed_texts: bool = True, opinion: Any = None) -> None:
         self.store, self.llm, self.decider, self.gov = store, llm, decider, governor
+        self.opinion = opinion                            # OpinionEngine (None: legacy summed attitudes)
+        self._bus: EventBus | None = None
+        self._now = 0
+        if opinion is not None:
+            opinion.money_fn = lambda aid: self.money(w, aid)
         self.media, self.social = media, social
         self.embed_texts = embed_texts
         self.pairs: dict[str, Pair] = {}                  # "aid|pid" → Pair
@@ -137,10 +143,12 @@ class CommerceRuntime:
         if ev.kind == "thought" and pid and not pid.startswith("baseline:"):
             pr = self.pair(aid, pid, ev.t)
             pr.aware = True
-            pr.attitude = max(-1.0, min(1.0, pr.attitude + float(p.get("attitude_delta") or 0.0)))
+            if self.opinion is None:
+                pr.attitude = max(-1.0, min(1.0, pr.attitude + float(p.get("attitude_delta") or 0.0)))
             pr.open_questions = list(dict.fromkeys([*(p.get("open_questions") or []), *pr.open_questions]))[:3]
             if p.get("intent_change") in ("research", "visit_store"):
                 pr.fit = min(1.0, pr.fit + 0.25)
+                pr.boost = min(0.5, pr.boost + 0.25)
             self._touch(aid, pid, ev.event_id)
         elif ev.kind == "exposure" and pid and not pid.startswith("baseline:") and \
                 p.get("outcome") in ("notice", "partial", "full"):
@@ -159,7 +167,8 @@ class CommerceRuntime:
                 pr = self.pair(aid, q, ev.t)
                 pr.aware = True
                 dv = float(d.get("attitude_delta") or 0.0)
-                pr.attitude = max(-1.0, min(1.0, pr.attitude + dv))
+                if self.opinion is None:
+                    pr.attitude = max(-1.0, min(1.0, pr.attitude + dv))
                 if p.get("conv_kind") != "store":
                     pr.social = max(-1.0, min(1.0, pr.social + 2 * dv))
                 self._touch(aid, q, ev.event_id)
@@ -182,6 +191,7 @@ class CommerceRuntime:
         """Apply finished visits/decisions, run transitions, inject visits, start inquiries."""
         t = w.t
         m = simtime.minute_of_day(t)
+        self._bus, self._now = bus, t
         await self._apply(w, bus, t)
         products = self._products()
         if m == WAKE_UP:                                   # wake-up planning: every live pair
@@ -225,8 +235,37 @@ class CommerceRuntime:
             self._start_inquiry(w, bus, t, aid, place_id)
         self.arrivals = []
 
+    def _sync(self, aid: int, pid: str, pr: Pair, t: int, cause: str) -> None:
+        """Attitude and fit come from the opinion engine; mirror material changes into the agent's belief doc."""
+        if self.opinion is None:
+            return
+        att = float(self.opinion.attitude(aid, pid))
+        pr.attitude = att
+        pr.fit = max(0.0, min(1.0, float(self.opinion.fit(aid, pid)) + pr.boost))
+        if pr.mirrored is None or abs(att - pr.mirrored) >= 0.05:
+            pr.mirrored = att
+            self._background(self._mirror_opinion(aid, pid, att, t, cause))
+
+    async def _mirror_opinion(self, aid: int, pid: str, att: float, t: int, cause: str) -> None:
+        """Computed attitude and its reasons → the agent's own belief doc (profile, People, Insights read this)."""
+        if self.opinion is None:
+            return
+        pro, con = self.opinion.reasons(aid, pid)
+        bus = self._bus
+
+        def hook(kind: str, payload: dict[str, Any]) -> None:
+            if bus is not None:
+                bus.new(kind, t, aid, payload)
+
+        try:
+            await MemoryStore(aid, self.store, None, hook).update_belief(
+                f"product:{pid}", {"attitude": att, "reasons_for": pro, "reasons_against": con, "t": t}, cause)
+        except Exception:  # noqa: BLE001 — read model only
+            log.debug("opinion mirror failed", exc_info=True)
+
     def _evaluate(self, w: World, bus: EventBus, t: int, aid: int, pid: str, pr: Pair, cause: str,
                   feed: bool) -> None:
+        self._sync(aid, pid, pr, t, cause)
         need = self.need(w, aid)
         opp: set[str] = set()
         if feed:
@@ -285,7 +324,10 @@ class CommerceRuntime:
                                               "outcome": "full", "rating": rating, "research": True},
                          product_id=pid)
             pr.review = max(pr.review, rating / 5)
-            pr.attitude = max(-1.0, min(1.0, pr.attitude + 0.08 * (rating - 3.0)))
+            if self.opinion is not None:
+                self._review_evidence(aid, pid, r, rating)
+            else:
+                pr.attitude = max(-1.0, min(1.0, pr.attitude + 0.08 * (rating - 3.0)))
             pr.cause = ev.event_id
         else:
             ev = bus.new("exposure", t, aid, {"channel": "community", "creative_id": f"thread:{pid}",
@@ -293,6 +335,18 @@ class CommerceRuntime:
             pr.cause = ev.event_id
         if pr.open_questions:
             pr.open_questions = pr.open_questions[1:] + pr.open_questions[:1]
+
+    def _review_evidence(self, aid: int, pid: str, review: dict[str, Any], rating: float) -> None:
+        """A published review becomes evidence on what its pros and cons talk about (higher rating, kinder numbers)."""
+        cat = self.opinion.catalog.get(pid) if self.opinion is not None else None
+        if cat is None:
+            return
+        pros = attrs_in(" ".join(str(x) for x in review.get("pros", [])))
+        cons = attrs_in(" ".join(str(x) for x in review.get("cons", [])))
+        shift = 0.08 * (rating - 3.0)
+        vals = {a: max(0.0, min(1.0, cat["specs"][a] + shift + (0.1 if a in pros else -0.1 if a in cons else 0.0)))
+                for a in (set(pros) | set(cons) or {"performance", "display", "battery", "camera"})}
+        self.opinion.evidence(aid, pid, vals, "review")
 
     # ------------------------------------------------------------------ store visits
     def _plan_visit(self, w: World, t: int, aid: int, pid: str, pr: Pair) -> None:
@@ -359,8 +413,12 @@ class CommerceRuntime:
         key = f"inq:{sid}"
         self._meta[key] = meta
         w.live_evts.append({"k": "store_visit", "a": aid, "store_id": st.store_id, "product": pid, "session_id": sid})
+        considered = [pid, *[k.split("|", 1)[1] for k, q in self.pairs.items()
+                             if k.startswith(f"{aid}|") and k.split("|", 1)[1] != pid and q.stage not in ("unaware", "rejected")]][:3]
+        opinions = self.opinion.brief_many(aid, considered) if self.opinion is not None else ""
         self.queue.submit(key, lambda: run_inquiry(sid, cust, sales, t, store=self.store, llm=self.llm,
-                                                   decider=self.decider), t, INQUIRY_DELAY, lambda: None)
+                                                   decider=self.decider, opinions=opinions), t, INQUIRY_DELAY,
+                          lambda: None)
 
     def _unrendered_inquiry(self, w: World, bus: EventBus, t: int, meta: dict[str, Any]) -> None:
         ev = bus.new("inquiry", t, meta["aid"], {"session_id": meta["sid"], "agent_id": meta["aid"],
@@ -369,8 +427,23 @@ class CommerceRuntime:
                                                  "satisfaction": 0.5, "outcome": "think_about_it", "n_messages": 0},
                      product_id=meta["pid"], other_id=meta["seller"], session_id=meta["sid"], rendered=False)
         self.stats["inquiries_unrendered"] += 1
+        self._store_evidence(meta["aid"], meta["pid"], [], 0.0)
         self._close(meta["sid"])
         self._after_inquiry(w, bus, t, meta, ev.event_id, 0.0)
+
+    _TOPIC_ATTR = {"battery": "battery", "camera": "camera", "display": "display", "performance": "performance",
+                   "price": "price_value"}
+
+    def _store_evidence(self, aid: int, pid: str, topics: list[str], dv: float) -> None:
+        """Handling the phone and hearing the answers: strong evidence on the topics discussed (all on a general visit)."""
+        if self.opinion is None:
+            return
+        covered = [self._TOPIC_ATTR[x] for x in topics if x in self._TOPIC_ATTR]
+        if covered:
+            self.opinion.evidence(aid, pid, covered, "store")
+        else:
+            self.opinion.evidence(aid, pid, None, "store", strength=0.6)
+        self.opinion.add_reaction(aid, pid, dv, clamp_each=0.2)
 
     def _close(self, sid: str) -> None:
         if self.social is not None:
@@ -380,7 +453,10 @@ class CommerceRuntime:
         pr = self.pairs.get(f"{meta['aid']}|{meta['pid']}")
         if pr is None or pr.stage != "inquiring":
             return
-        pr.attitude = max(-1.0, min(1.0, pr.attitude + dv))
+        if self.opinion is not None:                       # hands-on evidence + the visit's reaction are already in
+            self._sync(meta["aid"], meta["pid"], pr, t, cause)
+        else:
+            pr.attitude = max(-1.0, min(1.0, pr.attitude + dv))
         pr.cause = cause
         if pr.attitude <= float(cfg()["stages"]["reject_attitude"]):
             self._transition(w, bus, t, meta["aid"], meta["pid"], pr, "rejected", cause, "store visit put them off",
@@ -439,6 +515,8 @@ class CommerceRuntime:
         w.phones[aid] = {"brand": brand, "tier": buy.tier_of(option, products), "model_label": label, "bought_t": t,
                          "condition": "ok", "battery_health": 1.0, "satisfaction": 0.85,
                          "history": [*old.get("history", []), {"t": t, "event": "purchase", "option": option}]}
+        if self.opinion is not None and option in products:  # now I use it: I know it as it is
+            self.opinion.evidence(aid, option, None, "own_use")
         self.life_t.pop(aid, None)
         self._transition(w, bus, t, aid, pid, pr, "purchased" if option == pid else "rejected", ev.event_id,
                          f"bought {label}" if option == pid else f"bought {label} instead", meta["need"])
@@ -492,6 +570,9 @@ class CommerceRuntime:
                 if self.social is not None:
                     self.social.remember(meta["aid"], p["summary"], int(p.get("importance", 4)), "inquiry", t,
                                          tag="store visit")
+        if self.opinion is not None:
+            visit_topics: list[str] = next((e.payload["topics"] for e in emitted if e.kind == "inquiry"), [])
+            self._store_evidence(meta["aid"], meta["pid"], visit_topics, dv)
         conv = bus.new("conversation", t, meta["aid"], {
             "session_id": out.session_id, "participants": [meta["aid"], meta["seller"]], "place_id":
                 self.store_by_id[meta["store_id"]].place_id, "kind": "store", "t_start": t - INQUIRY_DELAY,

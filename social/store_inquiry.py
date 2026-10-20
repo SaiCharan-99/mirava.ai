@@ -167,13 +167,13 @@ def transcript_text(msgs: list[Message], names: dict[int, str]) -> str:
 
 
 async def run_inquiry(sid: str, cust: Customer, sales: Salesperson, t: int, *, store: DocStore, llm: LLMClient,
-                      decider: DecisionAdapter, on_event: EventHook | None = None) -> Outcome:
+                      decider: DecisionAdapter, on_event: EventHook | None = None, opinions: str = "") -> Outcome:
     """Run the visit; returns event specs (store_thought / salesperson_thought private, message, inquiry)."""
     out = Outcome(sid, minutes=20)
     names = {cust.agent_id: cust.name, sales.agent_id: sales.name}
     ctx = await build(cust.agent_id, "store_inquiry", f"{sales.product_name} {' '.join(cust.agenda)}",
                       f"In {sales.store_name} asking about {sales.product_name}.", store=store, llm=llm,
-                      now=cust.now, now_t=t)
+                      now=cust.now, now_t=t, opinions=opinions)
     msgs: list[Message] = []
     n_c = n_s = 0
     seq = 0

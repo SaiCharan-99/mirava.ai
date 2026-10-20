@@ -1,0 +1,79 @@
+# Opinion engine (phase 1). Every number is a labelled assumption, tunable. Opinions are computed from structured
+# state (perceived attributes, personal weights, a reference point) — the language model only words them.
+assumed: true
+attributes: [battery, camera, display, performance, software, design, price_value, brand]
+optimism: 0.12              # ads show the product a little better than it is
+credibility:                # how much one piece of evidence moves a perception (before the agent's own scepticism)
+  ad: 0.40
+  review: 0.65
+  community: 0.45
+  word_of_mouth_base: 0.35  # + word_of_mouth_per_closeness × closeness
+  word_of_mouth_per_closeness: 0.45
+  focus_group: 0.50
+  store: 0.85               # hands-on
+  own_use: 1.0
+skepticism_discount: 0.6    # cred × (1 − 0.6 × skepticism)
+reference_alpha: 0.5        # share of the best-seen gain over my own phone that becomes my yardstick
+reference_min_conf: 0.3     # only things I know reasonably well raise my yardstick
+attitude_scale: 3.0         # attitude = tanh(scale × V)
+fit_scale: 2.5              # fit = scale × (weighted gain over my own phone)
+unaffordable_penalty: 0.4   # price_value perception drops by this × (1 − affordability)
+owner_bonus: {private: 0.1, public: 0.2}
+reaction_clamp: 0.3         # the language model's emotional reactions may move attitude by at most this in total
+prior_conf: 0.1             # confidence in a brand/tier prior before any evidence
+known_conf: 0.2             # below this I simply don't judge an attribute (no phantom gains or losses)
+price_known_conf: 0.6       # once I have seen it advertised or reviewed I know roughly what it costs
+expressed:
+  sour_grapes: 0.35         # × status_drive when the product is premium and out of reach
+  status_flex: 0.15         # × status_drive when it is premium and affordable
+  tribal_own: 0.15          # × brand_loyalty for my own brand
+  tribal_rival: 0.20        # × brand_loyalty against a rival brand
+  conformity_pull: 0.5      # × conformity × closeness toward what the listener said
+weights:
+  base: 0.125
+  floor: 0.02
+  noise_sigma: 0.25
+  interests:
+    photography: {camera: 0.12}
+    travel: {camera: 0.06, battery: 0.06}
+    fashion: {design: 0.08, brand: 0.05}
+    gaming: {performance: 0.12, display: 0.06}
+    gadgets: {performance: 0.06, software: 0.04}
+    tech: {performance: 0.05, software: 0.05}
+    fitness: {battery: 0.06}
+    running: {battery: 0.05}
+    movies: {display: 0.08}
+    music: {battery: 0.03}
+    finance: {price_value: 0.06}
+    startups: {software: 0.04}
+    design: {design: 0.10, display: 0.04}
+    art: {design: 0.06, camera: 0.04}
+    reading: {display: 0.03}
+  lifestyle:
+    frugal: {price_value: 0.15}
+    young_professional: {software: 0.06, brand: 0.04, performance: 0.04}
+    student_life: {price_value: 0.08, camera: 0.04}
+    traditional: {battery: 0.05, price_value: 0.05}
+    family_first: {battery: 0.05, camera: 0.04, price_value: 0.04}
+    fitness_focused: {battery: 0.06}
+    creative: {camera: 0.08, design: 0.06, display: 0.05}
+    social_butterfly: {camera: 0.08, brand: 0.05, design: 0.04}
+  values:
+    status: {brand: 0.10, design: 0.06}
+    value for money: {price_value: 0.12}
+    thrift: {price_value: 0.08}
+    quality: {design: 0.05, performance: 0.04}
+    curiosity: {software: 0.04, performance: 0.03}
+    security: {software: 0.05, battery: 0.03}
+    convenience: {battery: 0.05, software: 0.04}
+    trends: {design: 0.05, brand: 0.05}
+  income:
+    "<25k": {price_value: 0.12}
+    "25-50k": {price_value: 0.06}
+    "1-2L": {price_value: -0.03}
+    ">2L": {brand: 0.04, design: 0.04, price_value: -0.06}
+  job_dependence:
+    high: {battery: 0.08, performance: 0.05}
+brand_prestige: {Apple: 0.9, Samsung: 0.8, Google: 0.7, OnePlus: 0.65, Xiaomi: 0.5, Vivo: 0.5, Oppo: 0.5, realme: 0.45, Motorola: 0.5}
+# price → tier (INR): below budget_max → budget, … ; above premium_max → flagship
+tier_price_inr: {budget_max: 15000, mid_max: 30000, premium_max: 60000}

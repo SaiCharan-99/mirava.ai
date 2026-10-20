@@ -22,7 +22,7 @@ stages:                     # thresholds for the state machine
   research_interest: 0.50
   inquire_interest: 0.55
   inquire_need: 0.40
-  reject_attitude: -0.35
+  reject_attitude: -0.45
   postpone_days: 3          # postponed → deciding again after payday / this many days
   research_min_days: 0      # sim days in researching before inquiring may happen
 purchase:

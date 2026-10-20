@@ -71,7 +71,8 @@ async def unrendered(sid: str, a: Participant, b: Participant, g: GateResult, t:
 
 async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResult, relationship: str,
                            closeness: float, place: str, t: int, *, store: DocStore, llm: LLMClient,
-                           decider: DecisionAdapter, catalog: dict[str, str] | None = None) -> Outcome:
+                           decider: DecisionAdapter, catalog: dict[str, str] | None = None,
+                           opinions: dict[int, str] | None = None) -> Outcome:
     """Rendered 3-step conversation; each private step only ever sees its own agent's context."""
     o = Outcome(sid)
     stranger = g.kind == "stranger"
@@ -79,9 +80,11 @@ async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResu
     pc = g.priority_class
     (pa, ca, ka), (pb, cb, kb) = await asyncio.gather(
         prep(a.agent_id, sid, b.name, relationship, closeness, place, g.topics, store=store, llm=llm,
-             decider=decider, now=a.now, now_t=t, stranger=stranger, priority_class=pc),
+             decider=decider, now=a.now, now_t=t, stranger=stranger, priority_class=pc,
+             opinions=(opinions or {}).get(a.agent_id, "")),
         prep(b.agent_id, sid, a.name, relationship, closeness, place, g.topics, store=store, llm=llm,
-             decider=decider, now=b.now, now_t=t, stranger=stranger, priority_class=pc))
+             decider=decider, now=b.now, now_t=t, stranger=stranger, priority_class=pc,
+             opinions=(opinions or {}).get(b.agent_id, "")))
     o.cost_usd += ka + kb
     for plan, cands in ((pa, ca), (pb, cb)):
         o.ev("share_plan", plan.agent_id, {**plan.model_dump(), "candidates": [c.model_dump() for c in cands]})
@@ -107,12 +110,14 @@ async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResu
     t_end = t + o.minutes
     (da, xa), (db, xb) = await asyncio.gather(
         debrief(a.agent_id, b.agent_id, b.name, msgs, names, t_end, store=store, llm=llm, now=a.now,
-                product_ids=products, on_event=hook_for(a.agent_id), priority_class=pc, catalog=catalog),
+                product_ids=products, on_event=hook_for(a.agent_id), priority_class=pc, catalog=catalog,
+                opinions=(opinions or {}).get(a.agent_id, "")),
         debrief(b.agent_id, a.agent_id, a.name, msgs, names, t_end, store=store, llm=llm, now=b.now,
-                product_ids=products, on_event=hook_for(b.agent_id), priority_class=pc, catalog=catalog))
+                product_ids=products, on_event=hook_for(b.agent_id), priority_class=pc, catalog=catalog,
+                opinions=(opinions or {}).get(b.agent_id, "")))
     o.cost_usd += xa + xb
     for aid, d in ((a.agent_id, da), (b.agent_id, db)):
-        o.ev("debrief", aid, d.model_dump())
+        o.ev("debrief", aid, d.model_dump(), other_id=b.agent_id if aid == a.agent_id else a.agent_id)
         o.ev("memory_write", aid, {"mid": f"conv-{sid}-{aid}", "kind": "conversation", "importance": d.importance})
     for aid, kind, payload in sink:
         o.ev(kind, aid, payload)

@@ -5,6 +5,10 @@ Return, from THIS person's point of view only:
 - `reaction`: one or two private sentences on how they feel about the chat.
 - `belief_deltas`: changes in what they think about subjects that came up ("product:<id>", "brand:<name>",
   "category:phone"); attitude_delta in -1..1 and a short reason. Empty if nothing changed.
+- `heard_claims`: concrete things the other person SAID ALOUD about one attribute of a named product (subject
+  "product:<name>"; attribute one of battery, camera, display, performance, software, design, price_value, brand;
+  direction "+" if they praised it, "-" if they criticised it; strength 0..1 for how firmly they said it). Only what is in
+  the transcript; empty if nothing specific was said.
 - `summary`: a first-person episodic memory of the chat (1–2 sentences), e.g. "Ravi says the camera is amazing,
   but he hasn't used it himself."
 - `importance`: 1–10.

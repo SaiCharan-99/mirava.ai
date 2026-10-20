@@ -19,6 +19,7 @@ from shared import time as simtime
 from shared.llm import LLMClient
 from shared.schemas.events import Event
 from shared.store import DocStore
+from shared.subjects import canonical
 from social.conversation import Outcome, Participant, run_conversation, template_memories, unrendered
 from social.gate import Side, gate
 from social.sessions import SessionRegistry
@@ -69,7 +70,7 @@ class SocialRuntime:
 
     def __init__(self, store: DocStore, llm: LLMClient, decider: DecisionAdapter, governor: BudgetGovernor,
                  relationships: list[dict[str, Any]], *, watched: set[int] | None = None,
-                 embed_texts: bool = True) -> None:
+                 embed_texts: bool = True, opinion: Any = None) -> None:
         self.store = store
         self.llm = llm
         self.decider = MicroBatcher(decider)
@@ -85,6 +86,7 @@ class SocialRuntime:
         self.wm: dict[int, list[dict[str, Any]]] = {}
         self.salient_products: dict[int, list[str]] = {}   # product ids recently noticed (C-07 word of mouth)
         self.watched = watched or set()
+        self.opinion = opinion                                     # OpinionEngine (None: no computed opinions)
         self.catalog_fn: Callable[[], dict[str, str]] | None = None   # product id → name (set by the engine)
         self.embed_texts = embed_texts
         self._pclass: dict[str, str] = {}
@@ -153,6 +155,9 @@ class SocialRuntime:
             self._background(asyncio.to_thread(template_memories, self.store, sid, pa, pb, g, t))
             self._emit(w, bus, out, t, g.priority_class)
             return
+        pids = [x.split(":", 1)[1] for x in g.topics if x.startswith("product:")]
+        opinions = ({ia: self.opinion.brief_many(ia, pids), ib: self.opinion.brief_many(ib, pids)}
+                    if self.opinion is not None and pids else None)
         rel_label = REL_LABEL.get((rel or {}).get("kind", ""), "strangers")
         closeness = float((rel or {}).get("closeness", 0.0))
         pname = (place.name if place else "the street") if place and place.kind != "home" else "home"
@@ -166,7 +171,8 @@ class SocialRuntime:
 
         self.queue.submit(sid, lambda: run_conversation(sid, pa, pb, g, rel_label, closeness, pname, t,
                                                         store=self.store, llm=self.llm, decider=self.decider,
-                                                        catalog=self.catalog_fn() if self.catalog_fn else None),
+                                                        catalog=self.catalog_fn() if self.catalog_fn else None,
+                                                        opinions=opinions),
                           t, CONV_DELAY, fallback)
         self._pclass[sid] = g.priority_class
 
@@ -212,6 +218,7 @@ class SocialRuntime:
             elif spec["kind"] == "debrief":
                 texts.append(("debrief", ev.agent_id or 0, ev.event_id, f"{p['reaction']} {p['summary']}", t))
                 self.remember(ev.agent_id or 0, p["summary"], int(p.get("importance", 3)), "conversation", t)
+                self._apply_heard(ev.agent_id, spec.get("other_id"), p)
             elif spec["kind"] == "interaction":
                 for x in (spec["agent_id"], spec.get("other_id")):
                     if x is not None:
@@ -231,6 +238,29 @@ class SocialRuntime:
             self.stats["cost_usd"] += out.cost_usd
         if texts:
             self._background(self._texts(bus, texts, out.session_id))
+
+    def _apply_heard(self, listener: int | None, teller: int | None, payload: dict[str, Any]) -> None:
+        """What the other person said aloud about a product becomes word-of-mouth evidence, weighted by closeness.
+        Applied here (at the deterministic apply time), never inside the model task."""
+        if self.opinion is None or self.catalog_fn is None or listener is None:
+            return
+        catalog = self.catalog_fn()
+        rel = self.rel.get((min(listener, teller), max(listener, teller))) if teller is not None else None
+        closeness = float((rel or {}).get("closeness", 0.1))
+        for c in payload.get("heard_claims") or []:
+            subj = canonical(str(c.get("subject", "")), catalog)
+            if not subj or not subj.startswith("product:"):
+                continue
+            strength = max(0.0, min(1.0, float(c.get("strength", 0.5))))
+            value = 0.5 + 0.4 * strength if c.get("direction") == "+" else 0.5 - 0.4 * strength
+            self.opinion.evidence(listener, subj.split(":", 1)[1], {str(c.get("attribute")): value},
+                                  "word_of_mouth", closeness=closeness, strength=0.5 + 0.5 * strength)
+        for d in payload.get("belief_deltas") or []:
+            subj = canonical(str(d.get("subject", "")), catalog)
+            if subj and subj.startswith("product:"):
+                pid = subj.split(":", 1)[1]
+                self.opinion.evidence(listener, pid, [], "word_of_mouth", closeness=closeness)   # now I know of it
+                self.opinion.add_reaction(listener, pid, float(d.get("attitude_delta") or 0.0))
 
     def _background(self, coro: Awaitable[Any]) -> None:
         """Fire-and-forget with a strong reference (best-effort side writes)."""

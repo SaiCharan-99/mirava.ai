@@ -31,3 +31,27 @@ baseline_market:
   - {id: "baseline:mid", label: "a current mid-range phone of a familiar brand", tier: mid, price_inr: 22000, appeal: 0.55}
   - {id: "baseline:premium", label: "a current premium phone of a familiar brand", tier: premium, price_inr: 45000, appeal: 0.6}
   - {id: "baseline:flagship", label: "a current flagship of a familiar brand", tier: flagship, price_inr: 95000, appeal: 0.65}
+
+# Opinion engine (phase 1): what a phone is like per attribute (0..1), by tier, nudged by brand character; simulated
+# assumptions (no real model names). A person's own phone is their yardstick; wear lowers it.
+spec_priors:
+  tier:
+    budget:   {battery: 0.55, camera: 0.30, display: 0.35, performance: 0.30, software: 0.35, design: 0.30, price_value: 0.85, brand: 0.40}
+    mid:      {battery: 0.62, camera: 0.50, display: 0.55, performance: 0.50, software: 0.50, design: 0.50, price_value: 0.65, brand: 0.50}
+    premium:  {battery: 0.68, camera: 0.68, display: 0.72, performance: 0.70, software: 0.65, design: 0.70, price_value: 0.40, brand: 0.65}
+    flagship: {battery: 0.72, camera: 0.88, display: 0.90, performance: 0.92, software: 0.85, design: 0.90, price_value: 0.18, brand: 0.85}
+  brand_adjust:
+    Apple:    {software: 0.15, design: 0.08, brand: 0.15, battery: -0.10, price_value: -0.12}
+    Samsung:  {display: 0.08, camera: 0.04, brand: 0.08, software: 0.02}
+    Google:   {software: 0.12, camera: 0.08, battery: -0.04}
+    OnePlus:  {performance: 0.06, battery: 0.04}
+    Xiaomi:   {price_value: 0.10, battery: 0.06, software: -0.08}
+    Vivo:     {camera: 0.05, design: 0.04}
+    Oppo:     {camera: 0.04, design: 0.05}
+    realme:   {price_value: 0.08, performance: 0.04, software: -0.06}
+    Motorola: {software: 0.06, price_value: 0.05, camera: -0.04}
+condition_penalty:        # worn / damaged phones are worse than their tier suggests
+  cracked: {design: 0.20, display: 0.20}
+  slow: {performance: 0.30}
+  battery_weak: {battery: 0.35}
+  lost: {battery: 0.20, camera: 0.20, display: 0.20, performance: 0.20, software: 0.20, design: 0.20}

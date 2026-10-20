@@ -21,6 +21,7 @@ from engine.social_rt import SocialRuntime
 from engine.survey.runtime import SurveyRuntime
 from engine.world import World
 from mind.decision import get_decider
+from mind.opinion import OpinionEngine
 from population.genesis import genesis_bucket, unpack
 from shared import time as simtime
 from shared.files import Files
@@ -70,6 +71,7 @@ class Engine:
         self.commerce_enabled = commerce and media
         self.commerce: CommerceRuntime | None = None
         self.surveys: SurveyRuntime | None = None
+        self.opinion: OpinionEngine | None = None
         self.highlights: HighlightRecorder | None = None
         self._first_line: dict[str, str] = {}
         self.hub = LiveHub()
@@ -102,14 +104,17 @@ class Engine:
         else:
             w.init_from_states(g["states"])
         self.bus.listeners.clear()
+        self.opinion = OpinionEngine(w.profiles, w.seed, phones=w.phones)
+        if ck is not None and ck.get("opinion"):
+            self.opinion.load(ck["opinion"])
         if self.social_enabled:
             watched = {int(d["agent_id"]) for d in self.store.where("agents", "watched", True)}
             self.social = SocialRuntime(self.store, self.llm, get_decider(self.llm, self.s), self.gov,
-                                        g["relationships"], watched=watched)
+                                        g["relationships"], watched=watched, opinion=self.opinion)
             if ck is not None and ck.get("social"):
                 self.social.load(ck["social"])
         if self.media_enabled:
-            self.media = MediaRuntime(self.store, self.llm, self.gov, w, social=self.social)
+            self.media = MediaRuntime(self.store, self.llm, self.gov, w, social=self.social, opinion=self.opinion)
             if self.social is not None:
                 media = self.media
                 self.social.catalog_fn = lambda: {pid: lp.p.name for pid, lp in media.live.items()}
@@ -117,7 +122,7 @@ class Engine:
                 self.media.load(ck["media"])
         if self.commerce_enabled and self.media is not None:
             self.commerce = CommerceRuntime(self.store, self.llm, get_decider(self.llm, self.s), self.gov, w,
-                                            media=self.media, social=self.social)
+                                            media=self.media, social=self.social, opinion=self.opinion)
             self.media.commerce = self.commerce
             if ck is not None and ck.get("commerce"):
                 self.commerce.load(ck["commerce"])
@@ -253,6 +258,8 @@ class Engine:
         state = w.to_checkpoint()
         if self.social is not None:
             state["social"] = self.social.to_dict()
+        if self.opinion is not None:
+            state["opinion"] = self.opinion.to_dict()
         if self.media is not None:
             state["media"] = self.media.to_dict()
         if self.commerce is not None:

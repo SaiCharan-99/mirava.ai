@@ -87,3 +87,4 @@ class Product(BaseModel):
     launched_at_t: int | None = None
     understanding: dict | None = None
     graph: dict | None = None
+    specs: dict[str, float] | None = None       # truth per attribute 0..1 (opinion engine); agents never see it directly

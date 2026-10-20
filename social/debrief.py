@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -27,11 +28,21 @@ class BeliefDelta(BaseModel):
     reason: str
 
 
+class HeardClaim(BaseModel):
+    """Something the OTHER person said aloud about one attribute of a product (never anything unspoken)."""
+
+    subject: str
+    attribute: Literal["battery", "camera", "display", "performance", "software", "design", "price_value", "brand"]
+    direction: Literal["+", "-"]
+    strength: float = Field(ge=0, le=1)
+
+
 class DebriefOut(BaseModel):
     """Structured debrief output."""
 
     reaction: str
     belief_deltas: list[BeliefDelta]
+    heard_claims: list[HeardClaim] = Field(default_factory=list)
     summary: str
     importance: int = Field(ge=1, le=10)
     intents: list[str]
@@ -45,12 +56,12 @@ def render_transcript(msgs: list[Message], names: dict[int, str]) -> str:
 async def debrief(agent_id: int, other_id: int, other_name: str, msgs: list[Message], names: dict[int, str], t: int,
                   *, store: DocStore, llm: LLMClient, now: str = "", product_ids: list[str] | None = None,
                   on_event: EventHook | None = None, priority_class: str = "P3",
-                  catalog: dict[str, str] | None = None) -> tuple[DebriefOut, float]:
+                  catalog: dict[str, str] | None = None, opinions: str = "") -> tuple[DebriefOut, float]:
     """Run one agent's private debrief and write its own episodic memory and belief updates."""
     transcript = render_transcript(msgs, names)
     sid = msgs[0].session_id if msgs else ""
     ctx = await build(agent_id, "debrief", f"{other_name} {transcript[:300]}", f"Conversation with {other_name}.",
-                      store=store, llm=llm, now=now, now_t=t)
+                      store=store, llm=llm, now=now, now_t=t, opinions=opinions)
     prompt = PROMPT.read_text(encoding="utf-8").replace("{context}", ctx.render()).replace("{transcript}", transcript)
     res = await llm.generate(MODEL_LITE, prompt, DebriefOut, purpose="conv_debrief", reasoning="low", max_tokens=350,
                              priority_class=priority_class)
@@ -70,7 +81,9 @@ async def debrief(agent_id: int, other_id: int, other_name: str, msgs: list[Mess
                 continue
             d = d.model_copy(update={"subject": canon})
         prev = await ms.beliefs([d.subject])
-        att = (prev[0].attitude if prev else 0.0) + d.attitude_delta
+        # with the opinion engine on (catalog given) a product's attitude is computed, not summed from model deltas
+        engine_managed = catalog is not None and d.subject.startswith("product:")
+        att = (prev[0].attitude if prev else 0.0) + (0.0 if engine_managed else d.attitude_delta)
         delta: dict = {"attitude": att, "t": t, "sources_seen": {"word_of_mouth": 1}}
         key = "reasons_for" if d.attitude_delta >= 0 else "reasons_against"
         delta[key] = list(dict.fromkeys([d.reason, *(getattr(prev[0], key) if prev else [])]))[:3]

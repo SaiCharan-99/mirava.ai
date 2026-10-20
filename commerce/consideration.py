@@ -26,6 +26,8 @@ class Pair:
     cause: str | None = None     # latest cause event id
     inquired: int = 0
     visit_planned_day: int = 0
+    boost: float = 0.0           # intent to research / visit a store (adds to the computed fit)
+    mirrored: float | None = None  # last attitude written to the agent's belief doc (opinion engine)
 
     def to_dict(self) -> dict[str, Any]:
         """Checkpoint form."""
