@@ -6,6 +6,7 @@ import { simClock, tracks } from "./tracks";
 import { useWorld } from "../state/world";
 import { isVisualTest } from "../lib/visualTest";
 import type { FixtureAgent } from "../visual-fixtures/types";
+import { liveTalks, pruneTalks, relationsOf } from "./threads";
 
 type Look = FixtureAgent["look"];
 /** One drawable agent in Tiled pixels. */
@@ -44,6 +45,10 @@ export class WorldScene extends Phaser.Scene {
   onView: ((v: ViewInfo) => void) | null = null;
   onReady: (() => void) | null = null;
   private agentsG!: Phaser.GameObjects.Graphics;
+  private threadsG!: Phaser.GameObjects.Graphics;
+  /** Relationship lines of the open profile: whose, and to whom. */
+  rel: { id: number; others: number[] } | null = null;
+  private relFor: number | null = null;
   private sitesG!: Phaser.GameObjects.Graphics;
   private sites: SiteLite[] = [];
   private flipping = false;
@@ -73,7 +78,9 @@ export class WorldScene extends Phaser.Scene {
       if (st.siteAssign !== prev.siteAssign || st.lens !== prev.lens || st.products !== prev.products) this.drawSites();
     });
     this.events.once("destroy", unsub);
+    this.threadsG = this.add.graphics().setDepth(14);          // under the agent sprites
     this.agentsG = this.add.graphics().setDepth(15);
+
     this.night = this.add.rectangle(-200, -200, this.mapW + 400, this.mapH + 400, 0x080e28, 0).setOrigin(0).setDepth(20);
     this.makeGlowTexture();
     this.glows = this.add.container(0, 0).setDepth(21);
@@ -106,6 +113,7 @@ export class WorldScene extends Phaser.Scene {
 
   update(): void {
     this.drawAgents();
+    this.drawThreads();
     if (this.flipping) this.drawSites();
     const inv = 1 / this.cameras.main.zoom;
     const showRoad = this.z >= 0.8;
@@ -319,6 +327,70 @@ export class WorldScene extends Phaser.Scene {
       if (L.hairLong) r(hex(L.hair), x - 1.8, y - 8, 0.8, 2.6);
       if (L.cap) r(0xef4444, x - 1.8, y - 9, 3.6, 1.1);
     }
+  }
+
+  /** Thin violet lines from the selected person's head to the head of everyone they know (where each one is now),
+   *  a white ring on the selected person, and dotted lines between people talking right now (product colour). */
+  /** Keep `rel` in step with the open profile (fixtures: their friends; live: GET /api/agents/{id}, once). */
+  private syncRel(): void {
+    const st = useWorld.getState();
+    const id = st.profile?.id ?? null;
+    if (id === this.relFor) return;
+    this.relFor = id;
+    this.rel = null;
+    if (id === null) return;
+    if (st.source !== "live") {
+      const fa = st.fixtures?.agents.find((a) => a.id === id) as (FixtureAgent & { friends?: { id: number }[] }) | undefined;
+      this.rel = { id, others: (fa?.friends ?? []).map((f) => f.id) };
+      return;
+    }
+    relationsOf(id).then((others) => { if (this.relFor === id) this.rel = { id, others }; }).catch(() => undefined);
+  }
+
+  private drawThreads(): void {
+    const g = this.threadsG;
+    if (!g) return;
+    g.clear();
+    this.syncRel();
+    const at = new Map(this.drawn.map((d) => [d.id, d]));
+    const head = (d: Drawn) => ({ x: d.x, y: d.y - 3 * U });
+    if (this.rel) {
+      const me = at.get(this.rel.id);
+      if (me) {
+        const p = head(me);
+        g.lineStyle(0.6 * U, 0xa78bfa, 0.55);
+        for (const o of this.rel.others) {
+          const d = at.get(o);
+          if (!d) continue;                                    // not on the live map right now
+          const q = head(d);
+          g.lineBetween(p.x, p.y, q.x, q.y);
+        }
+        g.lineStyle(0.8 * U, 0xffffff, 1).strokeCircle(p.x, p.y, 6 * U);
+      }
+    }
+    pruneTalks(simClock.now());
+    if (!liveTalks.size) return;
+    const prods = useWorld.getState().products;
+    for (const tl of liveTalks.values()) {
+      const a = at.get(tl.a), b = at.get(tl.b);
+      if (!a || !b) continue;
+      const pid = tl.topic.startsWith("product:") ? tl.topic.slice(8) : null;
+      const hexc = pid ? prods.find((p) => p.id === pid)?.hex : undefined;
+      g.lineStyle(0.6 * U, hexc ? hex(hexc) : 0xffffff, hexc ? 0.9 : 0.5);
+      const p = head(a), q = head(b);
+      const len = Math.hypot(q.x - p.x, q.y - p.y), on = 1.5 * U, off = 1.2 * U;
+      for (let s0 = 0; s0 < len; s0 += on + off) {
+        const s1 = Math.min(len, s0 + on);
+        g.lineBetween(p.x + ((q.x - p.x) * s0) / len, p.y + ((q.y - p.y) * s0) / len, p.x + ((q.x - p.x) * s1) / len, p.y + ((q.y - p.y) * s1) / len);
+      }
+    }
+  }
+
+  /** Number of relationship lines currently drawn (visual tests). */
+  threadCount(): number {
+    if (!this.rel) return 0;
+    const at = new Set(this.drawn.map((d) => d.id));
+    return at.has(this.rel.id) ? this.rel.others.filter((o) => at.has(o)).length : 0;
   }
 
   /** Aware/Sentiment lens ring colour for an agent: colour = aware, null = unaware (dimmed), undefined = no lens. */
