@@ -167,13 +167,3 @@ async def test_ica_failure_falls_back_to_openrouter():
     res = await c.generate(models.MODEL_LITE, "think", Thought, purpose="t")
     assert res.data.text == "via-or" and fb.called and c.ica_failures == 1
     assert json.loads(fb.calls[0].request.content)["model"] == models.MODEL_LITE
-
-
-@respx.mock
-async def test_ica_embed_failure_does_not_flag_chat_down():
-    from shared import llm as L
-    L._STATUS.update(out_of_credit=False, since=None)
-    respx.post(f"{BASE}/embeddings").mock(return_value=httpx.Response(402, text="credit"))
-    with pytest.raises(LLMError):
-        await L.ICAClient(ica_settings(), backoff_s=0).embed(["x"])
-    assert L.model_status()["out_of_credit"] is False

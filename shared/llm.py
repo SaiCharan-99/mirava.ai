@@ -344,11 +344,7 @@ class ICAClient(OpenRouterClient):
                                                 max_tokens=max_tokens, images=images, priority_class=priority_class)
 
     async def embed(self, texts: list[str], dim: int = 768) -> list[list[float]]:
-        keep = dict(_STATUS)                                  # an OpenRouter embedding failure must not flag chat as down
-        try:
-            return await self.fallback.embed(texts, dim)
-        finally:
-            _STATUS.update(keep)
+        return await self.fallback.embed(texts, dim)
 
     async def list_models(self) -> set[str]:
         return {self.s.ica_model_id}
