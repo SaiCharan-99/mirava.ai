@@ -132,38 +132,3 @@ async def test_openrouter_embeddings_and_model_check():
     respx.get(f"{BASE}/embeddings/models").mock(return_value=httpx.Response(200, json={"data": []}))
     with pytest.raises(LLMError, match="embedding"):
         await OpenRouterClient(settings()).check_models()
-
-
-ICA = "https://api.nextgen-beta.ica.ibm.com/ica/v1/chat-models/chat/completions"
-
-
-def ica_settings() -> Settings:
-    return Settings(_env_file=None, llm_backend="ica", ica_api_key=SecretStr("sk-ica-test"),
-                    openrouter_api_key=SecretStr("sk-or-test"))
-
-
-@respx.mock
-async def test_ica_request_shape_and_model_override():
-    from shared.llm import ICAClient
-    route = respx.post(ICA).mock(
-        return_value=httpx.Response(200, json=ok_body({"text": "hi", "importance": 3, "tags": [], "mood": None})))
-    c = get_llm(ica_settings())
-    assert isinstance(c, ICAClient)
-    res = await c.generate(models.MODEL_PRO, "think", Thought, purpose="t", reasoning="high")
-    body = json.loads(route.calls[0].request.content)
-    assert body["model"] == "claude-haiku-4-5" and body["response_format"]["json_schema"]["strict"] is True
-    assert "reasoning" not in body and "provider" not in body
-    assert route.calls[0].request.headers["authorization"] == "Bearer sk-ica-test"
-    assert res.data.text == "hi"
-
-
-@respx.mock
-async def test_ica_failure_falls_back_to_openrouter():
-    from shared.llm import ICAClient
-    respx.post(ICA).mock(return_value=httpx.Response(401, text="nope"))
-    fb = respx.post(f"{BASE}/chat/completions").mock(
-        return_value=httpx.Response(200, json=ok_body({"text": "via-or", "importance": 1, "tags": [], "mood": None})))
-    c = ICAClient(ica_settings(), backoff_s=0)
-    res = await c.generate(models.MODEL_LITE, "think", Thought, purpose="t")
-    assert res.data.text == "via-or" and fb.called and c.ica_failures == 1
-    assert json.loads(fb.calls[0].request.content)["model"] == models.MODEL_LITE

@@ -295,64 +295,6 @@ class OpenRouterClient(_CachingClient):
             raise LLMError(f"OpenRouter does not list configured models: {missing}")
 
 
-# ---------------------------------------------------------------- IBM ICA (optional)
-
-class ICAClient(OpenRouterClient):
-    """Chat via IBM ICA's OpenAI-compatible endpoint (LLM_BACKEND=ica). Every tier uses ICA_MODEL_ID; if ICA fails
-    (down, rate-limited, bad output) the call is retried once on OpenRouter with the original model. Embeddings stay on
-    OpenRouter because ICA has no embedding endpoint."""
-
-    def __init__(self, settings: Settings | None = None, **kw: Any) -> None:
-        super().__init__(settings, **kw)
-        self.base_url = self.s.ica_base_url.rstrip("/")
-        self.fallback = OpenRouterClient(self.s, on_cost=kw.get("on_cost"))
-        self.ica_failures = 0
-
-    def _key(self) -> str:
-        return self.s.ica_api_key.get_secret_value()
-
-    def _exhausted(self, r: httpx.Response) -> bool:
-        return False                                          # no second ICA key; OpenRouter is the fallback
-
-    def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._key()}", "Content-Type": "application/json"}
-
-    def build_body(self, model: str, prompt: str | list, schema: type[BaseModel] | None, reasoning: Reasoning,
-                   max_tokens: int, images: list[str] | None) -> dict:
-        body: dict[str, Any] = {"model": self.s.ica_model_id, "messages": to_messages(prompt, images),
-                                "max_tokens": max_tokens, "stream": False}
-        if schema is not None:
-            body["response_format"] = {"type": "json_schema", "json_schema": {
-                "name": schema.__name__, "strict": True, "schema": strict_schema(schema)}}
-        return body
-
-    async def _post(self, path: str, body: dict) -> dict:
-        if path != "/chat/completions":
-            raise LLMError(f"ICA has no {path}")
-        return await super()._post("/chat-models/chat/completions", body)
-
-    async def generate(self, model: str, prompt: str | list, schema: type[BaseModel] | None = None, *,
-                       purpose: str, reasoning: Reasoning = "low", max_tokens: int = 600,
-                       images: list[str] | None = None, priority_class: str = "P5") -> LLMResult:
-        try:
-            return await super().generate(model, prompt, schema, purpose=purpose, reasoning=reasoning,
-                                          max_tokens=max_tokens, images=images, priority_class=priority_class)
-        except LLMError as e:
-            self.ica_failures += 1
-            log.warning("ICA call failed (%s); falling back to OpenRouter", e)
-            return await self.fallback.generate(model, prompt, schema, purpose=purpose, reasoning=reasoning,
-                                                max_tokens=max_tokens, images=images, priority_class=priority_class)
-
-    async def embed(self, texts: list[str], dim: int = 768) -> list[list[float]]:
-        return await self.fallback.embed(texts, dim)
-
-    async def list_models(self) -> set[str]:
-        return {self.s.ica_model_id}
-
-    async def check_models(self) -> None:
-        return None
-
-
 # ---------------------------------------------------------------- Vertex AI (optional)
 
 class VertexClient(OpenRouterClient):
@@ -459,7 +401,7 @@ _client: LLMClient | None = None
 
 
 def get_llm(settings: Settings | None = None, *, fresh: bool = False) -> LLMClient:
-    """Backend chosen by LLM_BACKEND (fake | openrouter | vertex | ica)."""
+    """Backend chosen by LLM_BACKEND (fake | openrouter | vertex)."""
     global _client
     if _client is not None and not fresh and settings is None:
         return _client
@@ -469,8 +411,6 @@ def get_llm(settings: Settings | None = None, *, fresh: bool = False) -> LLMClie
         client = OpenRouterClient(s)
     elif s.llm_backend == "vertex":
         client = VertexClient(s)
-    elif s.llm_backend == "ica":
-        client = ICAClient(s)
     else:
         client = FakeGemini()
     if settings is None:
