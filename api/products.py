@@ -103,9 +103,12 @@ class UploadIn(BaseModel):
 
 
 @router.get("/products")
-def list_products() -> list[dict]:
-    """All products, in creation (colour) order."""
-    docs = store().list(COLL, limit=200)
+def list_products(active: int = 0) -> list[dict]:
+    """Products in creation (colour) order; never archived ones. `active=1`: only live and ready."""
+    from shared.products import active_products
+
+    docs = (active_products(store()) if active else
+            [d for d in store().list(COLL, limit=200) if d.get("status") != "archived"])
     return sorted(docs, key=lambda d: (COLORS.index(d["color"]) if d.get("color") in COLORS else 99, d["product_id"]))
 
 
@@ -343,6 +346,17 @@ def _engine_command(cmd: dict) -> dict | None:
         return r.json() if r.status_code == 200 else {"error": r.status_code}
     except httpx.HTTPError:
         return None
+
+
+@router.post("/products/{pid}/archive")
+def archive(pid: str) -> dict:
+    """Hide a product everywhere (UI lists, prompts, dashboards); the engine drops it. Its events stay in BigQuery."""
+    doc = store().get(COLL, pid)            # raw doc: old/partial product docs can be archived too
+    if doc is None:
+        raise HTTPException(404, "unknown product")
+    doc = {**doc, "status": "archived"}
+    store().set(COLL, pid, doc)
+    return doc
 
 
 @router.post("/products/{pid}/launch")

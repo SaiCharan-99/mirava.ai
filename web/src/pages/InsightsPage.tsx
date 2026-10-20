@@ -26,17 +26,40 @@ function useFixtures(): Fixtures | null {
   return f;
 }
 
-/** Data hook: fixtures in visual-test mode, the API otherwise. */
-function useData<T>(demo: T, load: () => Promise<T>, deps: unknown[] = []): T | null {
+export interface DataState<T> { data: T | null; error: string | null; loading: boolean; retry: () => void }
+
+/** Data hook: fixtures in visual-test mode, the API otherwise; never "loading" forever (errors are kept). */
+export function useData<T>(demo: T, load: () => Promise<T>, deps: unknown[] = []): DataState<T> {
   const [d, setD] = useState<T | null>(isVisualTest ? demo : null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!isVisualTest);
+  const [n, setN] = useState(0);
   useEffect(() => {
     if (isVisualTest) return;
     let live = true;
-    load().then((x) => live && setD(x)).catch(() => live && setD(null));
+    setLoading(true); setError(null);
+    load().then((x) => { if (live) { setD(x); setLoading(false); } })
+      .catch((e: unknown) => { if (live) { setError(e instanceof Error ? e.message : String(e)); setLoading(false); } });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  return d;
+  }, [...deps, n]);
+  return { data: d, error, loading, retry: () => setN((k) => k + 1) };
+}
+
+export function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="card" data-testid="error-card" style={{ borderColor: "rgba(248,113,113,.5)" }}>
+      <div className="row between"><div><b className="small">Couldn't load this</b><div className="xs muted" style={{ marginTop: 4 }}>{message}</div></div>
+        <button className="btn sm" onClick={onRetry}>↻ Retry</button></div>
+    </div>
+  );
+}
+
+/** Loading / error placeholder for a data hook, or null once data is there. */
+export function gate<T>(s: DataState<T>, what: string): ReactNode | null {
+  if (s.data !== null && !s.error) return null;
+  if (s.error) return <ErrorCard message={s.error} onRetry={s.retry} />;
+  return <Empty>{s.loading ? `Loading ${what}…` : `No ${what} yet.`}</Empty>;
 }
 
 function Quote({ q, names }: { q: QuoteView; names: Names }) {
@@ -57,7 +80,7 @@ function Empty({ children }: { children: ReactNode }) {
 }
 
 // ---------------------------------------------------------------- Ask
-function AnswerBlock({ a, names }: { a: AskAnswerView; names: Names }) {
+function AnswerBlock({ a, names, onRetry }: { a: AskAnswerView; names: Names; onRetry?: () => void }) {
   return (
     <div className="answer">
       {a.steps.length > 0 && <div className="list" style={{ gap: 4, marginBottom: 10 }}>{a.steps.map(([t, d], i) => <div key={i} className="toolstep">✓ <code>{t}</code> {d}</div>)}</div>}
@@ -72,6 +95,7 @@ function AnswerBlock({ a, names }: { a: AskAnswerView; names: Names }) {
           <div className="sqlbox" style={{ marginTop: 8 }}>{a.sql.join("\n\n")}</div></details>
       )}
       {a.caveats && <div className="xs muted" style={{ marginTop: 8 }}>{a.caveats}</div>}
+      {a.failed && onRetry && <button className="btn sm" data-testid="ask-retry" style={{ marginTop: 10 }} onClick={onRetry}>↻ Retry</button>}
     </div>
   );
 }
@@ -89,14 +113,25 @@ function toView(ans: AskAnswer, steps: string[]): AskAnswerView {
     sideHtml: ans.numbers.length ? `<b>Key numbers</b><ul style="margin:6px 0 0;padding-left:18px">${ans.numbers.slice(0, 5).map((n) => `<li>${n.label}: <b>${Number.isInteger(n.value) ? n.value.toLocaleString("en-IN") : n.value.toFixed(n.value < 1 ? 3 : 1)}</b></li>`).join("")}</ul>` : "",
     quotes: ans.quotes.map((q) => ({ agent_id: q.agent_id, name: q.name, text: q.text, kind: q.kind ?? "", private: q.private })),
     sql: ans.sql, caveats: ans.caveats.length ? "Caveats: " + ans.caveats.join(" ") : undefined, suggestions: ans.suggestions,
+    failed: Boolean(ans.error),
   };
 }
 
-function AskTab({ names }: { names: Names }) {
+/** Starter questions about the products that exist now (never hardcoded product names). */
+export function starterQuestions(names: string[]): string[] {
+  const [a, b] = names;
+  return ["Which phone do people prefer, and why?",
+    ...(a ? [`What do people privately think but not say about the ${a}?`, `Where did ${a} buyers first hear about it?`] : []),
+    ...(b ? [`What do students say about the ${b}?`] : []),
+    "Which hoarding gets noticed most, and does facing matter?"];
+}
+
+function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
   const nav = useNavigate();
   const [thread, setThread] = useState<{ q: string; a: AskAnswerView | null; steps: string[] }[]>(isVisualTest ? D.DEMO_ASK.map((x) => ({ ...x, steps: [] })) : []);
   const [q, setQ] = useState("");
-  const [sugg, setSugg] = useState<string[]>(D.DEMO_SUGGESTIONS);
+  const [asked, setSugg] = useState<string[] | null>(null);
+  const sugg = isVisualTest ? D.DEMO_SUGGESTIONS : asked ?? starterQuestions(prodNames);
   const busy = thread.some((t) => t.a === null);
   const run = async (question: string) => {
     if (!question.trim() || isVisualTest) return;
@@ -109,7 +144,8 @@ function AskTab({ names }: { names: Names }) {
       setThread((t) => t.map((x, i) => (i === idx ? { ...x, a: toView(ans, steps.filter((s) => !s.startsWith("Reading the data") && !s.startsWith("Checked") && !s.startsWith("Writing"))) } : x)));
       if (ans.suggestions?.length) setSugg(ans.suggestions);
     } catch (e) {
-      setThread((t) => t.map((x, i) => (i === idx ? { ...x, a: { steps: [], html: `Sorry — ${String(e)}`, quotes: [] } } : x)));
+      const msg = e instanceof Error ? e.message : String(e);
+      setThread((t) => t.map((x, i) => (i === idx ? { ...x, a: { steps: [], html: mdToHtml(msg), quotes: [], failed: true } } : x)));
     }
   };
   return (
@@ -120,7 +156,7 @@ function AskTab({ names }: { names: Names }) {
           {thread.map((t, i) => (
             <div key={i} className="list" style={{ gap: 14 }}>
               <div className="qbubble">{t.q}</div>
-              {t.a ? <AnswerBlock a={t.a} names={names} /> : (
+              {t.a ? <AnswerBlock a={t.a} names={names} onRetry={busy ? undefined : () => void run(t.q)} /> : (
                 <div className="answer"><div className="list" style={{ gap: 4 }}>{t.steps.map((s, k) => <div key={k} className="toolstep">… {s}</div>)}<div className="toolstep">… thinking</div></div></div>
               )}
             </div>
@@ -145,16 +181,20 @@ function AskTab({ names }: { names: Names }) {
 
 // ---------------------------------------------------------------- Overview
 function OverviewTab() {
-  const d = useData<OverviewData>(D.DEMO_OVERVIEW, getOverview);
-  if (!d) return <Empty>Loading overview…</Empty>;
+  const st = useData<OverviewData>(D.DEMO_OVERVIEW, getOverview);
+  const g = gate(st, "overview");
+  if (g || !st.data) return g;
+  const d = st.data;
   return (
     <>
       <div className="grid g4">{d.kpis.map((k, i) => <Kpi key={i} l={k[0]} v={k[1]} d={k[2]} />)}</div>
       <div className="grid g21" style={{ marginTop: 14 }}>
         <div className="card"><h3>Awareness and curious+ over sim days</h3>{d.series.length ? <LineChart series={d.series} labels={d.labels} ymax={d.ymax} events={d.events} /> : <p className="small muted">No product is live yet.</p>}</div>
-        <div className="card"><h3>Funnel today</h3>
-          <table><tbody><tr><th>Stage</th>{d.funnel.cols.map((c) => <th key={c}>{c}</th>)}</tr>
-            {d.funnel.rows.map((r) => <tr key={String(r[0])}><td>{r[0]}</td>{r.slice(1).map((v, i) => <td key={i} className="mono">{typeof v === "number" ? v.toLocaleString("en-IN") : v}</td>)}</tr>)}</tbody></table>
+        <div className="card" data-testid="overview-funnel"><h3>Funnel so far</h3>
+          <table><tbody><tr><th>People who…</th>{d.funnel.cols.map((c) => <th key={c}>{c}</th>)}</tr>
+            {d.funnel.rows.map((r) => <tr key={String(r[0])}><td>{String(r[0])}</td>{r.slice(1).map((v, i) => <td key={i} className="mono">{
+              typeof v === "object" ? <>{v.n.toLocaleString("en-IN")}<div className="xs muted">{v.pct}%</div></> : typeof v === "number" ? v.toLocaleString("en-IN") : v}</td>)}</tr>)}</tbody></table>
+          <p className="xs muted">Cumulative: everyone counted in a row also reached every row above it. % = share of the row above (first row: of all residents).</p>
           <p className="xs muted">{d.note}</p></div>
       </div>
     </>
@@ -163,8 +203,10 @@ function OverviewTab() {
 
 // ---------------------------------------------------------------- Sources
 function SourcesTab() {
-  const d = useData<SourcesData>(D.DEMO_SOURCES, getSources);
-  if (!d) return <Empty>Loading sources…</Empty>;
+  const st = useData<SourcesData>(D.DEMO_SOURCES, getSources);
+  const g = gate(st, "sources");
+  if (g || !st.data) return g;
+  const d = st.data;
   return (
     <div className="grid g21">
       <div className="card"><h3>Where people first heard</h3>{d.stacks.map((s) => <StackRow key={s.label} label={s.label} parts={s.parts} cols={d.cols} />)}
@@ -208,10 +250,11 @@ function HoardingsTab({ prods, fx }: { prods: Record<string, ProdInfo>; fx: Fixt
       sites: (ins?.sites ?? []).map((s) => ({ site_id: s.id, x: s.x, y: s.y })) };
   }, [fx]);
   const live = useData<HoardingsData>(null as unknown as HoardingsData, getHoardings);
-  const d = isVisualTest ? demo : live;
+  const d = isVisualTest ? demo : live.data;
   const [sel, setSel] = useState<string | null>(null);
   const [th, setTh] = useState<{ text: string; t: number }[]>([]);
   useEffect(() => { if (sel && !isVisualTest) void getJSON<{ text: string; t: number }[]>(`/insights/hoardings/${sel}/thoughts`).then(setTh); }, [sel]);
+  if (!isVisualTest && (live.error || !d)) return gate(live, "hoardings");
   if (!d) return <Empty>Loading hoardings…</Empty>;
   const fmt = (n: number) => Math.round(n).toLocaleString("en-IN");
   return (
@@ -248,8 +291,10 @@ function HoardingsTab({ prods, fx }: { prods: Record<string, ProdInfo>; fx: Fixt
 // ---------------------------------------------------------------- Segments
 function SegmentsTab() {
   const [p, setP] = useState("");
-  const d = useData<SegmentsData>(D.DEMO_SEGMENTS, () => getSegments(p), [p]);
-  if (!d) return <Empty>Loading segments…</Empty>;
+  const st = useData<SegmentsData>(D.DEMO_SEGMENTS, () => getSegments(p), [p]);
+  const g = gate(st, "segments");
+  if (g || !st.data) return g;
+  const d = st.data;
   if (!d.heat) return <Empty>No product is live yet.</Empty>;
   const cur = d.product ?? d.products[0]?.id;
   return (
@@ -272,8 +317,10 @@ function SegmentsTab() {
 
 // ---------------------------------------------------------------- Conversations
 function ConversationsTab() {
-  const d = useData<ConversationsData>(D.DEMO_CONVERSATIONS, getConversations);
-  if (!d) return <Empty>Loading conversations…</Empty>;
+  const st = useData<ConversationsData>(D.DEMO_CONVERSATIONS, getConversations);
+  const g = gate(st, "conversations");
+  if (g || !st.data) return g;
+  const d = st.data;
   return (
     <>
       <div className="grid g3">
@@ -349,17 +396,28 @@ function PollsTab({ names }: { names: Names }) {
 
 // ---------------------------------------------------------------- Interview
 interface Turn { role: "me" | "ai"; text: string; mem?: string }
+interface IvAgent { agent_id: number; name: string; age?: number; occupation: string; phone: { age_years: number | null }; shirt?: string }
+
+/** Stable avatar colour per agent id (same palette everywhere a list shows people). */
+export function avatarColor(id: number): string {
+  return ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7", "#ec4899", "#14b8a6", "#f97316", "#eab308", "#6366f1"][Math.abs(id) % 10];
+}
+
 function InterviewTab({ names, fx }: { names: Names; fx: Fixtures | null }) {
-  const [list, setList] = useState<{ agent_id: number; name: string; occupation: string; phone: { age_years: number } }[]>([]);
-  const [sel, setSel] = useState<number | null>(isVisualTest ? D.DEMO_INTERVIEW.selected : null);
+  const want = Number(new URLSearchParams(window.location.search).get("agent") ?? "") || null;
+  const [search, setSearch] = useState("");
+  const [qs, setQs] = useState("");
+  useEffect(() => { const h = setTimeout(() => setQs(search), 300); return () => clearTimeout(h); }, [search]);
+  const st = useData<IvAgent[]>([], () => getJSON<IvAgent[]>(`/insights/interview/agents?q=${encodeURIComponent(qs)}${want ? `&agent=${want}` : ""}`), [qs]);
+  const [sel, setSel] = useState<number | null>(isVisualTest ? D.DEMO_INTERVIEW.selected : want);
   const [chat, setChat] = useState<Turn[]>(isVisualTest ? (D.DEMO_INTERVIEW.chat as Turn[]) : []);
   const [q, setQ] = useState("");
-  const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (!isVisualTest) void getJSON<typeof list>(`/insights/interview/agents?q=${encodeURIComponent(search)}`).then((l) => { setList(l); if (sel === null && l[0]) setSel(l[0].agent_id); }).catch(() => undefined); }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
-  const rows = isVisualTest
+  const list = useMemo(() => st.data ?? [], [st.data]);
+  useEffect(() => { if (!isVisualTest && sel === null && list[0]) setSel(list[0].agent_id); }, [list, sel]);
+  const rows: IvAgent[] = isVisualTest
     ? D.DEMO_INTERVIEW.agents.map((id) => { const a = fx?.agents.find((x) => x.id === id); return { agent_id: id, name: a?.name ?? "", occupation: a?.job ?? "", phone: { age_years: a?.phone.age ?? 0 }, shirt: a?.look.shirt }; })
-    : list.map((a) => ({ ...a, shirt: undefined as string | undefined }));
+    : list;
   const cur = rows.find((r) => r.agent_id === sel);
   const first = cur?.name.split(" ")[0] ?? "";
   const send = async () => {
@@ -370,27 +428,30 @@ function InterviewTab({ names, fx }: { names: Names; fx: Fixtures | null }) {
     try {
       const r = await postJSON<{ answer: string; memories: { text: string; t: number }[] }>("/insights/interview", { agent_id: sel, question, session_id: `iv-${sel}` });
       setChat((c) => [...c, { role: "ai", text: r.answer, mem: r.memories.length ? "memories used: " + r.memories.map((m) => m.text.slice(0, 50)).join(" · ") : "" }]);
-    } catch (e) { setChat((c) => [...c, { role: "ai", text: `(${String(e)})` }]); }
+    } catch (e) { setChat((c) => [...c, { role: "ai", text: `(couldn't answer: ${e instanceof Error ? e.message : String(e)})` }]); }
     setBusy(false);
   };
   return (
     <div className="grid g12">
-      <div className="card"><h3>Interview someone</h3><input placeholder="Search agents…" style={{ marginBottom: 10 }} value={search} onChange={(e) => setSearch(e.target.value)} />
-        <div className="list">{rows.slice(0, 8).map((a) => (
+      <div className="card" data-testid="interview-list"><h3>Interview someone</h3><input placeholder="Search by name or job…" style={{ marginBottom: 10 }} value={search} onChange={(e) => setSearch(e.target.value)} />
+        {!isVisualTest && st.error && <ErrorCard message={st.error} onRetry={st.retry} />}
+        {!isVisualTest && !st.error && st.loading && !list.length && <div className="xs muted">Loading people…</div>}
+        {!isVisualTest && !st.error && !st.loading && !list.length && <div className="xs muted">Nobody matches “{search}”.</div>}
+        <div className="list" style={{ maxHeight: 560, overflow: "auto" }}>{rows.slice(0, isVisualTest ? 8 : 20).map((a) => (
           <div key={a.agent_id} className="item row" style={{ gap: 10, cursor: "pointer", ...(a.agent_id === sel ? { borderColor: "var(--teal)", background: "var(--teal-soft)" } : {}) }}
             onClick={() => { setSel(a.agent_id); if (!isVisualTest) setChat([]); }}>
-            <div className="avatar" style={{ background: a.shirt ?? "var(--c2)" }}>{initials(a.name)}</div>
-            <div><b>{a.name}</b><div className="xs muted">{a.occupation} · phone {Math.round((a.phone?.age_years ?? 0) * 10) / 10} yrs</div></div>
+            <div className="avatar" style={{ background: a.shirt ?? avatarColor(a.agent_id) }}>{initials(a.name)}</div>
+            <div><b>{a.name}</b>{a.age ? <span className="muted">, {a.age}</span> : null}<div className="xs muted">{a.occupation} · phone {Math.round((a.phone?.age_years ?? 0) * 10) / 10} yrs</div></div>
           </div>
         ))}</div></div>
-      <div className="card"><div className="row between"><h3 style={{ margin: 0 }}>{isVisualTest ? D.DEMO_INTERVIEW.title : cur ? `${cur.name}${names[cur.agent_id]?.age ? `, ${names[cur.agent_id].age}` : ""} · in character` : "Pick someone"}</h3>
+      <div className="card"><div className="row between"><h3 style={{ margin: 0 }}>{isVisualTest ? D.DEMO_INTERVIEW.title : cur ? `${cur.name}${cur.age ? `, ${cur.age}` : names[cur.agent_id]?.age ? `, ${names[cur.agent_id].age}` : ""} · in character` : "Pick someone"}</h3>
         <span className="xs muted">{isVisualTest ? D.DEMO_INTERVIEW.note : `grounded only in ${first}'s own memories`}</span></div>
         <div className="chat" style={{ marginTop: 10 }}>{chat.map((m, i) => (
           <div key={i} className={`msg ${m.role}`}>{m.text}{m.mem ? <div className="xs muted" style={{ marginTop: 6 }}>{m.mem}</div> : null}</div>
         ))}{busy && <div className="msg ai">…</div>}</div>
         <form className="askbar" style={{ marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); void send(); }}>
           <input placeholder={isVisualTest ? D.DEMO_INTERVIEW.placeholder : `Ask ${first || "them"}…`} value={q} onChange={(e) => setQ(e.target.value)} />
-          <button className="btn primary" type="submit" disabled={busy}>Send</button></form></div>
+          <button className="btn primary" type="submit" disabled={busy || sel === null}>Send</button></form></div>
     </div>
   );
 }
@@ -407,7 +468,7 @@ export function InsightsPage() {
       if (fx) setProds(Object.fromEntries(fx.products.map((p) => [p.id, { name: p.name, hex: p.hex }])));
       return;
     }
-    void getJSON<{ product_id: string; name: string; color: string; status: string }[]>("/products").then((l) => {
+    void getJSON<{ product_id: string; name: string; color: string; status: string }[]>("/products?active=1").then((l) => {
       setProds(Object.fromEntries(l.map((p) => [p.product_id, { name: p.name, hex: p.color }])));
       setLive((s) => ({ ...s, n: l.filter((p) => p.status === "live").length }));
     }).catch(() => undefined);
@@ -416,7 +477,7 @@ export function InsightsPage() {
   const names = useMemo<Names>(() => (fx ? Object.fromEntries(fx.agents.map((a) => [a.id, { name: a.name, age: a.age, shirt: a.look.shirt, job: a.job, phoneAge: a.phone.age }])) : {}), [fx]);
   const chip = isVisualTest ? D.DEMO_DATA_CHIP : `Data: Day 1 → ${live.day || "…"} · ${live.n} product${live.n === 1 ? "" : "s"} live`;
   const body: Record<string, () => ReactNode> = {
-    ask: () => <AskTab names={names} />, overview: () => <OverviewTab />, sources: () => <SourcesTab />,
+    ask: () => <AskTab names={names} prodNames={Object.values(prods).map((p) => p.name)} />, overview: () => <OverviewTab />, sources: () => <SourcesTab />,
     hoardings: () => <HoardingsTab prods={prods} fx={fx} />, segments: () => <SegmentsTab />, conversations: () => <ConversationsTab />,
     polls: () => <PollsTab names={names} />, interview: () => <InterviewTab names={names} fx={fx} />,
   };

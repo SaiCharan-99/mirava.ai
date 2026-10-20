@@ -82,7 +82,7 @@ class Product(BaseModel):
     strategy: dict
     creatives: list[Creative]
     plan: Plan | None
-    status: Literal["draft", "ready", "live", "ended"]
+    status: Literal["draft", "ready", "live", "ended", "archived"]
     color: str
     launched_at_t: int | None = None
     understanding: dict | None = None

@@ -124,6 +124,7 @@ class MediaRuntime:
             self.pending.append(pid)
 
     def _refresh(self, w: World, bus: EventBus, docs: list[dict[str, Any]]) -> None:
+        docs = [d for d in docs if d.get("status") != "archived"]    # archived = removed from the world
         self._drop_removed(w, {d["product_id"] for d in docs})
         for d in sorted(docs, key=lambda d: d["product_id"]):
             pid = d["product_id"]

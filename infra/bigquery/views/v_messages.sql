@@ -3,8 +3,8 @@ CREATE OR REPLACE VIEW `mirava.v_messages` AS
 SELECT
   session_id,
   CAST(JSON_VALUE(payload, '$.seq') AS INT64) AS seq,
-  CAST(JSON_VALUE(payload, '$.speaker') AS INT64) AS speaker,
-  CAST(JSON_VALUE(payload, '$.listener') AS INT64) AS listener,
+  SAFE_CAST(JSON_VALUE(payload, '$.speaker') AS INT64) AS speaker,          -- 'moderator' (focus groups) → NULL
+  SAFE_CAST(JSON_VALUE(payload, '$.listener') AS INT64) AS listener,
   JSON_VALUE(payload, '$.text') AS text,
   JSON_VALUE(payload, '$.conv_kind') AS conv_kind,
   t,

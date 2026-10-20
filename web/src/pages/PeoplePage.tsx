@@ -141,7 +141,7 @@ export function PeoplePage() {
       <div className="card" data-testid="people-table" style={{ padding: 0 }}>
         <table><tbody>
           <tr><th style={{ width: 34 }} /><th>Name</th><th>Age</th><th>Job</th><th>Income</th><th>Phone</th><th style={{ textAlign: "right" }}>Phone age</th>
-            {live.map((p) => <th key={p.id}>{p.name}</th>)}<th>Doing now</th></tr>
+            {live.map((p) => <th key={p.id}>{p.name}</th>)}<th>Doing now</th><th /></tr>
           {rows.map((a) => {
             const on = watch.includes(a.id);
             return (
@@ -152,6 +152,7 @@ export function PeoplePage() {
                 <td className="mono" style={{ textAlign: "right", color: a.phoneAge > 5 ? "var(--red)" : "inherit" }}>{a.phoneAge.toFixed(1)} y</td>
                 {live.map((p) => <td className="small" key={p.id}><Stage b={a.stages[p.id]} /></td>)}
                 <td className="small muted">{a.act}</td>
+                <td><button className="btn sm" data-testid={`interview-${a.id}`} onClick={(e) => { e.stopPropagation(); nav(withMode(`/insights/interview?agent=${a.id}`)); }}>Interview</button></td>
               </tr>
             );
           })}
