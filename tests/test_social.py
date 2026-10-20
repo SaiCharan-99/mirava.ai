@@ -274,3 +274,78 @@ async def test_opinion_brief_stays_in_the_owners_own_prompts() -> None:
         for marker in (alpha, beta):
             if marker in p and marker not in spoken:
                 assert sum(marker in q for q in by_purpose["conv_debrief"]) == 1   # only the owner's own debrief
+
+
+async def test_turn_by_turn_prompts_only_hold_own_context_and_the_spoken_transcript() -> None:
+    """Phase 2c: in run_turns Arjun's prompts never contain Meera's private memory unless she SAID it earlier."""
+    from social.conversation import ConvExtras
+
+    class KeepTalking(EchoLLM):
+        async def generate(self, model: str, prompt: Any, schema: type[BaseModel] | None = None, **kw: Any) -> LLMResult:
+            res = await super().generate(model, prompt, schema, **kw)
+            if kw.get("purpose") == "conv_turn":
+                res.data.done = False                              # EchoLLM answers every boolean with True
+            return res
+
+    store, llm, dec = MemoryStoreBackend(), KeepTalking(), FakeDecision()
+    for aid, nm in ((1, "Meera"), (2, "Arjun")):
+        profile(store, aid, nm)
+    await MemoryStore(1, store, llm).add(MemoryEntry(
+        mid="secret", agent_id=1, t=0, kind="observation", text=f"My cousin is named {MARKER}.", importance=9,
+        source={"channel": "life"}, entities=[], event_refs=[]))
+    out = await run_conversation("t1", Participant(1, "Meera", "casual"), Participant(2, "Arjun", "casual"),
+                                 gres(1, 2), "friends", 0.8, "cafe", 100, store=store, llm=llm, decider=dec,
+                                 extras=ConvExtras(turn_by_turn=True, max_msgs=4))
+    turns = [p for purpose, p in llm.prompts if purpose == "conv_turn"]
+    assert turns, "turn-by-turn path not used"
+    arjun = [p for p in turns if "conversation with Meera" in p]
+    meera = [p for p in turns if "conversation with Arjun" in p]
+    assert arjun and meera
+    for p in arjun:
+        transcript = p.split("<transcript>")[1]
+        assert MARKER not in p.split("<transcript>")[0]            # Meera's memory is never in Arjun's own context
+        if MARKER in transcript:                                    # …unless she already said it out loud
+            assert "Meera:" in transcript
+    per = {1: 0, 2: 0}
+    for m in out.messages:
+        per[m.speaker] += 1
+    assert max(per.values()) <= 4 and per[1] >= 1 and per[2] >= 1
+    assert out.messages[0].speaker == 1                             # A opens with the planned greeting
+
+
+async def test_turn_by_turn_survives_a_model_that_says_nothing() -> None:
+    from pydantic import BaseModel as BM
+
+    from social.turns import TurnOut, run_turns
+
+    class Mute(FakeGemini):
+        async def generate(self, model: str, prompt: Any, schema: type[BM] | None = None, **kw: Any) -> LLMResult:
+            assert schema is TurnOut
+            return LLMResult(data=TurnOut(say="", done=False), text="", usage=Usage(cost_usd=0.0), model=model)
+
+    store = MemoryStoreBackend()
+    for aid, nm in ((1, "Meera"), (2, "Arjun")):
+        profile(store, aid, nm)
+    pa = SharePlan(session_id="s", agent_id=1, opening="Hey!", points_to_share=[], questions_to_ask=[], tone="warm",
+                   withheld_count=0)
+    pb = SharePlan(session_id="s", agent_id=2, opening="Oh hi!", points_to_share=[], questions_to_ask=[], tone="warm",
+                   withheld_count=0)
+    msgs, out, cost, _ = await run_turns(pa, pb, {1: "Meera", 2: "Arjun"}, {}, {}, "friends", "cafe", 6, store=store,
+                                         llm=Mute(), t=0, topics=["family"], product_ids=[])
+    assert [m.speaker for m in msgs] == [1, 2] and msgs[1].text == "Oh hi!" and cost == 0.0
+
+
+async def test_gate_adds_a_visible_board_as_a_topic_for_friends_only() -> None:
+    fd = FakeDecision()
+
+    class Gov:
+        def allow(self, pc: str, est: float) -> bool:
+            return True
+
+    a, b = Side(1, ["cooking"]), Side(2, ["music"])
+    rel = {"kind": "friend", "closeness": 0.9}
+    friends = await gate(a, b, rel, "cafe", 5, fd, Gov(), force_talk=True, extra_product="pulse-5")
+    assert friends.talk and friends.product == "pulse-5" and friends.topics[0] == "product:pulse-5"
+    assert friends.priority_class == "P2"
+    strangers = await gate(a, b, None, "cafe", 5, fd, Gov(), force_talk=True, extra_product="pulse-5")
+    assert strangers.product is None and not any(t.startswith("product:") for t in strangers.topics)

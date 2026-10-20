@@ -282,3 +282,23 @@ def test_street_encounters_and_standing_exposures(bought):
         assert (min(g["agent_id"], g["other_id"]), max(g["agent_id"], g["other_id"])) in e.social.rel
     assert standing, "nobody standing near a board was ever exposed in 3 days"
     assert all(x["payload"]["mode"] == "idle" for x in standing)
+
+
+def test_visible_ad_finds_the_board_in_front_and_not_behind(bought):
+    """Phase 2c: friends chatting in front of a live campaign board can see it; behind it they cannot."""
+    import math as m_
+
+    e, _, _, pid = bought
+    media = e.media
+    t = (e.world.t // 1440) * 1440 + 12 * 60           # noon: lit and visible
+    live = [(sid, asg) for sid, asg in media.site_map.items() if asg["product_id"] == pid and asg["facing"] is not None]
+    assert live, "the launched product has no assigned board"
+    sid, asg = live[0]
+    s = next(x for x in media.sites if x.site_id == sid)
+    f = float(asg["facing"])
+    front = (s.x + 15 * m_.sin(m_.radians(f)), s.y - 15 * m_.cos(m_.radians(f)))
+    behind = (s.x - 15 * m_.sin(m_.radians(f)), s.y + 15 * m_.cos(m_.radians(f)))
+    got = media.visible_ad(*front, t)
+    assert got is not None and got[0] == pid and got[1]
+    assert media.visible_ad(*behind, t) is None or media.visible_ad(*behind, t)[0] != pid
+    assert media.visible_ad(s.x + 500, s.y + 500, t) is None

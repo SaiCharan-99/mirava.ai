@@ -76,7 +76,8 @@ def topics_for(a: Side, b: Side) -> tuple[list[str], str | None]:
 
 
 async def gate(a: Side, b: Side, relationship: dict | None, place_kind: str | None, t: int,
-               decider: DecisionAdapter, governor: Governor, *, force_talk: bool = False) -> GateResult:
+               decider: DecisionAdapter, governor: Governor, *, force_talk: bool = False,
+               extra_product: str | None = None) -> GateResult:
     """Decide whether and how a co-located pair talks (sessions/busy/co-location rules are checked by the caller)."""
     pair = (min(a.agent_id, b.agent_id), max(a.agent_id, b.agent_id))
     known = relationship is not None and relationship.get("kind") != "follower"
@@ -87,6 +88,9 @@ async def gate(a: Side, b: Side, relationship: dict | None, place_kind: str | No
     free = min(a.free, b.free)
     p_talk = 0.15 + 0.6 * closeness * free if known else 0.12
     topics, product = topics_for(a, b)
+    if known and extra_product and extra_product != product:     # a campaign board both can see is a topic too
+        product = product or extra_product
+        topics = list(dict.fromkeys([f"product:{extra_product}", *topics]))[:4]
     if not known:
         product = None
         topics = [x for x in topics if not x.startswith("product:")][:2]

@@ -25,7 +25,7 @@ from shared.schemas.memory import MemoryEntry
 from shared.store import DocStore
 from shared.subjects import canonical
 from social.agenda import Agenda
-from social.conversation import Outcome, Participant, run_conversation, template_memories, unrendered
+from social.conversation import ConvExtras, Outcome, Participant, run_conversation, template_memories, unrendered
 from social.gate import Side, gate
 from social.sessions import SessionRegistry
 from social.stop import LONG_MIN, MODE_RECOGNISE, QUICK_MIN, StopCtx, decide_stop, urgency
@@ -99,6 +99,7 @@ class SocialRuntime:
         self.product_name_of: Callable[[str], str] = lambda pid: pid              # product display name (set by the engine)
         self.intent_hook: Callable[[int, str], None] | None = None               # plan intents → commerce (set by the engine)
         self.on_phone: Callable[[int, int], bool] = lambda aid, m: False         # is this person scrolling their phone now
+        self.visible_fn: Callable[[float, float, int], tuple[str, str] | None] | None = None   # campaign board in view
         self._street_tried: dict[tuple[int, int], int] = {}
         self.watched = watched or set()
         self.opinion = opinion                                     # OpinionEngine (None: no computed opinions)
@@ -249,8 +250,12 @@ class SocialRuntime:
         pair = (min(ia, ib), max(ia, ib))
         rel = self.rel.get(pair)
         place = None if street else w.wm.place_by_id.get(w.agents[ia].place_id or "")
+        vis = None
+        if self.visible_fn is not None and rel is not None:                  # friends chatting in front of a campaign board
+            ax, ay = w.position(w.agents[ia], float(t))[:2]
+            vis = self.visible_fn(ax, ay, t)
         g = await gate(self.side(w, ia), self.side(w, ib), rel, place.kind if place else None, t, self.gate_decider,
-                       self.gov, force_talk=street is not None)
+                       self.gov, force_talk=street is not None, extra_product=vis[0] if vis else None)
         bus.new("gate", t, pair[0], g.payload(), other_id=pair[1], rendered=g.rendered)
         if not g.talk:
             return
@@ -276,6 +281,7 @@ class SocialRuntime:
                     if self.opinion is not None and pids else None)
         rel_label = REL_LABEL.get((rel or {}).get("kind", ""), "strangers")
         closeness = float((rel or {}).get("closeness", 0.0))
+        extras = self._extras(w, g, ia, ib, t, closeness, pids, vis, street)
         pname = "the street" if street else ((place.name if place else "the street") if place and place.kind != "home" else "home")
         fallback_gate = g
 
@@ -288,9 +294,38 @@ class SocialRuntime:
         self.queue.submit(sid, lambda: run_conversation(sid, pa, pb, g, rel_label, closeness, pname, t,
                                                         store=self.store, llm=self.llm, decider=self.decider,
                                                         catalog=self.catalog_fn() if self.catalog_fn else None,
-                                                        opinions=opinions),
+                                                        opinions=opinions, extras=extras),
                           t, delay, fallback)
         self._pclass[sid] = g.priority_class
+
+    def _extras(self, w: World, g: Any, ia: int, ib: int, t: int, closeness: float, pids: list[str],
+                vis: tuple[str, str] | None, street: dict[str, Any] | None) -> ConvExtras:
+        """Per-agent texts built only from that agent's own state: what's on their mind, and what they'd say aloud."""
+        minds: dict[int, str] = {}
+        stances: dict[int, str] = {}
+        for me, other in ((ia, ib), (ib, ia)):
+            items = self.agenda.top(me, 2, other, t)
+            minds[me] = "\n".join(f"- {i.public_hint or i.kind}" + (f": {i.about}" if i.about else "") for i in items)
+            if self.opinion is not None:
+                lines = []
+                for pid in pids:
+                    if pid not in self.opinion.catalog or not self.opinion.aware_of(me, pid):
+                        continue
+                    pub, note = self.opinion.expressed(me, pid, closeness)
+                    priv = self.opinion.private_attitude(me, pid)
+                    lines.append(f"{self.product_name_of(pid)}: privately {priv:+.1f}, aloud I'd say {pub:+.1f}."
+                                 + (f" ({note})" if note else ""))
+                stances[me] = "\n".join(lines)
+        visible = ""
+        if vis:
+            visible = f"the {self.product_name_of(vis[0])} hoarding is right there" + (f": “{vis[1]}”" if vis[1] else "")
+        watched = ia in self.watched or ib in self.watched
+        if street:
+            cap = 3 if street["kind"] == "quick" else 8
+        else:
+            cap = 6
+        return ConvExtras(minds=minds, stances=stances, visible=visible,
+                          turn_by_turn=bool(g.product) or watched, max_msgs=None if g.kind == "stranger" else cap)
 
     def _participant(self, w: World, aid: int) -> Participant:
         prof = w.profiles[aid]

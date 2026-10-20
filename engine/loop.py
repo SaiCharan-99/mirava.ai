@@ -121,6 +121,7 @@ class Engine:
                 self.social.catalog_fn = lambda: {pid: lp.p.name for pid, lp in media.live.items()}
                 self.social.product_name_of = lambda pid: media.live[pid].p.name if pid in media.live else pid
                 self.social.on_phone = lambda aid, m: media._on_phone(w, aid, m)
+                self.social.visible_fn = media.visible_ad
             if ck is not None and ck.get("media"):
                 self.media.load(ck["media"])
         if self.commerce_enabled and self.media is not None:

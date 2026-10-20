@@ -28,6 +28,7 @@ from shared.llm import LLMClient
 from shared.schemas.product import Product, StimulusRecord
 from shared.store import DocStore
 from social import community
+from world.sites import bearing
 
 log = logging.getLogger("engine.media")
 BASELINE = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "baseline_ads.yaml")
@@ -378,6 +379,27 @@ class MediaRuntime:
                               "target": bool(lp is not None and aid in lp.audience),
                               "rate_inr_day": round(s.rate_card_inr_week / 7)})
         return True
+
+    def visible_ad(self, x: float, y: float, t: int) -> tuple[str, str] | None:
+        """(product id, hook) of a live campaign board within 40 m that faces this spot (people chatting there can see
+        it), or None."""
+        if not self.site_map or not self.sites:
+            return None
+        m = simtime.minute_of_day(t)
+        d = np.hypot(self.site_xy[:, 0] - x, self.site_xy[:, 1] - y)
+        for si in np.argsort(d)[:5].tolist():
+            if d[si] > 40:
+                break
+            s = self.sites[si]
+            asg = self.site_map.get(s.site_id)
+            if not asg or asg["product_id"] not in self.live:
+                continue
+            faces = [asg["facing"]] if asg["facing"] is not None else list(s.facings)
+            heading = bearing(s.x - x, s.y - y)                 # looking at the board
+            if any(ots(s, f, x, y, heading, still=True, minute_of_day=m) is not None for f in faces):
+                stim = self._stim(asg["product_id"], asg["creative_id"])
+                return asg["product_id"], (stim.hook if stim else "")
+        return None
 
     STANDING_KINDS = frozenset({"bus_stop", "shop", "cafe", "restaurant", "park", "metro", "mall", "store", "news_vendor"})
     STANDING_GAP = 30                  # sim minutes before the same person can be exposed to the same board again

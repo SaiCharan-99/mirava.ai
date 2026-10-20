@@ -16,6 +16,7 @@ from social.debrief import debrief
 from social.dialogue import write_dialogue
 from social.gate import GateResult
 from social.prep import prep
+from social.turns import run_turns
 
 MAX_SOCIAL, MAX_STRANGER = 10, 4
 
@@ -28,6 +29,17 @@ class Participant:
     name: str
     style: str
     now: str = ""
+
+
+@dataclass
+class ConvExtras:
+    """Optional richer setup of one conversation (all per-agent texts are built from that agent's OWN state)."""
+
+    minds: dict[int, str] = field(default_factory=dict)       # what is on my mind (own agenda)
+    stances: dict[int, str] = field(default_factory=dict)     # what I'd say aloud about phones in play
+    visible: str = ""                                          # a campaign board both can see right now
+    turn_by_turn: bool = False                                 # one private call per spoken line
+    max_msgs: int | None = None                                # per person; None = defaults
 
 
 @dataclass
@@ -72,25 +84,36 @@ async def unrendered(sid: str, a: Participant, b: Participant, g: GateResult, t:
 async def run_conversation(sid: str, a: Participant, b: Participant, g: GateResult, relationship: str,
                            closeness: float, place: str, t: int, *, store: DocStore, llm: LLMClient,
                            decider: DecisionAdapter, catalog: dict[str, str] | None = None,
-                           opinions: dict[int, str] | None = None) -> Outcome:
+                           opinions: dict[int, str] | None = None, extras: ConvExtras | None = None) -> Outcome:
     """Rendered 3-step conversation; each private step only ever sees its own agent's context."""
     o = Outcome(sid)
     stranger = g.kind == "stranger"
     names = {a.agent_id: a.name, b.agent_id: b.name}
+    ex = extras or ConvExtras()
     pc = g.priority_class
     (pa, ca, ka), (pb, cb, kb) = await asyncio.gather(
         prep(a.agent_id, sid, b.name, relationship, closeness, place, g.topics, store=store, llm=llm,
              decider=decider, now=a.now, now_t=t, stranger=stranger, priority_class=pc,
-             opinions=(opinions or {}).get(a.agent_id, "")),
+             opinions=(opinions or {}).get(a.agent_id, ""), mind=ex.minds.get(a.agent_id, ""), visible=ex.visible,
+             stance=ex.stances.get(a.agent_id, "")),
         prep(b.agent_id, sid, a.name, relationship, closeness, place, g.topics, store=store, llm=llm,
              decider=decider, now=b.now, now_t=t, stranger=stranger, priority_class=pc,
-             opinions=(opinions or {}).get(b.agent_id, "")))
+             opinions=(opinions or {}).get(b.agent_id, ""), mind=ex.minds.get(b.agent_id, ""), visible=ex.visible,
+             stance=ex.stances.get(b.agent_id, "")))
     o.cost_usd += ka + kb
     for plan, cands in ((pa, ca), (pb, cb)):
         o.ev("share_plan", plan.agent_id, {**plan.model_dump(), "candidates": [c.model_dump() for c in cands]})
-    msgs, out, kd, model = await write_dialogue(pa, pb, {a.agent_id: a.style, b.agent_id: b.style}, relationship,
-                                                place, MAX_STRANGER if stranger else MAX_SOCIAL, llm=llm, t=t,
-                                                product=g.product is not None, priority_class=pc)
+    limit = ex.max_msgs or (MAX_STRANGER if stranger else MAX_SOCIAL)
+    if ex.turn_by_turn:
+        pids = [x.split(":", 1)[1] for x in g.topics if x.startswith("product:")]
+        msgs, out, kd, model = await run_turns(
+            pa, pb, names, {a.agent_id: a.style, b.agent_id: b.style}, {a.agent_id: a.now, b.agent_id: b.now},
+            relationship, place, limit, store=store, llm=llm, t=t, topics=g.topics, product_ids=pids,
+            opinions=opinions, stances=ex.stances, priority_class=pc)
+    else:
+        msgs, out, kd, model = await write_dialogue(pa, pb, {a.agent_id: a.style, b.agent_id: b.style}, relationship,
+                                                    place, limit, llm=llm, t=t, product=g.product is not None,
+                                                    priority_class=pc)
     o.cost_usd += kd
     o.messages = msgs
     o.minutes = max(2, (len(msgs) + 1) // 2)

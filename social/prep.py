@@ -41,13 +41,15 @@ class PrepOut(BaseModel):
 
 async def prep(agent_id: int, session_id: str, other_name: str, relationship: str, closeness: float, place: str,
                topics: list[str], *, store: DocStore, llm: LLMClient, decider: DecisionAdapter, now: str = "",
-               now_t: int | None = None, stranger: bool = False, priority_class: str = "P3", opinions: str = ""
-               ) -> tuple[SharePlan, list[Candidate], float]:
+               now_t: int | None = None, stranger: bool = False, priority_class: str = "P3", opinions: str = "",
+               mind: str = "", visible: str = "", stance: str = "") -> tuple[SharePlan, list[Candidate], float]:
     """Return this agent's SharePlan, its private candidates and the model cost."""
     situation = f"I just ran into {other_name} ({relationship}) at {place}. Possible topics: {', '.join(topics)}."
     ctx = await build(agent_id, "prep", f"{other_name} {' '.join(topics)}", situation, store=store, llm=llm,
                       now=now, now_t=now_t, opinions=opinions)
-    prompt = PROMPT.read_text(encoding="utf-8").replace("{context}", ctx.render()).replace("{situation}", situation)
+    prompt = (PROMPT.read_text(encoding="utf-8").replace("{context}", ctx.render()).replace("{situation}", situation)
+              .replace("{mind}", mind or "(nothing in particular)").replace("{visible}", visible or "(nothing notable)")
+              .replace("{stance}", stance or "(none)"))
     res = await llm.generate(MODEL_LITE, prompt, PrepOut, purpose="conv_prep", reasoning="low", max_tokens=350,
                              priority_class=priority_class)
     out: PrepOut = res.data
