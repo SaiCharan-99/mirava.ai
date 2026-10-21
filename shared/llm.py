@@ -330,6 +330,7 @@ class ICAClient(OpenRouterClient):
         self.base_url = self.s.ica_base_url.rstrip("/")
         self.fallback = OpenRouterClient(self.s, on_cost=kw.get("on_cost"))
         self.ica_failures = 0
+        self._gate = asyncio.Semaphore(6)       # ICA's gateway has a small DB pool: too many parallel calls give 400 QueuePool
 
     def _key(self) -> str:
         return self.s.ica_api_key.get_secret_value()
@@ -358,7 +359,16 @@ class ICAClient(OpenRouterClient):
     async def _post(self, path: str, body: dict) -> dict:
         if path != "/chat/completions":
             raise LLMError(f"ICA has no {path}")
-        raw = await super()._post("/chat-models/chat/completions", body)
+        raw: dict = {}
+        for attempt in range(4):
+            try:
+                async with self._gate:
+                    raw = await super()._post("/chat-models/chat/completions", body)
+                break
+            except LLMError as e:
+                if "QueuePool" not in str(e) or attempt == 3:   # gateway pool exhausted: back off and retry
+                    raise
+                await asyncio.sleep(self.backoff_s * 2 * (attempt + 1))
         try:                                                  # tolerate ```json fences around in-prompt JSON
             msg = raw["choices"][0]["message"]
             txt = (msg.get("content") or "").strip()

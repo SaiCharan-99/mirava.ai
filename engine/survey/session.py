@@ -7,6 +7,7 @@ start + dt (one writer). Offline (fake backend) and over budget, deterministic h
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,16 +18,22 @@ from pydantic import BaseModel, Field
 from engine.rng import stream
 from media.screen import wrap
 from mind.decision import DecisionAdapter, DecisionRequest
-from shared.llm import FakeGemini, LLMClient
+from shared.llm import FakeGemini, LLMClient, LLMError
 from shared.models import MODEL_LITE
 from shared.schemas.survey import HeardItem, PreStance, Question, SurveyAnswer
 
 PROMPTS = Path(__file__).resolve().parents[2] / "shared" / "prompts"
 EMO = ("love", "hate", "never", "always", "terrible", "amazing", "worst", "best", "honestly", "!", "seriously", "scam")
 
+log = logging.getLogger(__name__)
+
 
 def _p(name: str) -> str:
     return (PROMPTS / f"{name}.md").read_text(encoding="utf-8")
+
+
+class ModelDown(Exception):
+    """A model call failed; the caller falls back to the rule-based answer for that single step."""
 
 
 @dataclass
@@ -203,13 +210,20 @@ class TableRunner:
         self.prompts: list[tuple[str, int | str, str]] = []      # (purpose, owner, prompt) — for isolation tests
         self.cost = 0.0
         self.skipped_discussion = False
+        self.model_failures = 0
         self.dt = 0.0
 
     # -- llm wrapper (books cost, keeps prompts for tests)
     async def _gen(self, purpose: str, owner: int | str, prompt: str, schema: type[BaseModel], max_tokens: int) -> Any:
         self.prompts.append((purpose, owner, prompt))
-        res = await self.llm.generate(MODEL_LITE, prompt, schema, purpose=purpose, reasoning="low",
-                                      max_tokens=max_tokens, priority_class="interactive")
+        try:
+            res = await self.llm.generate(MODEL_LITE, prompt, schema, purpose=purpose, reasoning="low",
+                                          max_tokens=max_tokens, priority_class="interactive")
+        except (LLMError, TimeoutError) as e:
+            self.model_failures += 1
+            log.warning("survey %s: model call %s failed (%s); using the rule-based answer", self.s["survey_id"],
+                        purpose, str(e)[:120])
+            raise ModelDown from e
         self.cost += res.usage.cost_usd
         self.budget.take(res.usage.cost_usd)
         return res.data
@@ -234,8 +248,9 @@ class TableRunner:
         return mid
 
     # -- moderator (public inputs only)
-    async def _moderator(self, q: Question, transcript: list[tuple[str, str]], purpose: str, invite: str = "") -> str:
-        if self.offline or self.budget.left <= 0:
+    async def _moderator(self, q: Question, transcript: list[tuple[str, str]], purpose: str, invite: str = "",
+                         rules: bool = False) -> str:
+        if self.offline or self.budget.left <= 0 or rules:
             if purpose == "open":
                 opts = f" Options: {', '.join(q.options)}." if q.options else ""
                 return f"Next question: {q.text}{opts} Take a moment, then let's hear a few views."
@@ -246,21 +261,27 @@ class TableRunner:
               .replace("{options}", ", ".join(q.options or []) or (options_view(q, []) if q.type == "scale" else "open"))
               .replace("{purpose}", purpose).replace("{invite}", invite)
               .replace("{transcript}", wrap("\n".join(f"{a}: {b}" for a, b in transcript[-10:]) or "(none)", "transcript")))
-        out = await self._gen("survey_moderator", "moderator", pr, Utter, 90)
+        try:
+            out = await self._gen("survey_moderator", "moderator", pr, Utter, 90)
+        except ModelDown:
+            return await self._moderator(q, transcript, purpose, invite, rules=True)
         return out.text.strip()[:280] or "Let's continue."
 
     # -- prestance (private)
-    async def _prestance(self, p: Person, q: Question, qi: int) -> PreStance:
+    async def _prestance(self, p: Person, q: Question, qi: int, rules: bool = False) -> PreStance:
         order = order_for(q, p.agent_id, self.seed, self.s["survey_id"])
         rng = stream(self.seed, "pre", self.s["survey_id"], q.question_id, p.agent_id)
-        if self.offline:
+        if self.offline or rules:
             choice, conf = self._rule_choice(p, q, order, rng)
             ans = to_answer(q, choice, [choice], f"{p.memories[0] if p.memories else 'It depends on the price.'}"[:200], order)
             reason = self._rule_reason(p, q, ans)
         else:
             pr = (_p("survey_prestance").replace("{me}", self._me(p)).replace("{question}", wrap(q.text, "question"))
                   .replace("{options}", options_view(q, order)))
-            out = await self._gen("survey_prestance", p.agent_id, pr, PreOut, 160)
+            try:
+                out = await self._gen("survey_prestance", p.agent_id, pr, PreOut, 160)
+            except ModelDown:
+                return await self._prestance(p, q, qi, rules=True)
             ans = to_answer(q, out.choice, out.choices, out.text, order)
             conf, reason = float(out.confidence), out.gut_reason[:200]
         ps = PreStance(agent_id=p.agent_id, question_id=q.question_id, answer=ans, confidence=round(conf, 2),
@@ -379,13 +400,14 @@ class TableRunner:
         msgs.append({"message_id": mid, "speaker": "moderator", "text": text, "stance": None})
         return msgs, seq + 1
 
-    async def _turn(self, p: Person, q: Question, qi: int, msgs: list[dict[str, Any]]) -> tuple[str | None, str]:
+    async def _turn(self, p: Person, q: Question, qi: int, msgs: list[dict[str, Any]],
+                    rules: bool = False) -> tuple[str | None, str]:
         """think (private) → decide (private) → speak (public) for one speaker."""
         pre = self.prestances[(p.agent_id, q.question_id)]
         heard = self._heard_lines(p.agent_id, msgs)
         order = order_for(q, p.agent_id, self.seed, self.s["survey_id"])
         own = bucket(q, pre.answer)
-        if self.offline:
+        if self.offline or rules:
             rng = stream(self.seed, "turn", self.s["survey_id"], q.question_id, p.agent_id, len(msgs))
             stances = [m["stance"] for m in msgs if m["stance"] is not None]
             maj = max(sorted(set(stances)), key=stances.count) if stances else own
@@ -402,7 +424,10 @@ class TableRunner:
             pt = (_p("survey_think").replace("{me}", self._me(p)).replace("{question}", wrap(q.text, "question"))
                   .replace("{options}", options_view(q, order)).replace("{prestance}", f"{key(pre.answer)} — {pre.gut_reason}")
                   .replace("{heard}", wrap(heard or "(nothing yet)", "heard")))
-            th = await self._gen("survey_think", p.agent_id, pt, ThinkOut, 160)
+            try:
+                th = await self._gen("survey_think", p.agent_id, pt, ThinkOut, 160)
+            except ModelDown:
+                return await self._turn(p, q, qi, msgs, rules=True)
             thought = th.thought[:300]
             cands = [c for c in th.candidates if c.strip()] or [pre.gut_reason or "I'm not sure yet."]
             r = await self.decider.decide(DecisionRequest(agent_id=p.agent_id, kind="speak",
@@ -420,7 +445,10 @@ class TableRunner:
             dec = {"speak": True, "stance": express, "withheld": "", "address_to": "", "tone": "neutral"}
             ps = (_p("survey_speak").replace("{style}", p.style).replace("{item}", pick)
                   .replace("{heard}", wrap(heard or "(nothing yet)", "heard")))
-            ut = await self._gen("survey_speak", p.agent_id, ps, Utter, 90)
+            try:
+                ut = await self._gen("survey_speak", p.agent_id, ps, Utter, 90)
+            except ModelDown:
+                return await self._turn(p, q, qi, msgs, rules=True)
             line = " ".join(ut.text.split()[:40])
         self._emit("survey_thought", p.agent_id, {"question_id": q.question_id, "text": thought},
                    text=("survey_thought", thought, True), step=0.2)
@@ -492,7 +520,7 @@ class TableRunner:
 
     # -- ballot (private, one per agent per question)
     async def _ballot(self, p: Person, q: Question, qi: int, heard: list[HeardItem], msgs: list[dict[str, Any]],
-                      written: bool) -> SurveyAnswer:
+                      written: bool, rules: bool = False) -> SurveyAnswer:
         order = order_for(q, p.agent_id, self.seed, self.s["survey_id"])
         pre = self.prestances.get((p.agent_id, q.question_id))
         own = bucket(q, pre.answer) if pre else None
@@ -503,7 +531,7 @@ class TableRunner:
         sus = susceptibility(p, pre.confidence if pre else 0.5, minority, self.cfg["conformity"])
         text_by = {m["message_id"]: m for m in msgs}
         rng = stream(self.seed, "ballot", self.s["survey_id"], q.question_id, p.agent_id)
-        if self.offline or self.budget.left <= 0:
+        if self.offline or self.budget.left <= 0 or rules:
             ans, conf, reason, infl, by, effort = self._rule_ballot(p, q, qi, pre, heard, text_by, maj, sus, order,
                                                                     rng, written)
         else:
@@ -517,7 +545,10 @@ class TableRunner:
                   .replace("{social}", f"Table majority leaned: {maj} ({share:.0%}); my conformity susceptibility "
                                        f"{sus:.2f}" if maj else "No clear majority.")
                   .replace("{position}", f"question {qi + 1} of {len(self.s['questions'])}"))
-            out = await self._gen("survey_ballot", p.agent_id, pr, BallotOut, 220)
+            try:
+                out = await self._gen("survey_ballot", p.agent_id, pr, BallotOut, 220)
+            except ModelDown:
+                return await self._ballot(p, q, qi, heard, msgs, written, rules=True)
             ans = to_answer(q, out.choice, out.choices, out.text, order)
             conf, reason, infl, effort = float(out.confidence), out.reason, out.influence_type, out.effort
             by = [m for m in out.influenced_by if m in {h.message_id for h in heard}]

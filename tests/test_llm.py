@@ -230,3 +230,13 @@ async def test_ica_heavy_union_schema_goes_in_prompt_and_fences_are_stripped():
     body = json.loads(route.calls[0].request.content)
     assert "response_format" not in body and "JSON schema" in body["messages"][-1]["content"]
     assert res.data is not None and res.data.a is None
+
+
+@respx.mock
+async def test_ica_retries_gateway_queuepool_400():
+    from shared.llm import ICAClient
+    route = respx.post(ICA).mock(side_effect=[
+        httpx.Response(400, text='{"detail":"QueuePool limit of size 5 overflow 15 reached"}'),
+        httpx.Response(200, json=ok_body({"text": "hi", "importance": 3, "tags": [], "mood": None}))])
+    res = await ICAClient(ica_settings(), backoff_s=0).generate(models.MODEL_LITE, "p", Thought, purpose="t")
+    assert route.call_count == 2 and res.data is not None and res.data.text == "hi"

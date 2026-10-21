@@ -386,3 +386,24 @@ def test_products_incentive_and_channels_are_stored_on_launch(monkeypatch):
     assert doc["product_ids"] == ["pixel-10a", "galaxy-a57"] and doc["product_id"] == "pixel-10a"
     assert doc["incentive"]["goodies"][0]["label"] == "lunch" and doc["incentive"]["cash_inr"] == 0  # goodies only
     assert doc["channels"] == ["panel", "word_of_mouth"] and doc["start_at_t"] == 5000
+
+
+class DownLLM(FakeGemini):
+    """Every model call fails (provider down / out of credit)."""
+
+    async def generate(self, model, prompt, schema=None, **kw):
+        from shared.llm import LLMError
+        raise LLMError("provider down")
+
+
+def test_session_survives_model_failures_with_rule_answers():
+    async def go():
+        r = TableRunner(_survey("down"), "T1", "s1", _people(), llm=DownLLM(), decider=FakeDecision(),
+                        cfg=recruit.cfg(), seed=3, budget=Budget(left=10.0))
+        r.offline = False                                          # model path on, every call fails
+        await r.run()
+        return r
+
+    r = asyncio.run(go())
+    assert r.model_failures > 0 and r.answers                      # the table still produced ballots, from rules
+    assert {a.agent_id for a in r.answers} == {p.agent_id for p in r.people}
