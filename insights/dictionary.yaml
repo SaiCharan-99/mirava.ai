@@ -107,7 +107,7 @@ views:
               first_t: "first touch", inquiry_t: "first store inquiry (NULL if none)",
               minutes_to_inquiry: "sim minutes from first touch to first inquiry"}
   v_funnel_daily:
-    desc: "Per product × day: aware (cumulative), positive (attitude > 0.2), considering (curious or further), that day's inquiries and purchases."
+    desc: "Per product × day: aware (cumulative), positive (attitude > 0.2), considering (curious or further), that day's inquiries and purchases. aware/positive/considering are DAILY SNAPSHOTS of distinct agents: never SUM them across days — take the latest day (MAX(day)) for 'how many now'. Only inquiries/purchases may be summed."
     columns: {day: "sim day", product_id: "product", aware: "agents aware so far", positive: "agents with attitude > 0.2",
               considering: "agents curious or further", inquiries: "store inquiries that day", purchases: "purchases of this product that day"}
   v_surveys:

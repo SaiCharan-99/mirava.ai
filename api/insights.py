@@ -173,13 +173,23 @@ async def sse_with_pings(items: AsyncIterator[dict[str, Any]], every: float) -> 
         task.cancel()
 
 
+_EMBED_DOWN_UNTIL = [0.0]          # after an embedding failure, skip straight to keyword search for a while
+
+
 def _embedder() -> Any:
     llm = get_llm()
 
     def embed(texts: list[str]) -> list[list[float]]:
         import asyncio
+        import time
 
-        return asyncio.run(asyncio.wait_for(llm.embed(texts), 5)) if not _in_loop() else _sync_embed(llm, texts)
+        if time.monotonic() < _EMBED_DOWN_UNTIL[0]:
+            raise RuntimeError("embeddings unavailable (backing off)")
+        try:
+            return asyncio.run(asyncio.wait_for(llm.embed(texts), 5)) if not _in_loop() else _sync_embed(llm, texts)
+        except Exception:
+            _EMBED_DOWN_UNTIL[0] = time.monotonic() + 120
+            raise
     return embed
 
 

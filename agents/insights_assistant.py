@@ -179,7 +179,11 @@ class Assistant:
 
     # ------------------------------------------------------------------ tool dispatch
     async def call(self, c: Call) -> tuple[str, Any]:
-        return await asyncio.wait_for(asyncio.to_thread(self._call_sync, c), 12)
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(self._call_sync, c), 25)
+        except TimeoutError:
+            log.warning("insights ask: tool %s timed out after 25 s", type(c).__name__)
+            raise
 
     def _call_sync(self, c: Call) -> tuple[str, Any]:
         """Run one tool; returns (ref or tool name, result) — errors come back as data for the planner."""
