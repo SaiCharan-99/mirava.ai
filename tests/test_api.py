@@ -78,8 +78,11 @@ def test_conversation_only_shows_own_private_parts(client):
     assert lst[0]["session_id"] == "s1" and lst[0]["with_name"]
 
 
-def test_memories_and_thoughts_endpoints(client):
+def test_memories_and_thoughts_endpoints(client, monkeypatch, tmp_path):
     c, store = client
+    import shared.files
+
+    monkeypatch.setattr(shared.files, "get_files", lambda: LocalFiles(str(tmp_path)))  # not the dev world's .data
     store.set("agents/5/memories", "x", {"mid": "x", "agent_id": 5, "t": 9, "kind": "observation", "text": "Rainy day",
                                          "importance": 3, "source": {}, "entities": [], "event_refs": [],
                                          "embedding": [0.1] * 768})

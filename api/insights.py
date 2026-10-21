@@ -6,11 +6,12 @@ import asyncio
 import json
 import logging
 import statistics
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from agents.insights_assistant import Assistant
@@ -22,8 +23,28 @@ from shared import time as simtime
 from shared.llm import get_llm
 from shared.store import DocStore, get_store
 
-router = APIRouter(prefix="/api")
 log = logging.getLogger(__name__)
+
+
+class LoggedRoute(APIRoute):
+    """Route that logs the traceback of any unexpected error before FastAPI turns it into a 500."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        """Wrap the default handler with `log.exception` for non-HTTP errors."""
+        handler = super().get_route_handler()
+
+        async def logged(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except HTTPException:
+                raise
+            except Exception:
+                log.exception("insights route failed: %s %s", request.method, request.url.path)
+                raise
+        return logged
+
+
+router = APIRouter(prefix="/api", route_class=LoggedRoute)
 OOH = ("hoarding", "bus_shelter", "metro_panel")
 SOURCE_GROUPS = [("Hoardings", OOH), ("Reels", ("reel",)), ("Reviewers", ("review",)), ("Community", ("community",)),
                  ("Word of mouth", ("friend_chat",)), ("Newspaper", ("newspaper",)), ("Store", ("store_display",))]
@@ -111,10 +132,14 @@ async def ask(body: AskIn) -> StreamingResponse:
     a.known_ids = {str(x) for p in store().list("products", 200) for x in (p.get("product_id"), p.get("name")) if x}
 
     async def gen() -> AsyncIterator[bytes]:
-        async for chunk in sse_with_pings(a.ask(body.question), PING_S):
-            yield chunk
-        if body.session_id:
-            store().set("insight_sessions", body.session_id, {"t": t, "question": body.question}, True)
+        try:
+            async for chunk in sse_with_pings(a.ask(body.question), PING_S):
+                yield chunk
+            if body.session_id:
+                store().set("insight_sessions", body.session_id, {"t": t, "question": body.question}, True)
+        except Exception:
+            log.exception("insights ask stream failed: %r", body.question[:200])
+            raise
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -505,6 +530,7 @@ def create_poll(body: PollIn) -> dict[str, Any]:
         res = _engine_command({"type": "poll", "poll_id": pid, "question": body.question, "options": opts,
                                "agent_ids": ids})
         if res is None or not res.get("ok"):
+            log.error("insights poll: engine command failed for %s: %r", pid, res)
             raise HTTPException(503, "world-engine unreachable")
         out["started"] = True
     return out
@@ -692,7 +718,7 @@ async def interview(body: InterviewIn) -> dict[str, Any]:
     try:
         out = await asyncio.wait_for(run(body.agent_id, sc.text, store=store(), llm=get_llm(), history=hist), 45)
     except (LLMError, TimeoutError) as exc:
-        log.warning("Interview model unavailable", exc_info=True)
+        log.exception("insights interview: model unavailable for agent %s", body.agent_id)
         raise HTTPException(503, "The interview service is busy. Please try again shortly.") from exc
     store().set("insight_sessions", sid, {"agent_id": body.agent_id, "turns": [
         *hist, {"role": "me", "text": body.question}, {"role": "ai", "text": out["answer"]}][-12:]}, True)

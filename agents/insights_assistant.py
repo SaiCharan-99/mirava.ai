@@ -200,6 +200,7 @@ class Assistant:
         except SQLRejected as e:
             return "error", {"error": str(e)}
         except Exception as e:  # noqa: BLE001 — tool errors are returned to the planner as data
+            log.exception("insights ask: tool %s failed", type(c).__name__)
             return "error", {"error": f"{type(e).__name__}: {str(e)[:200]}"}
         return "error", {"error": "unknown tool"}
 

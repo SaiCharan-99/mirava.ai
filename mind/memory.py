@@ -47,7 +47,7 @@ async def embed_cached(llm: LLMClient, texts: list[str]) -> list[list[float]]:
         try:
             vectors = await llm.embed(missing, 768)
         except Exception:
-            llm._memory_embed_retry_at = time.monotonic() + 60
+            setattr(llm, "_memory_embed_retry_at", time.monotonic() + 60)  # noqa: B010 — duck-typed backoff flag
             raise
         for t, v in zip(missing, vectors, strict=True):
             _EMB_LRU[t] = v
