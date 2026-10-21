@@ -454,9 +454,17 @@ class ICAClient(OpenRouterClient):
                                               max_tokens=max_tokens, images=images, priority_class=priority_class)
         except LLMError as e:
             self.ica_failures += 1
+            if time.monotonic() < getattr(self, "_or_dead_until", 0.0):
+                raise                                     # OpenRouter is out of credit: fail fast to the caller's rules
             log.warning("ICA call failed (%s); falling back to OpenRouter", e)
-            return await self.fallback.generate(model, prompt, schema, purpose=purpose, reasoning=reasoning,
-                                                max_tokens=max_tokens, images=images, priority_class=priority_class)
+            try:
+                return await self.fallback.generate(model, prompt, schema, purpose=purpose, reasoning=reasoning,
+                                                    max_tokens=max_tokens, images=images,
+                                                    priority_class=priority_class)
+            except LLMError as fe:
+                if "402" in str(fe) or "403" in str(fe) or "limit" in str(fe).lower():
+                    self._or_dead_until = time.monotonic() + 600      # don't retry a dead key for 10 min
+                raise
 
     async def embed(self, texts: list[str], dim: int = 768) -> list[list[float]]:
         """ICA has no embeddings: Vertex gemini-embedding-001 first (cloud only), then OpenRouter."""

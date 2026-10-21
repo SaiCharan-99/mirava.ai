@@ -124,25 +124,34 @@ class OpenRouterDecision:
         """Single decision (batched internally)."""
         return (await self.decide_batch([req]))[0]
 
+    async def _ask(self, chunk: list[tuple[int, DecisionRequest]]) -> dict[int, _Item]:
+        """One structured call for a chunk (rid = position); on bad or cut-off JSON, split in half and retry."""
+        lines = []
+        for n, (_, r) in enumerate(chunk):
+            c = _ctx_dict(r)
+            c.pop("memories", None) if r.kind == "talk" else None
+            lines.append(json.dumps({"rid": n, "kind": r.kind, "options": r.options or ["yes", "no"],
+                                     "context": c}, default=str, ensure_ascii=False))
+        try:
+            # ~120 output tokens per request: chattier models (ICA Haiku) cut off at 60 and broke the batch JSON
+            res = await self.llm.generate(MODEL_LITE, _PROMPT.replace("{reqs}", "\n".join(lines)), _Batch,
+                                          purpose="decision_batch", reasoning="low",
+                                          max_tokens=120 * len(chunk) + 200, priority_class=self.priority_class)
+            return {it.rid: it for it in res.data.items}
+        except Exception:  # noqa: BLE001 — model failure: halve and retry, then rule fallback; world keeps going
+            if len(chunk) < 4:
+                return {}
+            half = len(chunk) // 2
+            left, right = await self._ask(chunk[:half]), await self._ask(chunk[half:])
+            return {**left, **{rid + half: it for rid, it in right.items()}}
+
     async def decide_batch(self, reqs: list[DecisionRequest]) -> list[DecisionResult]:
         """Decide many requests, ≤ 32 per model call."""
         keys = [input_hash("decision", r.model_dump()) for r in reqs]
         todo = [(i, r) for i, (r, k) in enumerate(zip(reqs, keys, strict=True)) if k not in self._cache]
         for j in range(0, len(todo), BATCH):
             chunk = todo[j:j + BATCH]
-            lines = []
-            for n, (_, r) in enumerate(chunk):
-                c = _ctx_dict(r)
-                c.pop("memories", None) if r.kind == "talk" else None
-                lines.append(json.dumps({"rid": n, "kind": r.kind, "options": r.options or ["yes", "no"],
-                                         "context": c}, default=str, ensure_ascii=False))
-            try:
-                res = await self.llm.generate(MODEL_LITE, _PROMPT.replace("{reqs}", "\n".join(lines)), _Batch,
-                                              purpose="decision_batch", reasoning="low",
-                                              max_tokens=60 * len(chunk) + 100, priority_class=self.priority_class)
-                by_rid = {it.rid: it for it in res.data.items}
-            except Exception:  # noqa: BLE001 — model failure: rule fallback, world keeps going
-                by_rid = {}
+            by_rid = await self._ask(chunk)
             for n, (i, r) in enumerate(chunk):
                 it = by_rid.get(n)
                 opts = r.options or ["yes", "no"]
