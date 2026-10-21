@@ -116,6 +116,27 @@ def to_messages(prompt: str | list, images: list[str] | None) -> list[dict]:
     return msgs
 
 
+async def vertex_embed(s: Settings, texts: list[str], dim: int) -> list[list[float]]:
+    """Embeddings from Vertex AI `gemini-embedding-001` (one text per request; ADC auth), fitted to `dim`."""
+    import google.auth
+    import google.auth.transport.requests
+
+    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    await asyncio.to_thread(creds.refresh, google.auth.transport.requests.Request())
+    loc = s.gcp_region or "asia-south1"
+    url = (f"https://{loc}-aiplatform.googleapis.com/v1/projects/{s.gcp_project_id}/locations/{loc}"
+           "/publishers/google/models/gemini-embedding-001:predict")
+    headers = {"Authorization": f"Bearer {creds.token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        async def one(t: str) -> list[float]:
+            r = await client.post(url, headers=headers, json={"instances": [{"content": t}],
+                                                              "parameters": {"outputDimensionality": dim}})
+            if r.status_code >= 400:
+                raise LLMError(f"Vertex embeddings HTTP {r.status_code}: {r.text[:200]}")
+            return fit_dim(r.json()["predictions"][0]["embeddings"]["values"], dim)
+        return list(await asyncio.gather(*(one(t) for t in texts)))
+
+
 def fit_dim(vec: list[float], dim: int) -> list[float]:
     """Truncate (Matryoshka) and L2-normalise an embedding to `dim`."""
     v = vec[:dim]
@@ -400,6 +421,12 @@ class ICAClient(OpenRouterClient):
                                                 max_tokens=max_tokens, images=images, priority_class=priority_class)
 
     async def embed(self, texts: list[str], dim: int = 768) -> list[list[float]]:
+        """ICA has no embeddings: Vertex gemini-embedding-001 first (cloud only), then OpenRouter."""
+        if self.s.env == "cloud":
+            try:
+                return await vertex_embed(self.s, texts, dim)
+            except Exception:  # noqa: BLE001 — any Vertex failure falls through to OpenRouter
+                log.warning("Vertex embedding failed; trying OpenRouter", exc_info=True)
         keep = dict(_STATUS)                                  # an OpenRouter embedding failure must not flag chat as down
         try:
             return await self.fallback.embed(texts, dim)
