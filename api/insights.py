@@ -58,9 +58,19 @@ def store() -> DocStore:
     return get_store()
 
 
+_RUNNER: list[Runner] = []
+
+
 def runner() -> Runner:
-    """Analytics runner (BigQuery as the analyst, or the engine's DuckDB locally)."""
-    return default_runner()
+    """Analytics runner (BigQuery as the analyst, or the engine's DuckDB locally); one BigQuery client is reused."""
+    from insights.tools import BigQueryRunner
+
+    if _RUNNER:
+        return _RUNNER[0]
+    r = default_runner()
+    if isinstance(r, BigQueryRunner):          # building a client + impersonated credentials per query cost ~1 s each
+        _RUNNER.append(r)
+    return r
 
 
 def _engine_command(cmd: dict) -> dict | None:
@@ -214,9 +224,28 @@ def _sync_embed(llm: Any, texts: list[str]) -> list[list[float]]:
 
 # ---------------------------------------------------------------- dashboards
 
+_OVERVIEW: dict[str, Any] = {}
+OVERVIEW_TTL_S = 60.0
+
+
 @router.get("/insights/overview")
 def overview() -> dict[str, Any]:
-    """KPIs, awareness / curious+ lines with launch markers, funnel today (I-02)."""
+    """KPIs, awareness / curious+ lines with launch markers, funnel today (I-02); cached for a minute."""
+    import time
+
+    from insights.tools import BigQueryRunner
+
+    if not isinstance(runner(), BigQueryRunner):  # local DuckDB is fast and tests swap data: no cache
+        return _overview()
+    hit = _OVERVIEW.get("v")
+    if hit and time.monotonic() - hit[0] < OVERVIEW_TTL_S:
+        return hit[1]
+    out = _overview()
+    _OVERVIEW["v"] = (time.monotonic(), out)
+    return out
+
+
+def _overview() -> dict[str, Any]:
     live = _live()
     n = _n_agents()
     rows = _q("SELECT day, product_id, aware, positive, considering, inquiries, purchases FROM v_funnel_daily")
@@ -257,13 +286,22 @@ FUNNEL_ROWS = ["Reached (saw an ad or heard of it)", "Aware", "Interested (curio
 def funnel_sets(pids: list[str]) -> dict[str, list[set[int]]]:
     """Per product, the agents who reached at least each funnel step (each set contains the next one)."""
     ph = ", ".join(f"'{p}'" for p in pids if p.replace("-", "").replace("_", "").isalnum()) or "''"
-    expo = _q(f"SELECT DISTINCT product_id, agent_id FROM v_exposures WHERE product_id IN ({ph})")
-    bel = _q(f"SELECT product_id, agent_id, stage FROM beliefs_latest WHERE product_id IN ({ph})")
-    inq = _q(f"SELECT DISTINCT product_id, agent_id FROM v_inquiries WHERE product_id IN ({ph})")
-    buy = _q(f"SELECT DISTINCT option AS product_id, agent_id FROM v_purchases WHERE option IN ({ph})")
+    from concurrent.futures import ThreadPoolExecutor
+
+    sqls = [f"SELECT DISTINCT product_id, agent_id FROM v_exposures WHERE product_id IN ({ph})",
+            f"SELECT product_id, agent_id, stage FROM beliefs_latest WHERE product_id IN ({ph})",
+            f"SELECT DISTINCT product_id, agent_id FROM v_inquiries WHERE product_id IN ({ph})",
+            f"SELECT DISTINCT option AS product_id, agent_id FROM v_purchases WHERE option IN ({ph})",
+            # Residents only (the % base is the resident count): reviewers and store staff must not push "Reached" past 100%
+            "SELECT agent_id FROM agents_latest WHERE special_role = 'none' OR special_role IS NULL"]
+    from insights.tools import BigQueryRunner
+
+    if isinstance(runner(), BigQueryRunner):                 # independent BigQuery jobs: run them together
+        with ThreadPoolExecutor(len(sqls)) as ex:
+            expo, bel, inq, buy, res = ex.map(_q, sqls)
+    else:                                                    # DuckDB connections are not thread-safe
+        expo, bel, inq, buy, res = (_q(q) for q in sqls)
     deeper = set(CURIOUS_PLUS)
-    # Residents only (the % base is the resident count): reviewers and store staff must not push "Reached" past 100%
-    res = _q("SELECT agent_id FROM agents_latest WHERE special_role = 'none' OR special_role IS NULL")
     residents = {int(r["agent_id"]) for r in res} or None
     out: dict[str, list[set[int]]] = {}
     for pid in pids:
