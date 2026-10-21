@@ -244,10 +244,11 @@ def estimate_survey(body: SurveyIn) -> dict[str, Any]:
 
 @router.post("/surveys")
 async def create_survey(body: SurveyIn) -> dict[str, Any]:
-    """Create the survey doc (called on Launch only) → eligible count, expected attendance, tables, estimate, lint."""
+    """Create the survey doc (called on Launch only) → eligible count, expected attendance, tables, estimate, lint.
+    Rule lint only: the model lint belongs to the "Check questions" button, so Launch never waits on a model call."""
     s, eligible, expected, est, qs = _plan(body)
     sid = s.survey_id
-    warnings = await lint(qs)
+    warnings = lint_rules(qs)
     doc = {**s.model_dump(mode="json"), "created_t": int(_engine_state().get("t") or 0), "eligible": eligible,
            "expected_attendance": expected,
            "tables_n": max(1, math.ceil((expected or 1) / s.table_size)), "estimate": est, "lint": warnings}

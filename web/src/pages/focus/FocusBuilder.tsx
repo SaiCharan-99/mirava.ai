@@ -256,7 +256,7 @@ export function FocusBuilder() {
           </div> : <div className="xs muted" role="status">{err || "Calculating…"}</div>}
           {est?.message && <div className="xs" style={{ color: "var(--amber)", marginTop: 6 }}>{est.message}</div>}
           {over && <div className="xs" style={{ color: "var(--red)", marginTop: 6 }}>Over budget — try fewer participants, fewer questions or the written format.</div>}
-          <button className="btn primary" data-testid="survey-launch" style={{ marginTop: 12, width: "100%", justifyContent: "center" }} disabled={!est || busy || over || !est.eligible || isVisualTest} onClick={() => void launch()}>📋 Launch {mode === "focus_group" ? "focus group" : "survey"}</button>
+          <button className="btn primary" data-testid="survey-launch" style={{ marginTop: 12, width: "100%", justifyContent: "center" }} disabled={!est || busy || over || !est.eligible || isVisualTest} onClick={() => void launch()}>{busy ? "Launching…" : `📋 Launch ${mode === "focus_group" ? "focus group" : "survey"}`}</button>
           {err && est && <div className="xs" style={{ color: "var(--red)", marginTop: 6 }}>{err}</div>}
           <div className="xs muted" style={{ marginTop: 8 }}>Runs inside the always-on world on Google Cloud, even if nobody is watching. Everyone who opens the site sees the same countdown.</div>
         </div>
