@@ -73,10 +73,12 @@ class MicroBatcher:
         try:
             res = await self.inner.decide_batch([r for r, _ in q])
             for (_, f), r in zip(q, res, strict=True):
-                f.set_result(r)
+                if not f.done():                  # the caller may have been cancelled or timed out
+                    f.set_result(r)
         except Exception as e:  # noqa: BLE001
             for _, f in q:
-                f.set_exception(e)
+                if not f.done():
+                    f.set_exception(e)
 
 
 class SocialRuntime:
@@ -97,7 +99,8 @@ class SocialRuntime:
         self.tracker = EncounterTracker()
         self.sessions = SessionRegistry()
         self._speech: list[tuple[int, dict[str, Any]]] = []
-        self.queue = TaskQueue(timeout_s=150.0)   # turn-by-turn chats make ~20 sequential calls
+        # turn-by-turn chats make ~20 sequential calls; a few at a time finish, many at once all starve on ICA's slots
+        self.queue = TaskQueue(concurrency=8, timeout_s=150.0, queue_wait_s=900.0)
         self.wm: dict[int, list[dict[str, Any]]] = {}
         self.agenda = Agenda()                             # what is on each person's mind to tell people
         self.name_of: Callable[[int], str] = lambda aid: f"Agent {aid}"          # first name (set by the engine)

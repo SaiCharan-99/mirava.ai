@@ -132,3 +132,22 @@ def test_book_cost_forwards_only_real_spend(monkeypatch):
     m.book_cost(CostRecord("ask", "m", "interactive", Usage(cost_usd=0.0), False))
     m.book_cost(CostRecord("ask", "m", "interactive", Usage(cost_usd=0.5), True))
     assert sent == [{"type": "record_spend", "usd": 0.002, "purpose": "ask"}]
+
+
+def test_task_queue_wait_does_not_count_against_call_timeout():
+    import asyncio
+
+    from engine.tasks import TaskQueue
+
+    async def main():
+        q = TaskQueue(concurrency=1, timeout_s=0.15, queue_wait_s=5.0)
+
+        async def work():
+            await asyncio.sleep(0.1)
+            return "ok"
+        for i in range(4):                      # 4 × 0.1 s through 1 slot: the last waits ~0.3 s > timeout_s
+            q.submit(f"k{i}", work, 0, 0, lambda: "fallback")
+        await asyncio.sleep(0.6)
+        return [r for _, r in await q.collect(0)]
+
+    assert asyncio.run(main()) == ["ok"] * 4
