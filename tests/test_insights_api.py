@@ -163,4 +163,44 @@ def test_interview_embedding_outage_and_provider_error(client, monkeypatch):
 
     monkeypatch.setattr(ins, "get_llm", lambda: Unavailable())
     r = c.post("/api/insights/interview", json={"agent_id": 0, "question": "What matters in a new phone?"})
-    assert r.status_code == 503 and "secret" not in r.text
+    assert r.status_code == 200 and "secret" not in r.text and r.json()["fallback"] and "recall" in r.json()["answer"]
+
+
+def test_interview_never_500_old_history_and_crashes(client, monkeypatch):
+    import agents.interviewer as iv
+    from agents.interviewer import InterviewOut
+    from shared.llm import FakeGemini, LLMResult
+
+    class Ok(FakeGemini):
+        async def generate(self, *args, **kwargs):
+            return LLMResult(data=InterviewOut(answer="Battery life matters most to me."))
+
+    c, store = client
+    store.set("insight_sessions", "iv-3", {"agent_id": 3, "turns": [{"q": "old"}, "junk", {"role": "me"}]})
+    monkeypatch.setattr(ins, "get_llm", lambda: Ok())
+    r = c.post("/api/insights/interview", json={"agent_id": 3, "question": "What matters?"})
+    assert r.status_code == 200 and r.json()["answer"].startswith("Battery")
+
+    async def boom(*a, **k):
+        raise KeyError("persona")
+
+    monkeypatch.setattr(iv, "build", boom)
+    r = c.post("/api/insights/interview", json={"agent_id": 3, "question": "What matters?"})
+    assert r.status_code == 200 and r.json()["fallback"]
+
+
+def test_interview_recall_timeout_uses_recent(monkeypatch):
+    import agents.interviewer as iv
+    from shared.store import MemoryStoreBackend
+
+    st = MemoryStoreBackend()
+    st.set("agents/7/memories", "m1", {"mid": "m1", "agent_id": 7, "t": 5, "kind": "observation", "text": "Saw a hoarding",
+                                       "importance": 3, "source": {}, "entities": [], "event_refs": []})
+
+    async def slow(self, *a, **k):
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(iv.MemoryStore, "retrieve", slow)
+    monkeypatch.setattr(iv, "RETRIEVE_TIMEOUT_S", 0.05)
+    mems = asyncio.run(iv._recall(7, "q", st, None))  # type: ignore[arg-type]
+    assert [m.mid for m in mems] == ["m1"]

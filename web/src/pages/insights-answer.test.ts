@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toView, starterQuestions } from "./InsightsPage";
 import type { AskAnswer } from "../lib/insights";
+import { interviewPrompts } from "../lib/sampleQuestions";
 
 const answer = (value: number, unit?: string): AskAnswer => ({
   answer_md: "Recorded counts", numbers: [{ label: "<img src=x onerror=alert(1)>", value, source_ref: "sql" }],
@@ -22,7 +23,20 @@ describe("Ask chart units", () => {
     expect(toView(answer(25, "percent"), []).unit).toBe("%");
   });
   it("offers fixed starters even before product metadata arrives", () => {
-    expect(starterQuestions([])).toHaveLength(3);
+    expect(starterQuestions([]).length).toBeGreaterThanOrEqual(5);
     expect(starterQuestions([])).toEqual(starterQuestions(["Example"]));
+  });
+});
+
+describe("Sample questions", () => {
+  it("tailors interview prompts to the person", () => {
+    const p = interviewPrompts({ occupation: "Teacher", age: 40, phone: { age_years: 6 } });
+    expect(p.length).toBeGreaterThanOrEqual(5);
+    expect(p.join(" ")).toContain("6 years");
+  });
+  it("keeps the y axis above the tallest count bar", () => {
+    const v = toView(answer(163), []);
+    expect(v.ymax!).toBeGreaterThan(163);
+    expect(toView(answer(0.9, "fraction"), []).ymax).toBeLessThanOrEqual(104);
   });
 });

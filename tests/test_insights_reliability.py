@@ -83,7 +83,7 @@ def test_sse_pings_and_single_answer():
 def test_starter_questions_return_grounded_results_when_model_is_down(db):  # noqa: F811
     from agents.insights_assistant import STARTER_QUESTIONS
 
-    for question in STARTER_QUESTIONS:
+    for question in STARTER_QUESTIONS[:3]:  # the count questions (see test_insights_starters for all)
         a = Assistant(_tools(db), RaisingLLM(), products=[{"product_id": "pulse-5", "name": "Pulse 5"}])
         items = asyncio.run(_collect(a, question))
         ans = items[-1]["answer"]

@@ -12,6 +12,7 @@ import {
   type SegmentsData, type SiteRow, type SourcesData,
 } from "../lib/insights";
 import { getJSON } from "../lib/api";
+import { ASK_STARTERS, POLL_TEMPLATES, askLink, interviewPrompts, segmentQuestion, siteQuestion } from "../lib/sampleQuestions";
 import { FocusBuilder } from "./focus/FocusBuilder";
 import { ConversationsTab as ConversationsLive } from "./insights/ConversationsTab";
 
@@ -81,13 +82,13 @@ function Empty({ children }: { children: ReactNode }) {
 }
 
 // ---------------------------------------------------------------- Ask
-function AnswerBlock({ a, names, onRetry }: { a: AskAnswerView; names: Names; onRetry?: () => void }) {
+function AnswerBlock({ a, names, onRetry, onAsk }: { a: AskAnswerView; names: Names; onRetry?: () => void; onAsk?: (q: string) => void }) {
   return (
     <div className="answer">
       {a.steps.length > 0 && <details><summary className="small muted">How this answer was found</summary><div className="list" style={{ gap: 4, marginBottom: 10 }}>{a.steps.map(([t, d], i) => <div key={i} className="toolstep">✓ <code>{t}</code> {d}</div>)}</div></details>}
       <p style={{ marginTop: 0 }} dangerouslySetInnerHTML={{ __html: a.html }} />
       {a.bars && (
-        <div className="grid g2"><div><VBars rows={a.bars} w={420} h={190} ymax={a.ymax ?? 100} unit={a.unit ?? "%"} /><div className="xs muted">{a.barsNote}</div></div>
+        <div className="grid g2"><div><VBars rows={a.bars} w={420} h={190} ymax={a.ymax ?? 100} unit={a.unit ?? ""} /><div className="xs muted">{a.barsNote}</div></div>
           <div className="small" dangerouslySetInnerHTML={{ __html: a.sideHtml ?? "" }} /></div>
       )}
       {a.quotes.map((q, i) => <Quote key={i} q={q} names={names} />)}
@@ -96,6 +97,9 @@ function AnswerBlock({ a, names, onRetry }: { a: AskAnswerView; names: Names; on
           <div className="sqlbox" style={{ marginTop: 8 }}>{a.sql.join("\n\n")}</div></details>
       )}
       {a.caveats && <div className="xs muted" style={{ marginTop: 8 }}>{a.caveats}</div>}
+      {onAsk && a.suggestions && a.suggestions.length > 0 && (
+        <div className="sugg" data-testid="ask-followups" style={{ marginTop: 10 }}><span className="xs muted" style={{ alignSelf: "center" }}>Follow up:</span>{a.suggestions.slice(0, 3).map((s) => <button key={s} onClick={() => onAsk(s)}>{s}</button>)}</div>
+      )}
       {a.failed && onRetry && <button className="btn sm" data-testid="ask-retry" style={{ marginTop: 10 }} onClick={onRetry}>↻ Retry</button>}
     </div>
   );
@@ -108,7 +112,8 @@ export function toView(ans: AskAnswer, steps: string[]): AskAnswerView {
   const pct = ch?._unit === "fraction";
   const unit = pct || ch?._unit === "percent" ? "%" : "";
   const bars = xs.length ? xs.map((x, i): [string, number, string] => [x, Math.round((pct ? 100 : 1) * (ys[i] ?? 0) * 10) / 10, ["#22c55e", "#8b5cf6", "var(--teal)", "#f97316", "#60a5fa", "#f5b041"][i % 6]]) : undefined;
-  const ymax = bars ? Math.max(10, ...bars.map((b) => b[1])) * 1.15 : undefined;
+  const top = bars ? Math.max(...bars.map((b) => b[1])) : 0;
+  const ymax = bars ? (unit === "%" && top <= 87 ? Math.min(100, Math.max(10, top * 1.15)) : Math.max(unit ? 10 : 4, top * 1.15)) : undefined;
   return {
     steps: steps.map((s) => { const m = s.match(/^(\S+)\s(.*)$/); return [m ? m[1] : s, m ? m[2] : ""] as [string, string]; }),
     html: mdToHtml(ans.answer_md), bars, unit, ymax: ymax ? Math.ceil(ymax) : undefined, barsNote: bars ? `${ch?.title?.text ?? "Recorded values"} · ${unit ? "percentage" : ch?._unit === "value" ? "value" : "count"} · simulated` : undefined,
@@ -122,16 +127,13 @@ export function toView(ans: AskAnswer, steps: string[]): AskAnswerView {
 /** Starter questions about the products that exist now (never hardcoded product names). */
 export function starterQuestions(names: string[]): string[] {
   void names;
-  return ["How many people are considering each product?",
-    "Where did people first hear about our products?",
-    "How many purchases were of our products versus other phones?"];
-
+  return [...ASK_STARTERS];
 }
 
 function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
   const nav = useNavigate();
   const [thread, setThread] = useState<{ q: string; a: AskAnswerView | null; steps: string[] }[]>(isVisualTest ? D.DEMO_ASK.map((x) => ({ ...x, steps: [] })) : []);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(() => (isVisualTest ? "" : new URLSearchParams(window.location.search).get("q") ?? ""));
   const sugg = isVisualTest ? D.DEMO_SUGGESTIONS : starterQuestions(prodNames);
   const busy = thread.some((t) => t.a === null);
   const run = async (question: string) => {
@@ -156,7 +158,7 @@ function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
           {thread.map((t, i) => (
             <div key={i} className="list" style={{ gap: 14 }}>
               <div className="qbubble">{t.q}</div>
-              {t.a ? <AnswerBlock a={t.a} names={names} onRetry={busy ? undefined : () => void run(t.q)} /> : (
+              {t.a ? <AnswerBlock a={t.a} names={names} onRetry={busy ? undefined : () => void run(t.q)} onAsk={isVisualTest || busy ? undefined : (s) => void run(s)} /> : (
                 <div className="answer"><div className="list" style={{ gap: 4 }}>{t.steps.map((s, k) => <div key={k} className="toolstep">… {s}</div>)}<div className="toolstep">… thinking</div></div></div>
               )}
             </div>
@@ -243,6 +245,7 @@ function SitesMap({ rows, sites }: { rows: SiteRow[]; sites: { site_id: string; 
 }
 
 function HoardingsTab({ prods, fx }: { prods: Record<string, ProdInfo>; fx: Fixtures | null }) {
+  const nav = useNavigate();
   const demo = useMemo<HoardingsData | null>(() => {
     if (!isVisualTest) return null;
     const ins = (fx as unknown as { insights?: { hoardings: SiteRow[] }; sites?: { id: string; x: number; y: number }[] } | null);
@@ -273,7 +276,7 @@ function HoardingsTab({ prods, fx }: { prods: Record<string, ProdInfo>; fx: Fixt
                 <td className="mono" style={{ textAlign: "right" }}>{r[7]}</td><td className="mono" style={{ textAlign: "right" }}>{r[8]}</td>
               </tr>
             ))}</tbody></table>
-          {sel && !isVisualTest && <div className="list small" style={{ marginTop: 10 }}><b>Private thoughts at {sel}</b>{th.map((x, i) => <div key={i} className="item">“{x.text}” <span className="privtag">PRIVATE THOUGHT</span></div>)}{!th.length && <span className="muted xs">none rendered yet</span>}</div>}
+          {sel && !isVisualTest && <div className="list small" style={{ marginTop: 10 }}><div className="row between"><b>Private thoughts at {sel}</b><a href="#" data-testid="hoarding-ask" className="xs" onClick={(e) => { e.preventDefault(); nav(withMode(askLink(siteQuestion(sel)))); }}>Ask about this site →</a></div>{th.map((x, i) => <div key={i} className="item">“{x.text}” <span className="privtag">PRIVATE THOUGHT</span></div>)}{!th.length && <span className="muted xs">none rendered yet</span>}</div>}
         </div>
         <div className="card" style={{ padding: 0, overflow: "hidden" }}><div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)" }}><h3 style={{ margin: 0 }}>Notice rate on the map</h3></div>
           <div style={{ height: 330, background: "#0a0d12" }}><SitesMap rows={d.rows} sites={d.sites ?? []} /></div>
@@ -290,6 +293,7 @@ function HoardingsTab({ prods, fx }: { prods: Record<string, ProdInfo>; fx: Fixt
 
 // ---------------------------------------------------------------- Segments
 function SegmentsTab() {
+  const nav = useNavigate();
   const [p, setP] = useState("");
   const st = useData<SegmentsData>(D.DEMO_SEGMENTS, () => getSegments(p), [p]);
   const g = gate(st, "segments");
@@ -301,7 +305,7 @@ function SegmentsTab() {
     <>
       <div className="row between" style={{ marginBottom: 12 }}>
         <div className="seg">{d.products.map((x) => <button key={x.id} className={x.id === cur ? "on" : ""} onClick={() => setP(x.id)}>{x.name}</button>)}</div>
-        <span className="xs muted">Likely-buyer score = need × interest × affordability × stage weight · aggregated, never per person</span>
+        <span className="xs muted">Likely-buyer score = need × interest × affordability × stage weight · aggregated, never per person{!isVisualTest && cur ? <> · <a href="#" data-testid="segments-ask" onClick={(e) => { e.preventDefault(); nav(withMode(askLink(segmentQuestion(d.products.find((x) => x.id === cur)?.name ?? cur)))); }}>Ask about this →</a></> : null}</span>
       </div>
       <div className="grid g21">
         <div className="card"><h3>Likely buyers · age × income (share of segment)</h3>
@@ -399,8 +403,22 @@ function InterviewTab({ names, fx }: { names: Names; fx: Fixtures | null }) {
         ))}{busy && <div className="msg ai">…</div>}</div>
         <form className="askbar" style={{ marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); void send(); }}>
           <input placeholder={isVisualTest ? D.DEMO_INTERVIEW.placeholder : `Ask ${first || "them"}…`} value={q} onChange={(e) => setQ(e.target.value)} />
-          <button className="btn primary" type="submit" disabled={busy || sel === null}>Send</button></form></div>
+          <button className="btn primary" type="submit" disabled={busy || sel === null}>Send</button></form>
+        {!isVisualTest && cur && <div className="sugg" data-testid="interview-suggestions" style={{ marginTop: 10 }}>{interviewPrompts(cur).map((s) => <button key={s} disabled={busy} onClick={() => setQ(s)}>{s}</button>)}</div>}</div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- Polls
+function PollsTab() {
+  const nav = useNavigate();
+  const search = typeof window === "undefined" ? "" : window.location.search;
+  return (
+    <>
+      {!isVisualTest && <div className="sugg" data-testid="poll-templates" style={{ marginBottom: 12 }}><span className="xs muted" style={{ alignSelf: "center" }}>Start from a template:</span>
+        {POLL_TEMPLATES.map((t) => <button key={t} onClick={() => nav(withMode(`/insights/focus?title=${encodeURIComponent(t)}`))}>{t}</button>)}</div>}
+      <FocusBuilder key={search} />
+    </>
   );
 }
 
@@ -427,7 +445,7 @@ export function InsightsPage() {
   const body: Record<string, () => ReactNode> = {
     ask: () => <AskTab names={names} prodNames={Object.values(prods).map((p) => p.name)} />, overview: () => <OverviewTab />, sources: () => <SourcesTab />,
     hoardings: () => <HoardingsTab prods={prods} fx={fx} />, segments: () => <SegmentsTab />, conversations: () => (isVisualTest ? <ConversationsTab /> : <ConversationsLive />),
-    focus: () => <FocusBuilder />, interview: () => <InterviewTab names={names} fx={fx} />,
+    focus: () => <PollsTab />, interview: () => <InterviewTab names={names} fx={fx} />,
   };
   return (
     <div className="page">

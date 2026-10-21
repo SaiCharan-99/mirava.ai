@@ -94,6 +94,16 @@ class BigQueryRunner:
                                                                         query_parameters=qp), location=self.s.gcp_region)
         return [dict(r.items()) for r in job.result(max_results=MAX_ROWS)], nbytes
 
+    def dry_run_error(self, sql: str) -> str | None:
+        """None when BigQuery accepts the SQL in a dry run, else a short error message."""
+        try:
+            q = qualify(sql, self.s.gcp_project_id, self.s.bq_dataset) if "`" not in sql else sql
+            self.client.query(q, job_config=self.bq.QueryJobConfig(dry_run=True, use_query_cache=False),
+                              location=self.s.gcp_region)
+            return None
+        except Exception as e:  # noqa: BLE001 — returned as data for a retry
+            return str(getattr(e, "message", e))[:300]
+
     def texts(self, where: str, params: dict) -> list[dict]:
         """Not used on BigQuery (VECTOR_SEARCH runs server-side)."""
         raise NotImplementedError
@@ -216,6 +226,8 @@ class Tools:
     def run_sql(self, sql: str) -> dict[str, Any]:
         """Read-only SQL over curated views (guarded); ≤ 5,000 rows."""
         safe = check(sql, self.s.bq_dataset, self.s.gcp_project_id)
+        if isinstance(self.r, BigQueryRunner):
+            safe = self._bigquery_sql(sql, safe)
         rows, nbytes = self.r.run(safe)
         rows = [{k: _plain(v) for k, v in r.items()} for r in rows[:MAX_ROWS]]
         cols = list(rows[0].keys()) if rows else []
@@ -223,6 +235,20 @@ class Tools:
         out = {"columns": cols, "rows": rows, "bytes": nbytes, "ref": ref, "sql": safe}
         self.ledger.add(ref, "run_sql", {"sql": safe}, rows)
         return out
+
+    def _bigquery_sql(self, raw: str, safe: str) -> str:
+        """Guarded SQL that BigQuery accepts: as written, else transpiled from DuckDB style; validated by dry run."""
+        err = self.r.dry_run_error(safe)  # type: ignore[attr-defined]
+        if err is None:
+            return safe
+        try:
+            alt = check(sqlglot.transpile(raw, read="duckdb", write="bigquery")[0], self.s.bq_dataset,
+                        self.s.gcp_project_id)
+        except Exception:  # noqa: BLE001 — not DuckDB SQL either
+            alt = None
+        if alt is not None and alt != safe and self.r.dry_run_error(alt) is None:  # type: ignore[attr-defined]
+            return alt
+        raise SQLRejected(f"BigQuery rejected the SQL: {err}")
 
     # -- cohort
     def cohort(self, filter_expr: str) -> dict[str, Any]:
@@ -270,7 +296,9 @@ class Tools:
             conds.append("agent_id IN (" + ",".join(str(int(i)) for i in ids[:5000] or [-1]) + ")")
         try:
             qv = self.embed([text])[0] if self.embed is not None else None
-            rows = self._vector(qv, " AND ".join(conds), params, k) if qv is not None else self._keyword(text, conds, params, k)
+            rows = self._vector(qv, " AND ".join(conds), params, k) if qv is not None else []
+            if not rows:                                   # no vectors (or none match): fall back to the words
+                rows = self._keyword(text, conds, params, k)
         except Exception:
             logging.getLogger(__name__).warning("Vector search unavailable; using keyword search", exc_info=True)
             rows = self._keyword(text, conds, params, k)
@@ -315,21 +343,38 @@ class Tools:
         return out
 
     def _keyword(self, text: str, conds: list[str], params: dict, k: int) -> list[dict]:
-        where = " AND ".join(conds[1:]) or "TRUE"
+        """Word-stem match over thoughts/messages; relaxes the product filter when nothing matches."""
+        stems = keyword_stems(text)
+        if not stems:
+            return []
+        rows = self._keyword_rows(stems, conds[1:], params)
+        if not rows and "product_id = @product_id" in conds:
+            rest = [c for c in conds[1:] if c != "product_id = @product_id"]
+            rows = self._keyword_rows(stems, rest, {x: v for x, v in params.items() if x != "product_id"})
+        for r in rows:
+            words = re.findall(r"[a-z0-9]+", str(r["text"]).lower())
+            r["score"] = sum(any(w.startswith(st) for w in words) for st in stems) / len(stems)
+        rows.sort(key=lambda r: (-r["score"], -int(r.get("t") or 0), r["text_id"]))
+        seen, out = set(), []
+        for r in rows:
+            if r["score"] <= 0 or r["text"] in seen:
+                continue
+            seen.add(r["text"])
+            out.append(r)
+            if len(out) >= k:
+                break
+        return out
+
+    def _keyword_rows(self, stems: list[str], conds: list[str], params: dict) -> list[dict]:
+        where = " AND ".join(conds) or "TRUE"
         if isinstance(self.r, BigQueryRunner):
             # Keep all cohort/product/privacy filters and search texts even when vectors are missing.
-            terms = sorted({w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2})
-            params = {**params, "terms": "|".join(terms) or "a^"}
+            params = {**params, "terms": r"\b(" + "|".join(stems) + ")"}
             rows, _ = self.r.run("SELECT text_id, agent_id, kind, t, text, private, product_id FROM texts WHERE "
                                  + where + " AND REGEXP_CONTAINS(LOWER(text), @terms) ORDER BY t DESC LIMIT 500",
                                  params, trusted=True)
-        else:
-            rows = self.r.texts(where, params)
-        words = {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2}
-        for r in rows:
-            r["score"] = len(words & set(re.findall(r"[a-z0-9]+", r["text"].lower()))) / max(1, len(words))
-        rows.sort(key=lambda r: (-r["score"], r["text_id"]))
-        return [r for r in rows if r["score"] > 0][:k]
+            return rows
+        return self.r.texts(where, params)
 
     def _names(self, ids: list[int]) -> dict[int, str]:
         if not ids:
@@ -393,6 +438,18 @@ class Tools:
     def chart(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Normalise a small chart spec {type, title, x, series:[{name, data}], source_ref} into an ECharts option."""
         return chart_option(spec)
+
+
+STOPWORDS = frozenset("""about after again also and are any because been before being but can could did does doing
+each for from had has have how into its just like many more most much not now our out over own people person said same
+should some such than that the their them then there these they this those through very was were what when where which
+while who whom why will with would you your our products product think thought thoughts say says""".split())
+
+
+def keyword_stems(text: str) -> list[str]:
+    """Content-word stems (first 5 letters) for keyword search; stopwords and short words dropped."""
+    words = [w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in STOPWORDS]
+    return sorted({w[:5] for w in words})
 
 
 def chart_option(spec: dict[str, Any]) -> dict[str, Any]:

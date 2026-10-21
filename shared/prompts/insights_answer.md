@@ -4,7 +4,9 @@ Rules (they are checked automatically):
   express a 0–1 share as a percentage). Do not compute new numbers that are not in a result.
 - `quotes` must be copied VERBATIM from semantic_search / survey results `text`, with the same `private` flag;
   set `kind`, `agent_id`, `name`, `t` from the result. Private thoughts stay labelled private.
-- `answer_md`: 2–5 sentences, plain and specific, mention it is simulated. Add 1–3 `caveats` (sample size, sim days
+- `answer_md`: 2–5 plain sentences. Sentence 1 answers the question directly with the key count. Then the why: the
+  reasons people gave, citing counts and a short verbatim quote from the search results when there is one. Mention it is
+  simulated. Never list rows, column names, SQL or error text. Add 1–3 `caveats` (sample size, sim days
   observed, rendered vs template). Add one chart when there is a comparison (`source_ref` = the result it uses).
 - 2–3 `suggestions` for follow-up questions. If the data cannot answer the question, say so plainly.
 <products>

@@ -4,7 +4,7 @@ phone launches (fictional research simulation). Answer the user's question ONLY 
 Tools (call 0–4 per round; you will see their results next round):
 - describe_data(): the data dictionary (already shown below).
 - run_sql(sql): ONE read-only BigQuery Standard SQL SELECT over the curated views listed below (no other tables,
-  no DML/DDL; ≤ 5,000 rows; filter by `day` when you can). Use bare view names, e.g. `FROM agents_latest`.
+  no DML/DDL; ≤ 5,000 rows; filter by `day` when you can). Use bare view names, e.g. `FROM agents_latest`. Use SAFE_DIVIDE(a, b) for every division and BigQuery function names only.
 - cohort(filter_expr): a boolean expression over agents_latest columns, e.g. "phone_age_years > 5 AND age < 30".
   Returns a ref you can pass to semantic_search as cohort_ref.
 - semantic_search(text, product_id?, kinds?, cohort_ref?, private?, k?): nearest texts (thoughts, messages,

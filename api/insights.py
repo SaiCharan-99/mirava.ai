@@ -703,25 +703,33 @@ class InterviewIn(BaseModel):
 @router.post("/insights/interview")
 async def interview(body: InterviewIn) -> dict[str, Any]:
     """In-character answer grounded only in that agent's memories (I-08); questions screened."""
-    from agents.interviewer import interview as run
+    from agents.interviewer import fallback, safe_interview
 
     sc = get_screener().screen(body.question)
     if not sc.ok or "prompt_injection" in sc.flagged:
         raise HTTPException(422, "question refused by screening")
     sid = body.session_id or f"iv-{body.agent_id}"
-    if store().get("agents", str(body.agent_id)) is None:
-        raise HTTPException(404, "unknown person")
-    session = store().get("insight_sessions", sid) or {}
-    hist = session.get("turns", []) if session.get("agent_id") == body.agent_id else []
-    from shared.llm import LLMError
-
     try:
-        out = await asyncio.wait_for(run(body.agent_id, sc.text, store=store(), llm=get_llm(), history=hist), 45)
-    except (LLMError, TimeoutError) as exc:
-        log.exception("insights interview: model unavailable for agent %s", body.agent_id)
-        raise HTTPException(503, "The interview service is busy. Please try again shortly.") from exc
-    store().set("insight_sessions", sid, {"agent_id": body.agent_id, "turns": [
-        *hist, {"role": "me", "text": body.question}, {"role": "ai", "text": out["answer"]}][-12:]}, True)
+        known = store().get("agents", str(body.agent_id)) is not None
+        session = store().get("insight_sessions", sid) or {}
+    except Exception:
+        log.exception("insights interview: store read failed for agent %s", body.agent_id)
+        return {**fallback("store"), "session_id": sid}
+    if not known:
+        raise HTTPException(404, "unknown person")
+    raw = session.get("turns") if isinstance(session, dict) and session.get("agent_id") == body.agent_id else None
+    hist = [h for h in raw if isinstance(h, dict)] if isinstance(raw, list) else []
+    try:
+        out = await safe_interview(body.agent_id, sc.text, store=store(), llm=get_llm(), history=hist)
+    except Exception:
+        log.exception("insights interview: unexpected failure for agent %s", body.agent_id)
+        out = fallback("unexpected")
+    if not out.get("fallback"):
+        try:
+            store().set("insight_sessions", sid, {"agent_id": body.agent_id, "turns": [
+                *hist, {"role": "me", "text": body.question}, {"role": "ai", "text": out["answer"]}][-12:]}, True)
+        except Exception:
+            log.exception("insights interview: could not save session %s", sid)
     return {**out, "session_id": sid}
 
 

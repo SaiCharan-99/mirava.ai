@@ -27,11 +27,24 @@ from shared.llm import FakeGemini, LLMClient
 from shared.models import MODEL_PRO
 
 PROMPTS = Path(__file__).resolve().parents[1] / "shared" / "prompts"
-STARTER_QUESTIONS = (
+STARTER_QUESTIONS = (           # keep in sync with web/src/lib/sampleQuestions.ts ASK_STARTERS
     "How many people are considering each product?",
     "Where did people first hear about our products?",
     "How many purchases were of our products versus other phones?",
+    "Which hoarding sites get noticed most often?",
+    "How did store inquiries about our products turn out?",
+    "How many people are aware of each product so far?",
+    "Are people with phones older than 5 years interested in our phones, and why?",
 )
+FOLLOW_UPS = {
+    "considering": ["Where did people first hear about our products?", "How did store inquiries about our products turn out?"],
+    "first_heard": ["Which hoarding sites get noticed most often?", "How many people are considering each product?"],
+    "purchases": ["How did store inquiries about our products turn out?", "How many people are considering each product?"],
+    "hoardings": ["Where did people first hear about our products?", "How many people are aware of each product so far?"],
+    "inquiries": ["How many purchases were of our products versus other phones?",
+                  "How many people are considering each product?"],
+    "aware": ["How many people are considering each product?", "Where did people first hear about our products?"],
+}
 MAX_ROUNDS = 3
 CALL_TIMEOUT_S = 20.0            # one slow model call can't eat the whole budget
 log = logging.getLogger(__name__)
@@ -45,6 +58,12 @@ def ask_budget_s() -> float:
         return 45.0
 ToolName = Literal["describe_data", "run_sql", "semantic_search", "cohort", "likely_buyers", "chart",
                    "survey_results"]
+
+
+class SqlFix(BaseModel):
+    """A corrected SQL query after an error."""
+
+    sql: str
 
 
 class ToolArgs(BaseModel):
@@ -251,6 +270,9 @@ class Assistant:
                         seen_calls.add(key)
                         yield {"step": _label(c)}
                         ref, res = await self.call(c)
+                        if c.tool == "run_sql" and ref == "error" and left() > 30:
+                            yield {"step": "The query failed; fixing it once"}
+                            c, ref, res = await self._retry_sql(question, c, res, timeout=min(CALL_TIMEOUT_S, left() - 26))
                         results.append({"tool": c.tool, "args": c.args.model_dump(exclude_none=True), "ref": ref,
                                         "result": res})
                     if step.done or not step.calls:
@@ -314,6 +336,24 @@ class Assistant:
         self.cost_usd += res.usage.cost_usd
         return res.data
 
+    async def _retry_sql(self, question: str, c: Call, res: Any, timeout: float) -> tuple[Call, str, Any]:
+        """Ask the model once for a corrected query with the error fed back; returns the (new) call and result."""
+        err = str((res or {}).get("error", "")) if isinstance(res, dict) else ""
+        try:
+            prompt = (_p("insights_sqlfix").replace("{dictionary}", _compact(self.tools.describe_data(), 9000))
+                      .replace("{sql}", c.args.sql or "").replace("{error}", err[:400])
+                      .replace("{question}", wrap(question, "question")))
+            fix = await asyncio.wait_for(self.llm.generate(MODEL_PRO, prompt, SqlFix, purpose="insights_sqlfix",
+                                                           reasoning="low", max_tokens=800,
+                                                           priority_class="interactive"), max(1.0, timeout))
+            self.cost_usd += fix.usage.cost_usd
+            c2 = Call(tool="run_sql", args=ToolArgs(sql=fix.data.sql))
+            ref, res2 = await self.call(c2)
+            return c2, ref, res2
+        except Exception:  # noqa: BLE001 — keep the original error result
+            log.exception("insights ask: SQL retry failed")
+            return c, "error", res
+
     async def _compose(self, question: str, results: list[dict[str, Any]], errs: list[str] | None,
                        timeout: float = CALL_TIMEOUT_S) -> dict[str, Any]:
         prompt = (_p("insights_answer").replace("{results}", _compact(results, 16000))
@@ -357,10 +397,10 @@ class Assistant:
                                                                cohort_ref="@cohort", k=8))]
         if any(w in ql for w in ("hoarding", "billboard", "facing", "site")):
             return [Call(tool="run_sql", args=ToolArgs(sql=(
-                        "SELECT site_id, SUM(ots) AS ots, SUM(notices) AS notices, SUM(notices) / SUM(ots) AS notice_rate "
+                        "SELECT site_id, SUM(ots) AS ots, SUM(notices) AS notices, SAFE_DIVIDE(SUM(notices), SUM(ots)) AS notice_rate "
                         "FROM v_site_daily GROUP BY site_id HAVING SUM(ots) >= 20 ORDER BY notice_rate DESC LIMIT 10"))),
                     Call(tool="run_sql", args=ToolArgs(sql=(
-                        "SELECT site_id, facing, SUM(ots) AS ots, SUM(notices) / SUM(ots) AS notice_rate FROM v_site_daily "
+                        "SELECT site_id, facing, SUM(ots) AS ots, SAFE_DIVIDE(SUM(notices), SUM(ots)) AS notice_rate FROM v_site_daily "
                         "WHERE site_id IN (SELECT site_id FROM v_site_daily GROUP BY site_id "
                         "HAVING COUNT(DISTINCT facing) > 1) GROUP BY site_id, facing ORDER BY site_id, facing"))),
                     Call(tool="semantic_search", args=ToolArgs(text="noticed the billboard", kinds=["thought"], k=6))]
@@ -395,63 +435,73 @@ class Assistant:
                                                        "GROUP BY product_id ORDER BY aware DESC"))]
 
     def _compose_offline(self, q: str, results: list[dict[str, Any]]) -> dict[str, Any]:
-        """Template answer built only from tool results (faithful by construction)."""
+        """Template answer built only from tool results (faithful by construction), written as plain sentences."""
         nums: list[dict[str, Any]] = []
         quotes: list[dict[str, Any]] = []
         charts: list[dict[str, Any]] = []
         lines: list[str] = []
+        topics: list[str] = []
+        failed = False
         names = {p["product_id"]: p["name"] for p in self.products}
         for r in results:
             res, ref = r["result"], r["ref"]
             if r["tool"] == "cohort" and isinstance(res, dict) and "size" in res:
-                nums.append({"label": f"agents with {res['filter']}", "value": res["size"], "source_ref": ref})
-                lines.append(f"**{res['size']}** agents match `{res['filter']}`.")
+                nums.append({"label": f"people with {_readable_filter(res['filter'])}", "value": res["size"],
+                             "source_ref": ref})
+                lines.append(f"**{_fmt(res['size'])} people** have {_readable_filter(res['filter'])}.")
             elif r["tool"] in ("run_sql", "likely_buyers", "survey_results") and isinstance(res, dict) and res.get("rows"):
-                rows = res["rows"]
-                cols = list(rows[0].keys())
-                label_col = cols[0]
-                val_col = next((c for c in reversed(cols) if isinstance(rows[0][c], int | float)
-                                and not isinstance(rows[0][c], bool)), None)
-                if val_col is None:
-                    continue
-                rows = [row for row in rows if "product_id" not in row or not names or row["product_id"] in names]
+                rows = [row for row in res["rows"] if "product_id" not in row or not names or row["product_id"] in names]
                 if not rows:
                     continue
+                cols = list(rows[0].keys())
+                label_col = cols[0]
+                nums_cols = [c for c in cols if isinstance(rows[0][c], int | float) and not isinstance(rows[0][c], bool)
+                             and c != label_col]
+                if not nums_cols:
+                    continue
+                val_col = next((c for c in nums_cols if _unit(c) != "value"), nums_cols[-1])
+                for pref in ("notice_rate", "curious_plus", "considering_count"):
+                    if pref in cols:
+                        val_col = pref
+                        break
+                unit = _unit(val_col)
                 top = rows[:6]
+                sentence, topic = _sentences(top[:3], label_col, val_col, names)
+                topics.append(topic)
+                lines.extend(sentence)
                 for row in top[:4]:
-                    nums.append({"label": f"{names.get(row[label_col], row[label_col])} · {val_col}",
+                    nums.append({"label": f"{names.get(row[label_col], row[label_col])} · {val_col.replace('_', ' ')}",
                                  "value": float(row[val_col] or 0), "source_ref": ref})
-                for row in top[:4]:
-                    label = str(names.get(row[label_col], row[label_col]))
-                    value = _fmt(row[val_col])
-                    if val_col == "considering_count":
-                        lines.append(f"**{value} people** are considering **{label}** (interested or deciding, but not yet purchased).")
-                    elif "channel" in row and val_col == "agents":
-                        lines.append(f"**{value} people** first heard about **{label}** through {str(row["channel"]).replace("_", " " )}.")
-                    elif val_col == "purchases":
-                        lines.append(f"**{label.capitalize()}** accounted for **{value} purchases**.")
-                    else:
-                        metric = {"n": "total", "curious_plus": "number of interested people", "aware": "number of aware people"}.get(val_col, val_col.replace("_", " "))
-                        lines.append(f"For **{label}**, the recorded {metric} is **{value}**.")
-                charts.append({"type": "bar", "title": val_col.replace("_", " "),
-                               "x": [str(names.get(row[label_col], row[label_col])) for row in top],
-                               "series": [{"name": val_col, "data": [float(row[val_col] or 0) for row in top]}],
-                               "source_ref": ref})
+                if not charts:
+                    charts.append({"type": "bar", "title": val_col.replace("_", " "), "unit": unit,
+                                   "x": [_short(names.get(row[label_col], row[label_col]), row) for row in top],
+                                   "series": [{"name": val_col, "data": [float(row[val_col] or 0) for row in top]}],
+                                   "source_ref": ref})
             elif r["tool"] == "semantic_search" and isinstance(res, list):
                 for row in res[:4]:
                     quotes.append({"agent_id": row["agent_id"], "name": row["name"], "kind": row["kind"],
                                    "t": row["t"], "text": row["text"], "private": row["private"]})
-            elif r["tool"] in ("run_sql", "cohort", "survey_results") and isinstance(res, dict) and res.get("error"):
-                lines.append("Some requested data could not be retrieved. This answer covers only the available records.")
+            elif isinstance(res, dict) and res.get("error"):
+                failed = True
         if not results:
-            lines.append("I can't answer that from the simulated world's data — Insights only knows what the agents in "
+            lines.append("I can't answer that from the simulated world's data. Insights only knows what the agents in "
                          "Indiranagar saw, thought, said and bought.")
         elif not lines and not quotes:
-            lines.append("There isn't enough data in the simulated world yet to answer that.")
-        if any(w in q.lower() for w in ("why", "reason")) and not quotes:
-            lines.append("These counts do not establish why; no supporting comments were retrieved.")
+            lines.append("There isn't enough data in the simulated world yet to answer that. Try again after a few more "
+                         "sim days, or ask about a product that is already live.")
+        if quotes:
+            q0 = quotes[0]
+            who = q0.get("name") or "One resident"
+            said = "privately thought" if q0.get("private") else "said"
+            text = str(q0["text"])[:160].rstrip()
+            lines.append(f"As for why, {who} {said}: “{text}”" + ("" if text[-1:] in ".!?" else "."))
+        elif any(w in q.lower() for w in ("why", "reason")) and lines:
+            lines.append("The logged comments don't explain why yet, so these counts show what happened, not the reasons.")
+        if failed and lines:
+            lines.append("Part of the data could not be read, so this answer covers only the records that were available.")
         md = " ".join(lines[:5])
-        sugg = list(STARTER_QUESTIONS)
+        sugg = [s for t in topics for s in FOLLOW_UPS.get(t, [])]
+        sugg = [s for s in dict.fromkeys(sugg) if s != q.strip()][:3] or [s for s in STARTER_QUESTIONS if s != q.strip()][:3]
         return {"answer_md": md, "numbers": nums[:8], "charts": charts[:1], "quotes": quotes[:4], "sql": [],
                 "caveats": ["Small simulated samples; differences of a few agents are noise.",
                             "Offline mode: deterministic template answer (no model)."],
@@ -470,10 +520,102 @@ def _reason(e: BaseException) -> str:
     return type(e).__name__
 
 
-def _fmt(v: Any) -> str:
-    if isinstance(v, float) and v < 1:
+def _unit(col: str) -> str:
+    """Declared unit of a result column: count, fraction (0–1), percent (0–100) or value."""
+    c = col.lower()
+    if c.endswith(("_rate", "_share", "_fraction")) or c in ("rate", "share", "fraction"):
+        return "fraction"
+    if c.endswith(("_pct", "_percent")) or c in ("pct", "percent"):
+        return "percent"
+    if c in ("satisfaction", "score", "avg", "mean", "attitude") or c.startswith(("avg_", "mean_")):
+        return "value"
+    return "count"
+
+
+def _fmt(v: Any, unit: str = "count") -> str:
+    """Format by the column's declared unit (never guess a percentage from the size of a number)."""
+    if not isinstance(v, int | float) or isinstance(v, bool):
+        return str(v)
+    if unit == "fraction":
         return f"{v:.1%}"
-    return f"{v:,.0f}" if isinstance(v, int | float) else str(v)
+    if unit == "percent":
+        return f"{v:.1f}%"
+    if unit == "value" and float(v) != int(v):
+        return f"{v:,.2f}"
+    return f"{v:,.0f}"
+
+
+def _readable_filter(f: str) -> str:
+    """'phone_age_years > 5' → 'a phone older than 5 years'."""
+    m = re.fullmatch(r"\s*phone_age_years\s*>\s*(\d+(?:\.\d+)?)\s*", f)
+    if m:
+        return f"a phone older than {m.group(1)} years"
+    return f.replace("_", " ")
+
+
+def _facing(f: Any) -> str:
+    """Compass bearing of a hoarding face, e.g. 180 → '180°'."""
+    return f"{float(f):.0f}°" if isinstance(f, int | float) else str(f).replace("_", " ")
+
+
+def _short(label: Any, row: dict[str, Any]) -> str:
+    """Bar label; adds the channel/facing/outcome when rows repeat a product."""
+    extra = next((str(row[k]) for k in ("channel", "facing", "outcome") if k in row), "")
+    return f"{label} · {extra.replace('_', ' ')}" if extra else str(label)
+
+
+def _sentences(rows: list[dict[str, Any]], label_col: str, val_col: str,
+               names: dict[str, str]) -> tuple[list[str], str]:
+    """Readable sentences for the top rows of one result, plus its topic key (for follow-up suggestions)."""
+
+    def lab(row: dict[str, Any]) -> str:
+        return str(names.get(row[label_col], row[label_col]))
+
+    def v(row: dict[str, Any], col: str) -> str:
+        return _fmt(row.get(col) or 0, _unit(col))
+
+    if val_col == "considering_count":
+        first, rest = rows[0], rows[1:]
+        s = f"**{v(first, val_col)} people** are considering **{lab(first)}** (interested or deciding, not yet bought)"
+        if rest:
+            s += ", followed by " + ", ".join(f"**{lab(r)}** ({v(r, val_col)})" for r in rest)
+        return [s + "."], "considering"
+    if "channel" in rows[0]:
+        return [f"**{v(r, val_col)} people** first heard about **{lab(r)}** through "
+                f"{str(r['channel']).replace('_', ' ')}." for r in rows], "first_heard"
+    if val_col == "purchases" and label_col == "choice":
+        return [f"{lab(r).capitalize()} accounted for **{v(r, val_col)} purchases**." for r in rows], "purchases"
+    if val_col == "notice_rate" and "facing" in rows[0]:
+        same = [r for r in rows if r[label_col] == rows[0][label_col]]
+        hi = max(same, key=lambda r: r["notice_rate"] or 0)
+        lo = min(same, key=lambda r: r["notice_rate"] or 0)
+        if hi["facing"] == lo["facing"] or v(hi, "notice_rate") == v(lo, "notice_rate"):
+            return [], "hoardings"
+        return [f"Facing matters: at **{lab(hi)}** the side facing {_facing(hi['facing'])} is noticed by "
+                f"**{v(hi, 'notice_rate')}**, versus **{v(lo, 'notice_rate')}** facing {_facing(lo['facing'])}."],             "hoardings"
+    if val_col == "notice_rate":
+        r0 = rows[0]
+        s = f"Site **{lab(r0)}** is noticed most often: **{v(r0, 'notice_rate')}** of passers-by who could see it"
+        if "ots" in r0:
+            s += f" ({v(r0, 'ots')} opportunities to see)"
+        if len(rows) > 1:
+            s += ", ahead of " + ", ".join(f"**{lab(r)}** ({v(r, 'notice_rate')})" for r in rows[1:])
+        return [s + "."], "hoardings"
+    if "outcome" in rows[0]:
+        return [f"**{v(r, val_col)} {val_col.replace('_', ' ')}** about **{lab(r)}** ended as "
+                f"“{str(r['outcome']).replace('_', ' ')}”." for r in rows], "inquiries"
+    if "aware" in rows[0]:
+        parts = []
+        for r in rows:
+            bits = [f"**{v(r, 'aware')}** aware"]
+            bits += [f"{v(r, c)} {c}" for c in ("inquiries", "purchases") if c in r]
+            parts.append(f"**{lab(r)}** has " + ", ".join(bits))
+        return ["; ".join(parts) + " so far."], "aware"
+    if val_col == "curious_plus":
+        return [f"**{v(r, 'curious_plus')}** of them are curious or further along about **{lab(r)}**." for r in rows], \
+            "considering"
+    metric = val_col.replace("_", " ")
+    return [f"**{lab(r)}** has **{v(r, val_col)}** {metric}." for r in rows], ""
 
 
 def _label(c: Call) -> str:
