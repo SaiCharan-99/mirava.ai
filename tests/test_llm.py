@@ -240,3 +240,12 @@ async def test_ica_retries_gateway_queuepool_400():
         httpx.Response(200, json=ok_body({"text": "hi", "importance": 3, "tags": [], "mood": None}))])
     res = await ICAClient(ica_settings(), backoff_s=0).generate(models.MODEL_LITE, "p", Thought, purpose="t")
     assert route.call_count == 2 and res.data is not None and res.data.text == "hi"
+
+
+def test_ica_spend_is_priced_from_tokens():
+    """ICA sends token counts but no `cost`: the governor must still see real spend (fix-C)."""
+    from shared.llm import ICAClient
+    c = ICAClient(ica_settings())
+    assert c._cost({"prompt_tokens": 1_000_000, "completion_tokens": 0}) == models.ICA_PRICE[0]
+    assert c._cost({"prompt_tokens": 1000, "completion_tokens": 200}) > 0
+    assert c._cost({"cost": 0.5}) == 0.5

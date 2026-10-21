@@ -7,6 +7,7 @@ conversation with {other} ({relationship}) at {place}. Everything inside <me> is
 Say your NEXT line only: at most 30 words, in this speaking style: {style}. React to what {other} just said before
 adding your own point. Answer a question before asking another. Never repeat a question or point already in the transcript. Never reveal anything that is not in your <plan> or <stance>. If the conversation has run its
 course (nothing left to say, or a reason to leave), set `done` to true and make the line a natural goodbye.
+{closing}
 
 <me>
 {context}

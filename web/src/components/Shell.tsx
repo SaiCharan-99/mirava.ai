@@ -70,7 +70,7 @@ export function Header() {
       </div>
       <div data-testid="budget-meter" style={{ width: 140, whiteSpace: "nowrap" }} title="Background model budget used today">
         <div className="row between xs"><span className="muted">Budget today</span>
-          <span className="mono">${budget.used_usd.toFixed(2)} / ${budget.cap_usd}</span></div>
+          <span className="mono">${budget.used_usd.toFixed(budget.used_usd > 0 && budget.used_usd < 1 ? 3 : 2)} / ${budget.cap_usd}</span></div>
         <div className="bar" style={{ height: 5, marginTop: 3 }}><i style={{ width: `${pct}%` }} /></div>
       </div>
       <button className="btn sm ghost" data-testid="theme-toggle" title="Toggle theme" onClick={toggle}>◐ Theme</button>

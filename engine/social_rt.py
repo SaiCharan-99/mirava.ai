@@ -97,7 +97,7 @@ class SocialRuntime:
         self.tracker = EncounterTracker()
         self.sessions = SessionRegistry()
         self._speech: list[tuple[int, dict[str, Any]]] = []
-        self.queue = TaskQueue()
+        self.queue = TaskQueue(timeout_s=150.0)   # turn-by-turn chats make ~20 sequential calls
         self.wm: dict[int, list[dict[str, Any]]] = {}
         self.agenda = Agenda()                             # what is on each person's mind to tell people
         self.name_of: Callable[[int], str] = lambda aid: f"Agent {aid}"          # first name (set by the engine)

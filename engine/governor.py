@@ -78,16 +78,19 @@ class BudgetGovernor:
         pc = priority_class if priority_class in CLASSES else "P5"
         budget = self.sim_day_budget()
         cap = int(self.cfg["class_caps"][pc])
-        if pc not in HIGH:                         # spread lower classes through the sim day
-            cap = min(cap, max(1, int(cap * (self.hour_frac + float(self.cfg["pace_slack"])))))
-        hour_cap = self.cfg.get("hourly_caps", {}).get(pc)
         share = budget * float(self.cfg.get("class_money_share", {}).get(pc, 1.0))
+        paced = self.hour_frac + float(self.cfg["pace_slack"])
+        # Spread lower classes through the sim day by MONEY; the count is only hour-paced once spend is near its pace
+        far_below = self.spent_class[pc] < share * paced * float(self.cfg.get("count_pace_below", 0.0))
+        if pc not in HIGH and not far_below:
+            cap = min(cap, max(1, int(cap * paced)))
+        hour_cap = self.cfg.get("hourly_caps", {}).get(pc)
         ok = (self.used[pc] < cap and (hour_cap is None or self.used_hour[pc] < int(hour_cap))
               and (pc == "P0" or self.spent_sim_day + est_cost_usd <= budget * float(self.cfg["reserve"][pc]))
               and self.spent_class[pc] + est_cost_usd <= share
               and self.spent_today + est_cost_usd <= float(self.cfg["daily_cap_usd"]) * (1.1 if pc == "P0" else 1.0))
         if ok and pc not in HIGH:                  # spread a lower class through the day against its own spend
-            ok = self.spent_class[pc] + est_cost_usd <= share * (self.hour_frac + float(self.cfg["pace_slack"]))
+            ok = self.spent_class[pc] + est_cost_usd <= share * paced
         if ok:
             self.used[pc] += 1
             self.used_hour[pc] += 1

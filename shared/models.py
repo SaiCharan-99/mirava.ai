@@ -16,6 +16,8 @@ ALL_MODELS: tuple[str, ...] = CHAT_MODELS + EMBED_MODELS
 # Standard prices in USD per million tokens (in, out), checked on OpenRouter 2026-10-17 (docs/techstack.md).
 PRICES: dict[str, tuple[float, float]] = {"pro": (2.00, 12.00), "flash": (0.75, 3.75), "lite": (0.30, 2.50),
                                           "embed": (0.15, 0.0)}
+# IBM ICA returns token counts but no `cost`, so its spend is priced here (Claude Haiku 4.5 list price, per M tokens).
+ICA_PRICE: tuple[float, float] = (1.00, 5.00)
 
 
 def price_per_mtok(tier: str) -> tuple[float, float]:

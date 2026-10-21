@@ -1,13 +1,15 @@
 # Budget governor (E-05, architecture §17). Money in USD of real OpenRouter spend.
 daily_cap_usd: 15            # background world, per real (UTC) day
 interactive_cap_usd: 10      # Insights / Studio / interviews / surveys, per real day, separate
-# per-sim-day count caps by priority class (1,000 agents)
+# per-sim-day count caps by priority class (1,000 agents). Chats were starved by COUNT (P4 30/day) while spend was
+# ~$0: P2–P4 now allow 150–300 rendered chats per sim day (≈ $0.0016 social / $0.003 product each on Flash-Lite,
+# so ~$0.45 of the $0.625 sim-day budget at 1 sim day per real hour); money caps below still bind first if calls cost more.
 class_caps:
   P0: 25       # store inquiries + watched agents (inquiries now cost ~⅓ of before)
   P1: 220      # ad thoughts (noticed only)
-  P2: 20       # product chats
+  P2: 60       # product chats (turn by turn)
   P3: 120      # reflection
-  P4: 30       # social chats
+  P4: 240      # social chats
   P5: 15       # community posts / reviews
 # per-sim-hour count caps (a morning commute must not spend the whole day's thoughts and stall the tick)
 hourly_caps:
@@ -16,20 +18,21 @@ hourly_caps:
 reserve:
   P0: 1.00
   P1: 0.95
-  P2: 0.90
-  P3: 0.75
-  P4: 0.65
+  P2: 0.92
+  P3: 0.80
+  P4: 0.85
   P5: 0.50
 # ceiling on the share of a sim day's money one class may spend (they may sum to > 1: the total cap still binds).
 # Lower classes pace against their OWN spend, so a few early store inquiries can no longer lock chats out all day.
 class_money_share:
   P0: 0.55
   P1: 0.30
-  P2: 0.25
+  P2: 0.30
   P3: 0.15
-  P4: 0.25
+  P4: 0.50
   P5: 0.15
 pace_slack: 0.15             # P3–P5 may run at most this far ahead of the sim day's elapsed fraction
+count_pace_below: 0.5        # while a class has spent < this share of its paced money, its COUNT is not hour-paced
 slow_steps: [1.0, 1.5, 2.0, 3.0]   # real hours per sim day multipliers
 slow_down_ratio: 1.0         # step down when projected P0–P2 spend > ratio × sim-day budget
 speed_up_ratio: 0.6          # step back up when projected P0–P2 < ratio × budget at the faster step
