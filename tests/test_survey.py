@@ -64,6 +64,13 @@ def ran(tmp_path_factory):
         store.set("surveys", "sv-one", _survey("sv-one", n=1))
         e.command({"type": "survey_launch", "survey_id": "sv-one"})
         await _run_until(e, "sv-one", 6 * 60)
+        for _ in range((23 * 60 + 20 - e.world.t % 1440) % 1440):    # late evening: the trip spans the midnight re-plan
+            await e.tick()
+        night = _survey("sv-night")
+        night["start_at_t"] = e.world.t + 45          # 00:05: everyone leaves before midnight
+        store.set("surveys", "sv-night", night)
+        e.command({"type": "survey_launch", "survey_id": "sv-night"})
+        await _run_until(e, "sv-night", 6 * 60)
         return e
 
     e = asyncio.run(go())
@@ -100,7 +107,9 @@ def test_ballots_valid_one_per_question(ran):
         q = qs[a["payload"]["question_id"]]
         assert q.valid(a["payload"]["answer"]), a["payload"]
         per[(a["agent_id"], q.question_id)] = per.get((a["agent_id"], q.question_id), 0) + 1
-    assert set(per.values()) == {1} and {k[0] for k in per} == att and len(per) == 3 * len(att)
+    late = {p["agent_id"] for p in doc["participants"] if p.get("late")}
+    assert set(per.values()) == {1} and {k[0] for k in per} == att
+    assert all(sum(1 for k in per if k[0] == aid) == 3 for aid in att - late)
     pre = _k(sink, "survey_prestance")
     assert pre and all(p["private"] for p in pre)
 
@@ -407,3 +416,40 @@ def test_session_survives_model_failures_with_rule_answers():
     r = asyncio.run(go())
     assert r.model_failures > 0 and r.answers                      # the table still produced ballots, from rules
     assert {a.agent_id for a in r.answers} == {p.agent_id for p in r.people}
+
+
+def test_launch_to_ballots_across_midnight(ran):
+    """launch → invites → RSVPs → arrivals → seated > 0 → ballots, with the trip spanning the midnight re-plan."""
+    _, sink, store = ran
+    assert _k(sink, "survey_invite", "sv-night") and _k(sink, "survey_rsvp", "sv-night")
+    doc = store.get("surveys", "sv-night")
+    acc = [p for p in doc["participants"] if p["rsvp"] in ("attended", "no_show")]
+    seated = [p for p in doc["participants"] if p["rsvp"] == "attended"]
+    assert acc and seated and doc["counts"]["attended"] == len(seated) > 0
+    assert any(p["leave_t"] < (doc["start_at_t"] // 1440) * 1440 for p in seated)    # left before midnight, still came
+    ballots = {x["agent_id"] for x in _k(sink, "survey_answer", "sv-night")}
+    assert {p["agent_id"] for p in seated} <= ballots
+
+
+def test_check_in_near_venue_and_late_joiner():
+    """No 'arrive' event needed at the door; someone arriving after the start joins from the next question."""
+    from types import SimpleNamespace
+
+    from engine.survey.runtime import ARRIVE_M, SurveyRuntime
+
+    rt = SurveyRuntime.__new__(SurveyRuntime)
+    rt.venue = "P-1"
+    door = (100.0, 100.0)
+    agents = [SimpleNamespace(place_id=None, x=100.0 + ARRIVE_M / 2, y=100.0), SimpleNamespace(place_id="P-1", x=0, y=0),
+              SimpleNamespace(place_id=None, x=900.0, y=900.0)]
+    w = SimpleNamespace(wm=SimpleNamespace(place_by_id={"P-1": SimpleNamespace(entrances=[door])}), agents=agents,
+                        position=lambda ag, t: (ag.x, ag.y))
+    parts = {i: {"rsvp": "accepted", "injected": True, "arrived_t": None} for i in range(3)}
+    a = {"participants": parts, "status": "gathering", "s": SimpleNamespace(questions=[1, 2, 3])}
+    rt._near_venue(w, a, 50)
+    assert [parts[i]["arrived_t"] for i in range(3)] == [50, 50, None]
+    parts[2]["rsvp"] = "no_show"
+    a.update(status="in_session", q_index=0)
+    agents[2].place_id = "P-1"
+    rt._near_venue(w, a, 80)
+    assert parts[2]["arrived_t"] == 80 and a["joiners"] == [2]

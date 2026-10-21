@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrivalTables, bannerKind, flows, itemsFromLive, mmss, secondsLeft, sessionRoute, type ActiveSurvey, type LiveState } from "./focus";
+import { arrivalTables, bannerKind, emptyReason, liveSecondsLeft, flows, itemsFromLive, mmss, secondsLeft, sessionRoute, type ActiveSurvey, type LiveState } from "./focus";
 import { roomState } from "./survey";
 
 const counts = { invited: 10, replied: 6, accepted: 4, waitlist: 0, walking: 2, arrived: 1 };
@@ -51,5 +51,22 @@ describe("live room", () => {
   });
   it("turns a shift matrix into flows", () => {
     expect(flows({ a: { a: 3, b: 1 }, b: { b: 2 } })).toEqual([["a", "a", 3], ["a", "b", 1], ["b", "b", 2]]);
+  });
+});
+
+describe("wait page + empty results", () => {
+  it("counts down in real time between polls", () => {
+    expect(liveSecondsLeft(60, 1000, 11000)).toBe(50);
+    expect(liveSecondsLeft(5, 0, 10000)).toBe(0);
+    expect(liveSecondsLeft(null, 0, 0)).toBe(0);
+  });
+  it("explains why nobody took part", () => {
+    expect(emptyReason({ attended: 3 })).toBeNull();
+    expect(emptyReason({ attended: 0, reached: 0 })).toMatch(/Nobody saw/);
+    expect(emptyReason({ attended: 0, reached: 40, accepted: 0 })).toMatch(/40 people saw/);
+    const r = emptyReason({ attended: 0, reached: 40, accepted: 6, no_show: 6, gather_timeout: true, turned_away: 2 });
+    expect(r).toMatch(/6 no-shows/);
+    expect(r).toMatch(/waited/);
+    expect(r).toMatch(/2 arrived after/);
   });
 });
