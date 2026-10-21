@@ -38,7 +38,7 @@ async function run<T>(what: string, f: () => Promise<T>): Promise<T | null> {
 /* ================================================================ list */
 
 export function LaunchListPage() {
-  const { products, error } = useProducts();
+  const { products, loaded, error } = useProducts();
   const nav = useNavigate();
   const create = async () => {
     if (!live) return toast("New product draft created (mockup)");
@@ -52,6 +52,7 @@ export function LaunchListPage() {
       <PageTitle title="Launch Studio" sub="Create products and their marketing. Products you mark ready appear on the World map, where you launch them one at a time."
         right={<button className="btn primary" onClick={create}>＋ New product</button>} />
       <div className="grid g3" data-testid="products-grid">
+        {!loaded && !products.length && <div className="card small muted">Loading products…</div>}
         {products.map((p) => (
           <div className="pcard" data-testid="product-card" data-product={p.id} key={p.id}
             onClick={() => nav(withMode(`/launch/${p.id}/${p.status === "live" ? "plan" : "details"}`))}>

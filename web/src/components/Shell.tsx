@@ -47,7 +47,7 @@ export function Header() {
   const t = useWorld((s) => s.t);
   const agents = useWorld((s) => s.stats.agents);
   const budget = useWorld((s) => s.budget);
-  const pending = useWorld((s) => !isVisualTest && s.source !== "live");   // mockup fixtures must never pass as live data
+  const pending = useWorld((s) => !isVisualTest && (s.source !== "live" || !Number.isFinite(s.budget.used_usd)));   // mockup fixtures must never pass as live data
   const [, toggle] = useTheme();
   const pct = Math.min(100, (budget.used_usd / budget.cap_usd) * 100);
   return (
