@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Protocol
 
 from shared.settings import Settings, get_settings
+
+IO_TIMEOUT_S = float(os.environ.get("FILES_TIMEOUT_S", "60"))   # per GCS request (fix-E: no hung ticks)
 
 
 class Files(Protocol):
@@ -54,16 +57,16 @@ class GCSFiles:
 
     def write(self, bucket: str, key: str, data: bytes) -> str:
         """Upload bytes; returns a gs:// URI."""
-        self.client.bucket(bucket).blob(key).upload_from_string(data)
+        self.client.bucket(bucket).blob(key).upload_from_string(data, timeout=IO_TIMEOUT_S)
         return f"gs://{bucket}/{key}"
 
     def read(self, bucket: str, key: str) -> bytes:
         """Download bytes."""
-        return self.client.bucket(bucket).blob(key).download_as_bytes()
+        return self.client.bucket(bucket).blob(key).download_as_bytes(timeout=IO_TIMEOUT_S)
 
     def exists(self, bucket: str, key: str) -> bool:
         """True if the object exists."""
-        return self.client.bucket(bucket).blob(key).exists()
+        return self.client.bucket(bucket).blob(key).exists(timeout=IO_TIMEOUT_S)
 
 
 def get_files(settings: Settings | None = None) -> Files:

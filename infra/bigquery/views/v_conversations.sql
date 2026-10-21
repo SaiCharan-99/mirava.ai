@@ -13,6 +13,6 @@ SELECT
   ARRAY(SELECT JSON_VALUE(x) FROM UNNEST(JSON_QUERY_ARRAY(payload, '$.topics')) x) AS topics,
   ARRAY(SELECT JSON_VALUE(x) FROM UNNEST(JSON_QUERY_ARRAY(payload, '$.product_mentions')) x) AS product_mentions,
   JSON_VALUE(payload, '$.topic') AS interaction_topic
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind IN ('conversation', 'interaction')
 QUALIFY ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY t_real) = 1

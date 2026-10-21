@@ -3,13 +3,13 @@ CREATE OR REPLACE VIEW `mirava.v_survey_waves` AS
 WITH s AS (
   SELECT JSON_VALUE(payload, '$.survey_id') AS survey_id, CAST(JSON_VALUE(payload, '$.wave') AS INT64) AS wave,
          COALESCE(JSON_VALUE(payload, '$.panel_id'), JSON_VALUE(payload, '$.survey_id')) AS panel_id
-  FROM `mirava.events` WHERE kind = 'survey_created'
+  FROM `mirava.events_current` WHERE kind = 'survey_created'
   QUALIFY ROW_NUMBER() OVER (PARTITION BY JSON_VALUE(payload, '$.survey_id') ORDER BY t) = 1
 ), a AS (
   SELECT JSON_VALUE(payload, '$.survey_id') AS survey_id, JSON_VALUE(payload, '$.question_id') AS question_id,
          agent_id, COALESCE(JSON_VALUE(payload, '$.answer'), TO_JSON_STRING(JSON_QUERY(payload, '$.answer'))) AS answer,
          JSON_VALUE(payload, '$.reason') AS reason, t, event_id
-  FROM `mirava.events` WHERE kind = 'survey_answer'
+  FROM `mirava.events_current` WHERE kind = 'survey_answer'
   QUALIFY ROW_NUMBER() OVER (PARTITION BY JSON_VALUE(payload, '$.survey_id'), JSON_VALUE(payload, '$.question_id'),
                                           agent_id ORDER BY t DESC) = 1
 )

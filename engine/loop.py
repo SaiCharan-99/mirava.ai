@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
 import time
+import traceback
 from typing import Any
 
 from engine import checkpoint
@@ -34,6 +36,25 @@ from world.map import WorldMap, get_map
 
 log = logging.getLogger("engine")
 FLUSH_EVERY = 4
+IO_TIMEOUT_S = 30.0       # fix-E: any single store/GCS call in the tick path
+TICK_TIMEOUT_S = 90.0     # fix-E: watchdog: a tick taking longer is abandoned (skipped) and logged
+
+
+async def io(fn: Any, *args: Any, timeout: float = IO_TIMEOUT_S) -> Any:
+    """Run a blocking store/files call in a thread with a timeout (raises asyncio.TimeoutError)."""
+    return await asyncio.wait_for(asyncio.to_thread(fn, *args), timeout)
+
+
+def dump_task_stacks() -> str:
+    """All asyncio task and thread stacks, for the hung-tick watchdog log."""
+    out: list[str] = []
+    for task in asyncio.all_tasks():
+        out.append(f"--- task {task.get_name()} ---")
+        out.extend("".join(traceback.format_stack(f)) for f in task.get_stack())
+    for tid, frame in sys._current_frames().items():
+        out.append(f"--- thread {tid} ---")
+        out.append("".join(traceback.format_stack(frame)))
+    return "\n".join(out)
 
 
 def load_genesis(files: Files, bucket: str, version: str = "v1") -> dict[str, Any]:
@@ -82,6 +103,7 @@ class Engine:
         self.tick_ms: list[float] = []
         self.status = "starting"
         self.last_checkpoint: dict[str, Any] = {}
+        self.hung_ticks = 0
         self._stop = asyncio.Event()
         self.retired = False
         self._lock = asyncio.Lock()
@@ -105,6 +127,8 @@ class Engine:
             w.init_from_states(g["states"])
         self.bus.listeners.clear()
         self.opinion = OpinionEngine(w.profiles, w.seed, phones=w.phones)
+        if ck is not None and ck.get("governor"):
+            self.gov.load(ck["governor"])
         if ck is not None and ck.get("opinion"):
             self.opinion.load(ck["opinion"])
         if self.social_enabled:
@@ -198,12 +222,24 @@ class Engine:
                 async with self._lock:
                     if self.world is None:
                         continue
-                    await self.tick()
+                    await self.guarded_tick()
                 spent = time.time() - start
                 await asyncio.sleep(max(0.0, self.clock.real_s_per_tick - spent))
         finally:
             renew.cancel()
             stats.cancel()
+
+    async def guarded_tick(self) -> None:
+        """Watchdog: run a tick with a timeout; on a hang or error log every stack and skip it (next tick retries)."""
+        try:
+            await asyncio.wait_for(self.tick(), TICK_TIMEOUT_S)
+        except TimeoutError:
+            self.hung_ticks += 1
+            log.error("tick hung > %.0fs at t=%s; skipped. stacks:\n%s", TICK_TIMEOUT_S,
+                      self.world.t if self.world else None, dump_task_stacks())
+        except Exception:  # noqa: BLE001 - the world never stops
+            self.hung_ticks += 1
+            log.exception("tick failed at t=%s; skipped", self.world.t if self.world else None)
 
     async def tick(self) -> None:
         """One sim minute + live push + periodic flush/checkpoint."""
@@ -224,7 +260,7 @@ class Engine:
             done = day_of_end(w.t)
             if done is not None:
                 h = self.highlights.finish_day(done)
-                await asyncio.to_thread(self.files.write, self.bucket, key_for(done), encode(h))
+                await io(self.files.write, self.bucket, key_for(done), encode(h))
                 self._first_line.clear()
         if w.t % 60 == 0:
             gs = self.gov.on_sim_hour(w.t)
@@ -240,7 +276,7 @@ class Engine:
         await self.hub.push_tick(w, self.clock)
         if w.t % FLUSH_EVERY == 0:
             await bus.flush(upto_t=w.t)
-            await asyncio.to_thread(self.store.set, "world", "state",
+            await io(self.store.set, "world", "state",
                                     {"t": w.t, "last_flushed_t": w.t, "label": simtime.fmt(w.t), "status": self.status,
                                      "speed": self.clock.speed, "seconds_per_sim_day": self.clock.seconds_per_sim_day},
                                     True)
@@ -277,7 +313,8 @@ class Engine:
             state["surveys"] = self.surveys.to_dict()
         if self.highlights is not None:
             state["highlights"] = self.highlights.to_dict()
-        info = await asyncio.to_thread(checkpoint.save, self.files, self.bucket, self.store, state)
+        state["governor"] = self.gov.to_dict()
+        info = await io(checkpoint.save, self.files, self.bucket, self.store, state, timeout=IO_TIMEOUT_S * 4)
         docs = {}
         for a in w.agents:
             st = w.agent_state(a.id).model_dump()
@@ -288,7 +325,7 @@ class Engine:
                 row["stages"] = self.commerce.stages_of(a.id)
                 row["need"] = self.commerce.need(w, a.id)
             docs[str(a.id)] = {"state": st, "phone": ph, "row": row}
-        await asyncio.to_thread(self.store.set_many, "agents", docs, True)
+        await io(self.store.set_many, "agents", docs, True, timeout=IO_TIMEOUT_S * 4)
         info["seconds"] = round(time.perf_counter() - t0, 2)
         self.last_checkpoint = {**info, "t": w.t}
         bus.new("checkpoint", w.t, None, info)
@@ -389,6 +426,7 @@ class Engine:
                                 "cap_usd": float(self.gov.cfg["interactive_cap_usd"])},
                 "engine": {"holder": self.lease.holder, "lease_held": self.lease.held, "tick_p95_ms": p95,
                            "viewers": len(self.hub.clients), "last_checkpoint": self.last_checkpoint,
+                           "hung_ticks": self.hung_ticks,
                            "events": self.bus.count if self.bus else 0}}
 
     def command(self, cmd: dict[str, Any]) -> dict[str, Any]:

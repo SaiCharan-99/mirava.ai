@@ -241,7 +241,7 @@ def test_site_daily_view_totals(launched, tmp_path):
     _, sink, _, pid, _ = launched
     db = DuckDBSink(Settings(duckdb_path=str(tmp_path / "v.duckdb"))).db
     db.insert("events", sink.events)
-    for v in ("v_exposures", "v_site_daily"):
+    for v in ("a0_retired_products", "a1_events_current", "v_exposures", "v_site_daily"):
         db.con.execute(db.translate(Path(f"infra/bigquery/views/{v}.sql").read_text(), "mirava"))
     rows = db.query("SELECT * FROM v_site_daily WHERE product_id = @p", {"p": pid})
     hoard = [x for x in sink.events if x["kind"] == "exposure" and x["product_id"] == pid

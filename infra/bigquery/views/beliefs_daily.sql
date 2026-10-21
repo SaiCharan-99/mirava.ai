@@ -10,6 +10,6 @@ SELECT
   CAST(JSON_VALUE(payload, '$.after.confidence') AS FLOAT64) AS confidence,
   JSON_VALUE(payload, '$.after.stage') AS stage,
   JSON_VALUE(payload, '$.cause_event_id') AS cause_event_id
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'belief_change'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY agent_id, JSON_VALUE(payload, '$.subject'), day ORDER BY t DESC, event_id DESC) = 1

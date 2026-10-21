@@ -8,7 +8,7 @@ SELECT JSON_VALUE(payload, '$.survey_id') AS survey_id, JSON_VALUE(payload, '$.q
        JSON_VALUE(payload, '$.influence_type') AS influence_type,
        JSON_VALUE(payload, '$.influenced_by[0]') AS influenced_by_first,
        JSON_VALUE(payload, '$.reason') AS reason, t, event_id
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'survey_answer' AND JSON_VALUE(payload, '$.written') != 'true'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY JSON_VALUE(payload, '$.survey_id'), JSON_VALUE(payload, '$.question_id'),
                                         agent_id ORDER BY t DESC) = 1

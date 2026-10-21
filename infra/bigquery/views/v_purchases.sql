@@ -11,6 +11,6 @@ SELECT
   CAST(JSON_VALUE(payload, '$.need') AS FLOAT64) AS need,
   JSON_VALUE(payload, '$.life_event') = 'true' AS life_event,
   JSON_VALUE(payload, '$.reason') AS reason
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'purchase'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY t_real) = 1

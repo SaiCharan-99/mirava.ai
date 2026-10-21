@@ -14,7 +14,7 @@ SELECT JSON_VALUE(payload, '$.survey_id') AS survey_id, JSON_VALUE(payload, '$.t
        COALESCE(JSON_VALUE(payload, '$.prestance'), TO_JSON_STRING(JSON_QUERY(payload, '$.prestance'))) AS prestance,
        JSON_VALUE(payload, '$.majority') AS table_majority,
        CAST(JSON_VALUE(payload, '$.susceptibility') AS FLOAT64) AS susceptibility
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'survey_answer'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY JSON_VALUE(payload, '$.survey_id'), JSON_VALUE(payload, '$.question_id'),
                                         agent_id ORDER BY t DESC) = 1

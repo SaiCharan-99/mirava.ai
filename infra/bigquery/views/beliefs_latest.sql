@@ -7,12 +7,12 @@ WITH b AS (
          CAST(JSON_VALUE(payload, '$.after.attitude') AS FLOAT64) AS attitude,
          CAST(JSON_VALUE(payload, '$.after.confidence') AS FLOAT64) AS confidence,
          JSON_VALUE(payload, '$.after.stage') AS stage
-  FROM `mirava.events`
+  FROM `mirava.events_current`
   WHERE kind = 'belief_change'
   QUALIFY ROW_NUMBER() OVER (PARTITION BY agent_id, JSON_VALUE(payload, '$.subject') ORDER BY t DESC, event_id DESC) = 1
 ), c AS (
   SELECT agent_id, JSON_VALUE(payload, '$.subject') AS subject, JSON_VALUE(payload, '$.to') AS stage, t
-  FROM `mirava.events`
+  FROM `mirava.events_current`
   WHERE kind = 'consideration'
   QUALIFY ROW_NUMBER() OVER (PARTITION BY agent_id, JSON_VALUE(payload, '$.subject') ORDER BY t DESC, event_id DESC) = 1
 )

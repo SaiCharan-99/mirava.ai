@@ -15,6 +15,6 @@ SELECT
   JSON_VALUE(payload, '$.lit') = 'true' AS lit,
   JSON_VALUE(payload, '$.target') = 'true' AS target,
   CAST(JSON_VALUE(payload, '$.rate_inr_day') AS INT64) AS rate_inr_day
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'exposure'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY t_real) = 1

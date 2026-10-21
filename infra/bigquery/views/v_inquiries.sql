@@ -8,6 +8,6 @@ SELECT
   CAST(JSON_VALUE(payload, '$.n_messages') AS INT64) AS n_messages,
   JSON_VALUE(payload, '$.topics[0]') AS first_topic,
   JSON_VALUE(payload, '$.questions[0]') AS first_question
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'inquiry'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY t_real) = 1

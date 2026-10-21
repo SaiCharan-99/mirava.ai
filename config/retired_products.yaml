@@ -1,0 +1,3 @@
+# Product ids hidden from every BigQuery/Insights view (fix-E): earlier demo runs, superseded by the real-phone launch.
+# Applied by `python -m infra.bigquery.init PROJECT DATASET` (infra/bigquery/views/a0_retired_products.sql).
+retired: [pulse-5, orbit-s, nova-x1, "Orbit S"]

@@ -6,6 +6,6 @@ SELECT JSON_VALUE(payload, '$.survey_id') AS survey_id, JSON_VALUE(payload, '$.t
        agent_id AS speaker_id, COALESCE(CAST(agent_id AS STRING), 'moderator') AS speaker,
        JSON_VALUE(payload, '$.text') AS text, CAST(JSON_VALUE(payload, '$.addressed_to') AS INT64) AS addressed_to,
        t, day, event_id
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'message' AND JSON_VALUE(payload, '$.conv_kind') = 'focus_group'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY t_real) = 1

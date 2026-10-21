@@ -27,6 +27,7 @@ class DocStore(Protocol):
 
 
 _LOCK = threading.Lock()
+IO_TIMEOUT_S = float(os.environ.get("STORE_TIMEOUT_S", "20"))   # per Firestore RPC (fix-E: no hung ticks)
 
 
 class MemoryStoreBackend:
@@ -106,20 +107,20 @@ class FirestoreBackend:
 
     def get(self, collection: str, doc_id: str) -> dict | None:
         """Fetch one document."""
-        snap = self._db.collection(collection).document(doc_id).get()
+        snap = self._db.collection(collection).document(doc_id).get(timeout=IO_TIMEOUT_S)
         return _vec_out(snap.to_dict()) if snap.exists else None
 
     def set(self, collection: str, doc_id: str, data: dict, merge: bool = False) -> None:
         """Write (or merge) one document."""
-        self._db.collection(collection).document(doc_id).set(_vec_in(data), merge=merge)
+        self._db.collection(collection).document(doc_id).set(_vec_in(data), merge=merge, timeout=IO_TIMEOUT_S)
 
     def delete(self, collection: str, doc_id: str) -> None:
         """Delete one document."""
-        self._db.collection(collection).document(doc_id).delete()
+        self._db.collection(collection).document(doc_id).delete(timeout=IO_TIMEOUT_S)
 
     def list(self, collection: str, limit: int = 1000) -> list[dict]:
         """List up to `limit` documents."""
-        return [_vec_out(d.to_dict()) or {} for d in self._db.collection(collection).limit(limit).stream()]
+        return [_vec_out(d.to_dict()) or {} for d in self._db.collection(collection).limit(limit).stream(timeout=IO_TIMEOUT_S)]
 
     def set_many(self, collection: str, docs: dict[str, dict], merge: bool = False) -> None:
         """Batched writes (≤ 450 per commit)."""
@@ -128,14 +129,14 @@ class FirestoreBackend:
             batch = self._db.batch()
             for k, v in items[i:i + 450]:
                 batch.set(self._db.collection(collection).document(k), _vec_in(v), merge=merge)
-            batch.commit()
+            batch.commit(timeout=IO_TIMEOUT_S)
 
     def where(self, collection: str, field: str, value: Any, limit: int = 1000) -> builtins.list[dict]:
         """Equality query on one field."""
         from google.cloud.firestore_v1.base_query import FieldFilter
 
         q = self._db.collection(collection).where(filter=FieldFilter(field, "==", value)).limit(limit)
-        return [_vec_out(d.to_dict()) or {} for d in q.stream()]
+        return [_vec_out(d.to_dict()) or {} for d in q.stream(timeout=IO_TIMEOUT_S)]
 
     def update_if(self, collection: str, doc_id: str, pred: Callable[[dict | None], bool], data: dict) -> bool:
         """Transactional compare-and-set."""

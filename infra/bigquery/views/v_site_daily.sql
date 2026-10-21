@@ -5,7 +5,7 @@ WITH ex AS (
 ), th AS (
   SELECT site_id, product_id, day, COUNT(*) AS thoughts,
          AVG(CAST(JSON_VALUE(payload, '$.attitude_delta') AS FLOAT64)) AS sentiment
-  FROM `mirava.events`
+  FROM `mirava.events_current`
   WHERE kind = 'thought' AND site_id IS NOT NULL AND rendered
   GROUP BY site_id, product_id, day
 )

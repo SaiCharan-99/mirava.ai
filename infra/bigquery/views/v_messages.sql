@@ -10,6 +10,6 @@ SELECT
   t,
   day,
   event_id
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'message'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY t_real) = 1

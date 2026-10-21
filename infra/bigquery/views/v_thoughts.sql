@@ -8,6 +8,6 @@ SELECT
   JSON_VALUE(payload, '$.intent_change') AS intent_change,
   JSON_VALUE(payload, '$.trigger_event_id') AS trigger_event_id,
   TRUE AS private
-FROM `mirava.events`
+FROM `mirava.events_current`
 WHERE kind = 'thought'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY t_real) = 1
