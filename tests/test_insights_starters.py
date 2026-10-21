@@ -117,3 +117,12 @@ def test_web_starters_match_backend():
     ts = (Path(__file__).resolve().parents[1] / "web" / "src" / "lib" / "sampleQuestions.ts").read_text(encoding="utf-8")
     block = ts[ts.index("ASK_STARTERS"):ts.index("];")]
     assert all(f'"{q}"' in block for q in STARTER_QUESTIONS) and block.count('",') == len(STARTER_QUESTIONS)
+
+
+def test_normalise_kinds_maps_model_plurals():
+    from insights.tools import normalise_kinds
+
+    assert normalise_kinds(["thoughts", "messages", "comments"]) == sorted(
+        {"thought", "message", "community_comment", "community_post", "review"})
+    assert normalise_kinds(["store_thought"]) == ["store_thought"]
+    assert normalise_kinds(["nonsense"]) is None and normalise_kinds(None) is None

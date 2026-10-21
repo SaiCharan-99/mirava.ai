@@ -281,7 +281,7 @@ class Tools:
         if f.get("product_id"):
             conds.append("product_id = @product_id")
             params["product_id"] = str(f["product_id"])
-        kinds = f.get("kinds") or ([f["kind"]] if f.get("kind") else None)
+        kinds = normalise_kinds(f.get("kinds") or ([f["kind"]] if f.get("kind") else None))
         if kinds:
             conds.append("kind IN (" + ",".join(f"'{re.sub(r'[^a-z_]', '', str(x))}'" for x in kinds) + ")")
         if f.get("private") is not None:
@@ -447,6 +447,30 @@ STOPWORDS = frozenset("""about after again also and are any because been before 
 each for from had has have how into its just like many more most much not now our out over own people person said same
 should some such than that the their them then there these they this those through very was were what when where which
 while who whom why will with would you your our products product think thought thoughts say says""".split())
+
+
+TEXT_KINDS = ("message", "thought", "debrief", "share_plan", "reflection", "store_thought", "survey_answer",
+              "survey_thought", "survey_summary", "review", "community_post", "community_comment")
+_KIND_ALIASES = {"comment": ("community_comment", "community_post", "review"), "post": ("community_post",),
+                 "chat": ("message",), "conversation": ("message",), "store": ("store_thought",),
+                 "community": ("community_post", "community_comment")}
+
+
+def normalise_kinds(kinds: list[str] | None) -> list[str] | None:
+    """Map model-written kinds ("thoughts", "comments") to stored text kinds; None when nothing is recognised."""
+    if not kinds:
+        return None
+    out: list[str] = []
+    for k in kinds:
+        k = re.sub(r"[^a-z_]", "", str(k).lower())
+        for cand in (k, k[:-1] if k.endswith("s") else k):
+            if cand in TEXT_KINDS:
+                out.append(cand)
+                break
+            if cand in _KIND_ALIASES:
+                out.extend(_KIND_ALIASES[cand])
+                break
+    return sorted(set(out)) or None
 
 
 def keyword_stems(text: str) -> list[str]:
