@@ -58,7 +58,7 @@ def test_time_budget_forces_early_compose(db):  # noqa: F811
     llm = PlanThenAnswer(clock)
     a = Assistant(_tools(db), llm, products=[], budget_s=45, clock=lambda: clock[0])
     items = asyncio.run(_collect(a, "How many agents are there?"))
-    assert llm.plans == 2 and llm.composes == 1               # 0 s → 30 s → 60 s: third round and regenerate skipped
+    assert llm.plans == 1 and llm.composes == 1  # reserve time to compose before the deadline
     assert any("Time budget" in (i.get("step") or "") for i in items)
     assert sum(1 for i in items if "answer" in i) == 1
 
@@ -78,3 +78,25 @@ def test_sse_pings_and_single_answer():
     assert b": ping\n\n" in chunks
     data = [json.loads(c[6:]) for c in chunks if c.startswith(b"data: ")]
     assert [d for d in data if "answer" in d] == [{"answer": {"answer_md": "x"}}]
+
+
+def test_starter_questions_return_grounded_results_when_model_is_down(db):  # noqa: F811
+    from agents.insights_assistant import STARTER_QUESTIONS
+
+    for question in STARTER_QUESTIONS:
+        a = Assistant(_tools(db), RaisingLLM(), products=[{"product_id": "pulse-5", "name": "Pulse 5"}])
+        items = asyncio.run(_collect(a, question))
+        ans = items[-1]["answer"]
+        assert ans["faithful"] and ans["numbers"]
+        assert "HTTP" not in ans["answer_md"] and "considering_count" not in ans["answer_md"]
+        assert all(c["_unit"] == "count" for c in ans["charts"])
+
+
+def test_search_works_without_embedding_service(db):  # noqa: F811
+    def broken(_):
+        raise LLMError("embedding outage")
+
+    t = Tools(DuckRunner(db), Ledger(), embed=broken)
+    rows = t.semantic_search("battery", {"private": True})
+    assert rows and all(r["private"] for r in rows)
+    assert all("battery" in r["text"].lower() for r in rows)

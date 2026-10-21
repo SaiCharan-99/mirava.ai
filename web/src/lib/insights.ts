@@ -25,7 +25,7 @@ export interface ConversationsData {
 }
 export interface QuoteView { agent_id: number | null; name?: string | null; age?: number; text: string; kind: string; private: boolean }
 export interface AskAnswerView {
-  steps: [string, string][]; html: string; bars?: [string, number, string][]; ymax?: number; barsNote?: string; sideHtml?: string;
+  steps: [string, string][]; html: string; bars?: [string, number, string][]; ymax?: number; unit?: string; barsNote?: string; sideHtml?: string;
   quotes: QuoteView[]; sqlLabel?: string; sql?: string[]; caveats?: string; suggestions?: string[]; failed?: boolean;
 }
 export interface PollResultView {

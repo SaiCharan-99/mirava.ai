@@ -249,3 +249,19 @@ async def test_demo_snapshot_save_and_reload(tmp_path, monkeypatch):
     assert e.world.t == 120 and (store.get("world", "state") or {})["last_checkpoint"].startswith("snapshots/t1/")
     await e.tick()
     assert e.world.t == 121
+
+async def test_slow_model_jobs_do_not_stop_world_and_expire_from_submission():
+    q = TaskQueue(concurrency=1, timeout_s=0.1)
+
+    async def blocked():
+        await asyncio.sleep(10)
+
+    for i in range(20):
+        q.submit(str(i), blocked, 0, 1, lambda: "fallback")
+    start = asyncio.get_running_loop().time()
+    assert await q.collect(1) == []
+    assert asyncio.get_running_loop().time() - start < 0.08
+    await asyncio.sleep(0.12)
+    results = await q.collect(2)
+    assert len(results) == 20 and all(value == "fallback" for _, value in results)
+    assert q.pending == 0

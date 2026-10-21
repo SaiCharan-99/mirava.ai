@@ -82,6 +82,8 @@ async def run_turns(a: SharePlan, b: SharePlan, names: dict[int, str], styles: d
         calls += 1
         cost += res.usage.cost_usd
         text = res.data.say.strip()[:300]
+        if text and any(m.speaker == speaker and m.text.casefold() == text.casefold() for m in msgs):
+            break  # do not publish a repeated question or loop over the same reply
         if text:
             msgs.append(Message(session_id=a.session_id, seq=len(msgs), speaker=speaker, listener=other[speaker],
                                 text=text, t=t + len(msgs) // 2))

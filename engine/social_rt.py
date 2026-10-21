@@ -96,6 +96,7 @@ class SocialRuntime:
                 self.rel[(min(r["a"], r["b"]), max(r["a"], r["b"]))] = r
         self.tracker = EncounterTracker()
         self.sessions = SessionRegistry()
+        self._speech: list[tuple[int, dict[str, Any]]] = []
         self.queue = TaskQueue()
         self.wm: dict[int, list[dict[str, Any]]] = {}
         self.agenda = Agenda()                             # what is on each person's mind to tell people
@@ -157,6 +158,8 @@ class SocialRuntime:
         """Gate new encounters, apply finished conversations/reflections, run the nightly job."""
         t = w.t
         await self._apply(w, bus, t)
+        w.live_evts.extend(event for due, event in self._speech if due <= t)
+        self._speech = [(due, event) for due, event in self._speech if due > t]
         self.sessions.expire(t)
         pairs = self.tracker.update(t, self.presences(w))
         if pairs:
@@ -487,6 +490,10 @@ class SocialRuntime:
             first = out.messages[0]
             w.live_evts.append({"k": "bubble", "session_id": out.session_id, "a": first.speaker, "b": first.listener,
                                 "text": first.text, "n": len(out.messages)})
+            for i, message in enumerate(out.messages[1:], 1):
+                self._speech.append((t + i * 2, {"k": "bubble", "session_id": out.session_id,
+                    "a": message.speaker, "b": message.listener, "text": message.text,
+                    "seq": i, "n": len(out.messages)}))
             w.counters["chats_rendered_today"] = w.counters.get("chats_rendered_today", 0) + 1
         # every talk counts (written chats and brief "interaction" ones), not just model-written dialogue
         w.counters["conversations_today"] += 1

@@ -84,10 +84,10 @@ function Empty({ children }: { children: ReactNode }) {
 function AnswerBlock({ a, names, onRetry }: { a: AskAnswerView; names: Names; onRetry?: () => void }) {
   return (
     <div className="answer">
-      {a.steps.length > 0 && <div className="list" style={{ gap: 4, marginBottom: 10 }}>{a.steps.map(([t, d], i) => <div key={i} className="toolstep">✓ <code>{t}</code> {d}</div>)}</div>}
+      {a.steps.length > 0 && <details><summary className="small muted">How this answer was found</summary><div className="list" style={{ gap: 4, marginBottom: 10 }}>{a.steps.map(([t, d], i) => <div key={i} className="toolstep">✓ <code>{t}</code> {d}</div>)}</div></details>}
       <p style={{ marginTop: 0 }} dangerouslySetInnerHTML={{ __html: a.html }} />
       {a.bars && (
-        <div className="grid g2"><div><VBars rows={a.bars} w={420} h={190} ymax={a.ymax ?? 100} /><div className="xs muted">{a.barsNote}</div></div>
+        <div className="grid g2"><div><VBars rows={a.bars} w={420} h={190} ymax={a.ymax ?? 100} unit={a.unit ?? "%"} /><div className="xs muted">{a.barsNote}</div></div>
           <div className="small" dangerouslySetInnerHTML={{ __html: a.sideHtml ?? "" }} /></div>
       )}
       {a.quotes.map((q, i) => <Quote key={i} q={q} names={names} />)}
@@ -101,17 +101,18 @@ function AnswerBlock({ a, names, onRetry }: { a: AskAnswerView; names: Names; on
   );
 }
 
-function toView(ans: AskAnswer, steps: string[]): AskAnswerView {
-  const ch = (ans.charts || [])[0] as { xAxis?: { data?: string[] }; series?: { data: number[] }[]; _source_ref?: string } | undefined;
+export function toView(ans: AskAnswer, steps: string[]): AskAnswerView {
+  const ch = (ans.charts || [])[0] as { xAxis?: { data?: string[] }; series?: { data: number[] }[]; _source_ref?: string; _unit?: string; title?: { text?: string } } | undefined;
   const xs = ch?.xAxis?.data ?? [];
   const ys = ch?.series?.[0]?.data ?? [];
-  const pct = ys.every((v) => v <= 1);
+  const pct = ch?._unit === "fraction";
+  const unit = pct || ch?._unit === "percent" ? "%" : "";
   const bars = xs.length ? xs.map((x, i): [string, number, string] => [x, Math.round((pct ? 100 : 1) * (ys[i] ?? 0) * 10) / 10, ["#22c55e", "#8b5cf6", "var(--teal)", "#f97316", "#60a5fa", "#f5b041"][i % 6]]) : undefined;
   const ymax = bars ? Math.max(10, ...bars.map((b) => b[1])) * 1.15 : undefined;
   return {
     steps: steps.map((s) => { const m = s.match(/^(\S+)\s(.*)$/); return [m ? m[1] : s, m ? m[2] : ""] as [string, string]; }),
-    html: mdToHtml(ans.answer_md), bars, ymax: ymax ? Math.ceil(ymax) : undefined, barsNote: bars ? "simulated · from the query shown below" : undefined,
-    sideHtml: ans.numbers.length ? `<b>Key numbers</b><ul style="margin:6px 0 0;padding-left:18px">${ans.numbers.slice(0, 5).map((n) => `<li>${n.label}: <b>${Number.isInteger(n.value) ? n.value.toLocaleString("en-IN") : n.value.toFixed(n.value < 1 ? 3 : 1)}</b></li>`).join("")}</ul>` : "",
+    html: mdToHtml(ans.answer_md), bars, unit, ymax: ymax ? Math.ceil(ymax) : undefined, barsNote: bars ? `${ch?.title?.text ?? "Recorded values"} · ${unit ? "percentage" : ch?._unit === "value" ? "value" : "count"} · simulated` : undefined,
+    sideHtml: ans.numbers.length ? `<b>Key numbers</b><ul style="margin:6px 0 0;padding-left:18px">${ans.numbers.slice(0, 5).map((n) => `<li>${mdToHtml(n.label)}: <b>${Number.isInteger(n.value) ? n.value.toLocaleString("en-IN") : n.value.toFixed(n.value < 1 ? 3 : 1)}</b></li>`).join("")}</ul>` : "",
     quotes: ans.quotes.map((q) => ({ agent_id: q.agent_id, name: q.name, text: q.text, kind: q.kind ?? "", private: q.private })),
     sql: ans.sql, caveats: ans.caveats.length ? "Caveats: " + ans.caveats.join(" ") : undefined, suggestions: ans.suggestions,
     failed: Boolean(ans.error),
@@ -120,22 +121,21 @@ function toView(ans: AskAnswer, steps: string[]): AskAnswerView {
 
 /** Starter questions about the products that exist now (never hardcoded product names). */
 export function starterQuestions(names: string[]): string[] {
-  const [a, b] = names;
-  return ["Which phone do people prefer, and why?",
-    ...(a ? [`What do people privately think but not say about the ${a}?`, `Where did ${a} buyers first hear about it?`] : []),
-    ...(b ? [`What do students say about the ${b}?`] : []),
-    "Which hoarding gets noticed most, and does facing matter?"];
+  void names;
+  return ["How many people are considering each product?",
+    "Where did people first hear about our products?",
+    "How many purchases were of our products versus other phones?"];
+
 }
 
 function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
   const nav = useNavigate();
   const [thread, setThread] = useState<{ q: string; a: AskAnswerView | null; steps: string[] }[]>(isVisualTest ? D.DEMO_ASK.map((x) => ({ ...x, steps: [] })) : []);
   const [q, setQ] = useState("");
-  const [asked, setSugg] = useState<string[] | null>(null);
-  const sugg = isVisualTest ? D.DEMO_SUGGESTIONS : asked ?? starterQuestions(prodNames);
+  const sugg = isVisualTest ? D.DEMO_SUGGESTIONS : starterQuestions(prodNames);
   const busy = thread.some((t) => t.a === null);
   const run = async (question: string) => {
-    if (!question.trim() || isVisualTest) return;
+    if (!question.trim() || isVisualTest || busy) return;
     setQ("");
     const idx = thread.length;
     setThread((t) => [...t, { q: question, a: null, steps: [] }]);
@@ -143,7 +143,6 @@ function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
     try {
       const ans = await ask(question, (s) => { steps.push(s); setThread((t) => t.map((x, i) => (i === idx ? { ...x, steps: [...steps] } : x))); });
       setThread((t) => t.map((x, i) => (i === idx ? { ...x, a: toView(ans, steps.filter((s) => !s.startsWith("Reading the data") && !s.startsWith("Checked") && !s.startsWith("Writing"))) } : x)));
-      if (ans.suggestions?.length) setSugg(ans.suggestions);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setThread((t) => t.map((x, i) => (i === idx ? { ...x, a: { steps: [], html: mdToHtml(msg), quotes: [], failed: true } } : x)));
@@ -167,7 +166,7 @@ function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
           <input placeholder="Ask about any product, place, segment, conversation…" value={q} onChange={(e) => setQ(e.target.value)} disabled={busy} />
           <button className="btn primary" type="submit" disabled={busy}>Ask</button>
         </form>
-        <div className="sugg" data-testid="ask-suggestions" style={{ marginTop: 10 }}>{sugg.map((s) => <button key={s} onClick={() => void run(s)}>{s}</button>)}</div>
+        <div className="sugg" data-testid="ask-suggestions" style={{ marginTop: 10 }}>{sugg.map((s) => <button key={s} disabled={busy} onClick={() => void run(s)}>{s}</button>)}</div>
         {!isVisualTest && thread.length > 0 && (
           <div className="xs muted" style={{ marginTop: 8 }}>Want to hear it from people directly? <a href="#" onClick={(e) => { e.preventDefault(); nav(withMode(`/insights/focus?title=${encodeURIComponent(thread[thread.length - 1].q.slice(0, 80))}`)); }}>Run a focus group</a> (the assistant never launches one itself).</div>
         )}
@@ -353,6 +352,7 @@ export function avatarColor(id: number): string {
 
 function InterviewTab({ names, fx }: { names: Names; fx: Fixtures | null }) {
   const want = Number(new URLSearchParams(window.location.search).get("agent") ?? "") || null;
+  const [interviewId] = useState(() => crypto.randomUUID());
   const [search, setSearch] = useState("");
   const [qs, setQs] = useState("");
   useEffect(() => { const h = setTimeout(() => setQs(search), 300); return () => clearTimeout(h); }, [search]);
@@ -369,12 +369,12 @@ function InterviewTab({ names, fx }: { names: Names; fx: Fixtures | null }) {
   const cur = rows.find((r) => r.agent_id === sel);
   const first = cur?.name.split(" ")[0] ?? "";
   const send = async () => {
-    if (!q.trim() || sel === null || isVisualTest) return;
+    if (!q.trim() || sel === null || isVisualTest || busy) return;
     const question = q;
     setQ(""); setBusy(true);
     setChat((c) => [...c, { role: "me", text: question }]);
     try {
-      const r = await postJSON<{ answer: string; memories: { text: string; t: number }[] }>("/insights/interview", { agent_id: sel, question, session_id: `iv-${sel}` });
+      const r = await postJSON<{ answer: string; memories: { text: string; t: number }[] }>("/insights/interview", { agent_id: sel, question, session_id: `iv-${interviewId}-${sel}` });
       setChat((c) => [...c, { role: "ai", text: r.answer, mem: r.memories.length ? "memories used: " + r.memories.map((m) => m.text.slice(0, 50)).join(" · ") : "" }]);
     } catch (e) { setChat((c) => [...c, { role: "ai", text: `(couldn't answer: ${e instanceof Error ? e.message : String(e)})` }]); }
     setBusy(false);
@@ -387,7 +387,7 @@ function InterviewTab({ names, fx }: { names: Names; fx: Fixtures | null }) {
         {!isVisualTest && !st.error && !st.loading && !list.length && <div className="xs muted">Nobody matches “{search}”.</div>}
         <div className="list" style={{ maxHeight: 560, overflow: "auto" }}>{rows.slice(0, isVisualTest ? 8 : 20).map((a) => (
           <div key={a.agent_id} className="item row" style={{ gap: 10, cursor: "pointer", ...(a.agent_id === sel ? { borderColor: "var(--teal)", background: "var(--teal-soft)" } : {}) }}
-            onClick={() => { setSel(a.agent_id); if (!isVisualTest) setChat([]); }}>
+            onClick={() => { if (busy) return; setSel(a.agent_id); if (!isVisualTest) setChat([]); }}>
             <div className="avatar" style={{ background: a.shirt ?? avatarColor(a.agent_id) }}>{initials(a.name)}</div>
             <div><b>{a.name}</b>{a.age ? <span className="muted">, {a.age}</span> : null}<div className="xs muted">{a.occupation} · phone {Math.round((a.phone?.age_years ?? 0) * 10) / 10} yrs</div></div>
           </div>

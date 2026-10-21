@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     openrouter_app_title: str = "mirava.ai"
     ica_api_key: SecretStr = SecretStr("")  # IBM ICA (LLM_BACKEND=ica): chat via ICA, OpenRouter stays the fallback + embeddings
     ica_base_url: str = "https://api.nextgen-beta.ica.ibm.com/ica/v1"
+    ica_max_concurrent: int = 4
     ica_model_id: str = "claude-haiku-4-5"
     engine_reasoning_effort: Literal["minimal", "low", "medium", "high"] = "low"
     llm_concurrency: int = 32

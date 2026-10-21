@@ -17,3 +17,5 @@ Problems found in your previous attempt (fix them): {errors}
 {results}
 </results>
 {question}
+
+Use natural language, never a dump of rows or column names. Lead with the direct answer. Separate counts from reasons; never infer reasons from exposure counts. If no relevant comments were retrieved, say reasons are not established. Chart unit must be count (people/events), fraction (0–1 share), percent (0–100), or value. Never infer percentage units from the size of a number. Do not expose query errors or provider diagnostics.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import statistics
@@ -153,7 +154,7 @@ def _embedder() -> Any:
     def embed(texts: list[str]) -> list[list[float]]:
         import asyncio
 
-        return asyncio.run(llm.embed(texts)) if not _in_loop() else _sync_embed(llm, texts)
+        return asyncio.run(asyncio.wait_for(llm.embed(texts), 5)) if not _in_loop() else _sync_embed(llm, texts)
     return embed
 
 
@@ -173,7 +174,7 @@ def _sync_embed(llm: Any, texts: list[str]) -> list[list[float]]:
     import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(1) as ex:
-        return ex.submit(lambda: asyncio.run(llm.embed(texts))).result()
+        return ex.submit(lambda: asyncio.run(asyncio.wait_for(llm.embed(texts), 5))).result()
 
 
 # ---------------------------------------------------------------- dashboards
@@ -682,8 +683,17 @@ async def interview(body: InterviewIn) -> dict[str, Any]:
     if not sc.ok or "prompt_injection" in sc.flagged:
         raise HTTPException(422, "question refused by screening")
     sid = body.session_id or f"iv-{body.agent_id}"
-    hist = (store().get("insight_sessions", sid) or {}).get("turns", [])
-    out = await run(body.agent_id, sc.text, store=store(), llm=get_llm(), history=hist)
+    if store().get("agents", str(body.agent_id)) is None:
+        raise HTTPException(404, "unknown person")
+    session = store().get("insight_sessions", sid) or {}
+    hist = session.get("turns", []) if session.get("agent_id") == body.agent_id else []
+    from shared.llm import LLMError
+
+    try:
+        out = await asyncio.wait_for(run(body.agent_id, sc.text, store=store(), llm=get_llm(), history=hist), 45)
+    except (LLMError, TimeoutError) as exc:
+        log.warning("Interview model unavailable", exc_info=True)
+        raise HTTPException(503, "The interview service is busy. Please try again shortly.") from exc
     store().set("insight_sessions", sid, {"agent_id": body.agent_id, "turns": [
         *hist, {"role": "me", "text": body.question}, {"role": "ai", "text": out["answer"]}][-12:]}, True)
     return {**out, "session_id": sid}

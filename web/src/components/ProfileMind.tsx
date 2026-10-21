@@ -137,20 +137,26 @@ export function ConversationsTab({ a }: { a: AgentView }) {
     items = (list ?? []).map((c) => ({ id: c.session_id, withName: c.with_name ?? `#${c.with}`, t: c.t, kind: c.rendered ? c.kind : "unrendered",
       n: c.n_messages, topics: c.rendered ? c.topics.join(" · ") : `${c.topics[0] ?? "small talk"} (not written out — budget)` }));
   }
-  const pick = open ?? (list ?? []).find((c) => c.rendered)?.session_id ?? null;
-  const detail = useApi<ApiConv>(source === "live" && pick ? `/conversations/${pick}?as_agent=${a.id}` : null);
+  const pick = items.some((c) => c.id === open) ? open : null;
+  const detail = useApi<ApiConv>(source === "live" && pick && items.find((c) => c.id === pick)?.kind !== "unrendered" ? `/conversations/${pick}?as_agent=${a.id}` : null);
   if (source === "live" && detail && !Array.isArray(detail)) conv = liveConv(detail, a.id, first);
   return (
     <>
       <div className="list" data-testid="conversation-list">
         {items.length ? items.map((c) => (
-          <div className="item" style={{ cursor: "pointer" }} key={c.id} onClick={() => setOpen(c.id)}>
-            <div className="row between"><b>{c.kind === "focus_group" ? "Focus group" : c.kind === "store" ? `store visit · ${c.withName}` : `with ${c.withName}`}</b><span className="xs muted">{shortT(c.t)} · {c.kind}{c.n ? ` · ${c.n} msgs` : ""}</span></div>
-            <div className="xs muted">{c.topics}</div>
+          <div className="item" key={c.id}>
+            <button type="button" aria-expanded={pick === c.id} onClick={() => setOpen(pick === c.id ? null : c.id)}
+              style={{ cursor: "pointer", width: "100%", textAlign: "left", border: 0, background: "transparent", color: "inherit", padding: 0 }}>
+              <div className="row between"><b>{pick === c.id ? "▾" : "▸"} {c.kind === "focus_group" ? "Focus group" : c.kind === "store" ? `store visit · ${c.withName}` : `with ${c.withName}`}</b><span className="xs muted">{shortT(c.t)} · {c.n ? `${c.n} messages` : "Brief interaction"}</span></div>
+              <div className="xs muted">{c.topics}</div>
+            </button>
+            {pick === c.id && (c.kind === "unrendered"
+              ? <p className="small muted">This interaction was recorded, but no spoken transcript was generated. The topic and participants above are the available record.</p>
+              : conv ? <Transcript c={conv} /> : <p className="small muted">{detail ? "The transcript could not be loaded. Close and reopen to retry." : "Loading conversation…"}</p>)}
           </div>
         )) : <div className="item muted small">{source === "live" && !list ? "Loading…" : "No conversations yet."}</div>}
       </div>
-      {conv && <Transcript c={conv} />}
+
     </>
   );
 }

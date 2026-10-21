@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -35,8 +36,8 @@ async def interview(agent_id: int, question: str, *, store: DocStore, llm: LLMCl
     prompt = (PROMPT.read_text(encoding="utf-8").replace("{persona}", ctx.render())
               .replace("{memories}", lines).replace("{history}", hist or "(start)")
               .replace("{question}", wrap(question, "question")))
-    res = await llm.generate(MODEL_FLASH, prompt, InterviewOut, purpose="interview", reasoning="low", max_tokens=400,
-                             priority_class="interactive")
+    res = await asyncio.wait_for(llm.generate(MODEL_FLASH, prompt, InterviewOut, purpose="interview", reasoning="low", max_tokens=400,
+                             priority_class="interactive"), 35)
     own = {m.mid: m for m in mems}
     used = [mid for mid in res.data.memories_used if mid in own] or [m.mid for m in mems[:2]]
     return {"answer": res.data.answer.strip()[:1200], "memories_used": used,

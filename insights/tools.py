@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import re
 from dataclasses import dataclass, field
@@ -267,8 +268,12 @@ class Tools:
             ids = [int(x) for x in f["agent_ids"]]
         if ids is not None:
             conds.append("agent_id IN (" + ",".join(str(int(i)) for i in ids[:5000] or [-1]) + ")")
-        qv = self.embed([text])[0] if self.embed is not None else None
-        rows = self._vector(qv, " AND ".join(conds), params, k) if qv is not None else self._keyword(text, conds, params, k)
+        try:
+            qv = self.embed([text])[0] if self.embed is not None else None
+            rows = self._vector(qv, " AND ".join(conds), params, k) if qv is not None else self._keyword(text, conds, params, k)
+        except Exception:
+            logging.getLogger(__name__).warning("Vector search unavailable; using keyword search", exc_info=True)
+            rows = self._keyword(text, conds, params, k)
         names = self._names([int(r["agent_id"]) for r in rows if r.get("agent_id") is not None])
         out = []
         for r in rows:
@@ -310,12 +315,21 @@ class Tools:
         return out
 
     def _keyword(self, text: str, conds: list[str], params: dict, k: int) -> list[dict]:
-        rows = self.r.texts(" AND ".join(conds[1:]) or "TRUE", params)
+        where = " AND ".join(conds[1:]) or "TRUE"
+        if isinstance(self.r, BigQueryRunner):
+            # Keep all cohort/product/privacy filters and search texts even when vectors are missing.
+            terms = sorted({w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2})
+            params = {**params, "terms": "|".join(terms) or "a^"}
+            rows, _ = self.r.run("SELECT text_id, agent_id, kind, t, text, private, product_id FROM texts WHERE "
+                                 + where + " AND REGEXP_CONTAINS(LOWER(text), @terms) ORDER BY t DESC LIMIT 500",
+                                 params, trusted=True)
+        else:
+            rows = self.r.texts(where, params)
         words = {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2}
         for r in rows:
             r["score"] = len(words & set(re.findall(r"[a-z0-9]+", r["text"].lower()))) / max(1, len(words))
         rows.sort(key=lambda r: (-r["score"], r["text_id"]))
-        return rows[:k]
+        return [r for r in rows if r["score"] > 0][:k]
 
     def _names(self, ids: list[int]) -> dict[int, str]:
         if not ids:
@@ -398,6 +412,7 @@ def chart_option(spec: dict[str, Any]) -> dict[str, Any]:
                "series": [{"type": "line" if kind == "line" else "bar", **s} for s in series]}
     opt["title"] = {"text": str(spec.get("title", ""))}
     opt["tooltip"] = {"trigger": "item" if kind == "pie" else "axis"}
+    opt["_unit"] = spec.get("unit", "count")
     opt["_source_ref"] = spec.get("source_ref")
     return opt
 

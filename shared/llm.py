@@ -330,7 +330,7 @@ class ICAClient(OpenRouterClient):
         self.base_url = self.s.ica_base_url.rstrip("/")
         self.fallback = OpenRouterClient(self.s, on_cost=kw.get("on_cost"))
         self.ica_failures = 0
-        self._gate = asyncio.Semaphore(6)       # ICA's gateway has a small DB pool: too many parallel calls give 400 QueuePool
+        self._gate = asyncio.Semaphore(max(1, self.s.ica_max_concurrent))       # ICA's gateway has a small DB pool: too many parallel calls give 400 QueuePool
 
     def _key(self) -> str:
         return self.s.ica_api_key.get_secret_value()

@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import math
+import re
+import time
 from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 
-from shared.llm import LLMClient
+from shared.llm import LLMClient, LLMError
 from shared.schemas.memory import Belief, MemoryEntry
 from shared.store import DocStore
+
+log = logging.getLogger(__name__)
 
 W_RECENCY, W_IMPORTANCE, W_RELEVANCE = 0.35, 0.25, 0.40
 CANDIDATES = 24                      # vector pre-selection before the full re-rank
@@ -36,7 +42,14 @@ async def embed_cached(llm: LLMClient, texts: list[str]) -> list[list[float]]:
     """Embed texts through the in-RAM LRU (hot agents and repeated queries cost nothing)."""
     missing = [t for t in dict.fromkeys(texts) if t not in _EMB_LRU]
     if missing:
-        for t, v in zip(missing, await llm.embed(missing, 768), strict=True):
+        if time.monotonic() < getattr(llm, "_memory_embed_retry_at", 0):
+            raise LLMError("Embedding temporarily unavailable")
+        try:
+            vectors = await llm.embed(missing, 768)
+        except Exception:
+            llm._memory_embed_retry_at = time.monotonic() + 60
+            raise
+        for t, v in zip(missing, vectors, strict=True):
             _EMB_LRU[t] = v
     out = []
     for t in texts:
@@ -79,7 +92,11 @@ class MemoryStore:
         """Store one memory of this agent, embedded when an LLM client is available."""
         self._own(entry)
         if entry.embedding is None and self._llm is not None:
-            entry = entry.model_copy(update={"embedding": (await embed_cached(self._llm, [entry.text]))[0]})
+            try:
+                vec = await asyncio.wait_for(embed_cached(self._llm, [entry.text]), 5)
+                entry = entry.model_copy(update={"embedding": vec[0]})
+            except Exception:  # embeddings are an index; never lose the underlying memory
+                log.warning("Embedding unavailable; storing memory without a vector", exc_info=True)
         self._store.set(self._col, entry.mid, entry.model_dump(exclude_none=True))
 
     def add_many(self, entries: list[MemoryEntry]) -> None:
@@ -103,22 +120,32 @@ class MemoryStore:
     async def retrieve(self, query: str, k: int = 6, kinds: list[str] | None = None,
                        now_t: int | None = None) -> list[MemoryEntry]:
         """Top-k by 0.35·recency + 0.25·importance + 0.40·relevance, searched only within this agent."""
+        if k <= 0:
+            return []
         if self._llm is None:
             cands = self._rows()
             qv: list[float] | None = None
         else:
-            await self._backfill()
-            qv = (await embed_cached(self._llm, [query]))[0]
-            docs = self._store.nearest(self._col, "embedding", qv, CANDIDATES * (3 if kinds else 1),
-                                       "agent_id", self.agent_id)
-            cands = [MemoryEntry.model_validate(d) for d in docs]
+            try:
+                # Query embedding is enough; do not backfill an agent's entire history on an interactive read.
+                qv = (await asyncio.wait_for(embed_cached(self._llm, [query]), 5))[0]
+                docs = self._store.nearest(self._col, "embedding", qv, CANDIDATES * (3 if kinds else 1),
+                                           "agent_id", self.agent_id)
+                cands = [MemoryEntry.model_validate(d) for d in docs]
+                if not cands:
+                    cands = self._rows()
+            except Exception:
+                log.warning("Vector retrieval unavailable; using this agent's stored memories", exc_info=True)
+                qv, cands = None, self._rows()
         cands = [c for c in cands if c.agent_id == self.agent_id and (kinds is None or c.kind in kinds)]
         if not cands:
             return []
         now = now_t if now_t is not None else max(c.t for c in cands)
 
         def score(m: MemoryEntry) -> float:
-            rel = cosine(qv, m.embedding) if qv is not None and m.embedding else 0.0
+            words = set(re.findall(r"\w+", query.lower()))
+            lexical = len(words & set(re.findall(r"\w+", m.text.lower()))) / max(1, len(words))
+            rel = cosine(qv, m.embedding) if qv is not None and m.embedding else lexical
             return W_RECENCY * recency(m.t, now) + W_IMPORTANCE * m.importance / 10 + W_RELEVANCE * rel
 
         cands.sort(key=lambda m: (-score(m), -m.t, m.mid))

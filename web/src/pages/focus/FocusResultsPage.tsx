@@ -164,7 +164,7 @@ export function FocusResultsPage() {
       {err && <div className="xs" style={{ color: "var(--red)", marginBottom: 8 }}>{err}</div>}
       <div className="grid" style={{ gridTemplateColumns: "1fr 340px", alignItems: "start" }}>
         <div>
-          {!r ? <div className="card xs muted">{(doc as { results_error?: string }).results_error ?? "No answers logged yet."}</div> : <>
+          {!r || !r.questions.some((question) => question.n > 0) ? <div className="card" role="status"><h3>No answers were recorded</h3><p className="small muted">{(doc as { results_error?: string }).results_error ?? "This session has no recorded ballots, so preference and opinion changes cannot be measured. Run the group again to collect answers."}</p></div> : <>
             <div className="grid g4">
               <div className="card kpi"><div className="l">Took part</div><div className="v">{r.n_attended}</div><div className="d muted">of {doc.counts?.accepted ?? "—"} who said yes</div></div>
               <div className="card kpi"><div className="l">Changed their mind</div><div className="v">{r.n_attended ? Math.round((100 * (r.changed_people ?? 0)) / r.n_attended) : 0}%</div><div className="d muted">{r.changed_people ?? 0} people, on at least one question</div></div>

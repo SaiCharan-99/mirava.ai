@@ -113,3 +113,19 @@ async def test_reflection_writes_own_memories_and_prunes(world: tuple[MemoryStor
     assert any(r["kind"] == "reflection" for r in rows) and all(r["agent_id"] == A for r in rows)
     assert set(payload) == {"text", "belief_updates", "pruned_count"} and payload["belief_updates"] == []
     assert len(store.list(f"agents/{B}/memories")) == before_b and cost >= 0
+
+async def test_embedding_outage_preserves_memory_and_own_retrieval():
+    from shared.llm import LLMError
+
+    class Down(FakeGemini):
+        async def embed(self, *args, **kwargs):
+            raise LLMError("embedding unavailable")
+
+    store = MemoryStoreBackend()
+    own = MemoryStore(A, store, Down())
+    await own.add(mem(A, 1, "Unique outage battery replacement", importance=8))
+    MemoryStore(B, store).add_many([mem(B, 2, "Private marker nobody else sees")])
+    got = await own.retrieve("outage battery")
+    assert got and got[0].text == "Unique outage battery replacement"
+    assert all(m.agent_id == A for m in got)
+    assert await own.retrieve("anything", k=0) == []

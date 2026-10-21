@@ -27,6 +27,11 @@ from shared.llm import FakeGemini, LLMClient
 from shared.models import MODEL_PRO
 
 PROMPTS = Path(__file__).resolve().parents[1] / "shared" / "prompts"
+STARTER_QUESTIONS = (
+    "How many people are considering each product?",
+    "Where did people first hear about our products?",
+    "How many purchases were of our products versus other phones?",
+)
 MAX_ROUNDS = 3
 CALL_TIMEOUT_S = 20.0            # one slow model call can't eat the whole budget
 log = logging.getLogger(__name__)
@@ -35,7 +40,7 @@ log = logging.getLogger(__name__)
 def ask_budget_s() -> float:
     """Seconds an Ask may take end to end (Firebase Hosting cuts proxied requests at 60 s)."""
     try:
-        return float(os.environ.get("ASK_BUDGET_S", "45"))
+        return float(os.environ.get("ASK_BUDGET_S", "52"))
     except ValueError:
         return 45.0
 ToolName = Literal["describe_data", "run_sql", "semantic_search", "cohort", "likely_buyers", "chart",
@@ -113,6 +118,7 @@ class ChartSpec(BaseModel):
     x: list[str] = Field(default_factory=list)
     series: list[Series] = Field(default_factory=list)
     source_ref: str | None = None
+    unit: Literal["count", "fraction", "percent", "value"] = "count"
 
 
 class AskAnswer(BaseModel):
@@ -154,6 +160,9 @@ class Assistant:
 
     # ------------------------------------------------------------------ tool dispatch
     async def call(self, c: Call) -> tuple[str, Any]:
+        return await asyncio.wait_for(asyncio.to_thread(self._call_sync, c), 12)
+
+    def _call_sync(self, c: Call) -> tuple[str, Any]:
         """Run one tool; returns (ref or tool name, result) — errors come back as data for the planner."""
         a = c.args
         t = self.tools
@@ -219,14 +228,26 @@ class Assistant:
                                     "result": res})
                 ans = self._compose_offline(question, results)
             else:
-                for _ in range(MAX_ROUNDS):
-                    if left() < 12:                      # keep enough time to compose
+                direct = question.strip() in STARTER_QUESTIONS
+                if direct:
+                    for c in self._rule_plan(question):
+                        yield {"step": _label(c)}
+                        ref, res = await self.call(c)
+                        results.append({"tool": c.tool, "args": c.args.model_dump(exclude_none=True),
+                                        "ref": ref, "result": res})
+                seen_calls: set[str] = set()
+                for _ in range(0 if direct else MAX_ROUNDS):
+                    if left() < 28:                      # keep enough time to compose (slower providers need ~20 s)
                         yield {"step": "Time budget reached; answering from what I have"}
                         break
-                    step = await self._plan(question, results, timeout=min(CALL_TIMEOUT_S, left() - 10))
+                    step = await self._plan(question, results, timeout=min(CALL_TIMEOUT_S, left() - 20))
                     if step.thought:
                         yield {"step": step.thought[:160]}
                     for c in step.calls:
+                        key = c.model_dump_json()
+                        if key in seen_calls or left() < 24:
+                            continue
+                        seen_calls.add(key)
                         yield {"step": _label(c)}
                         ref, res = await self.call(c)
                         results.append({"tool": c.tool, "args": c.args.model_dump(exclude_none=True), "ref": ref,
@@ -234,11 +255,11 @@ class Assistant:
                     if step.done or not step.calls:
                         break
                 yield {"step": "Writing the answer"}
-                ans = await self._compose(question, results, None, timeout=max(5.0, min(CALL_TIMEOUT_S, left())))
+                ans = await self._compose(question, results, None, timeout=max(0.1, min(30.0, left() - 1)))
                 errs = faithfulness.check(ans, self.tools.ledger)
                 if errs and left() > 15:
                     yield {"step": f"Faithfulness check failed ({len(errs)}); regenerating once"}
-                    ans = await self._compose(question, results, errs, timeout=min(CALL_TIMEOUT_S, left() - 2))
+                    ans = await self._compose(question, results, errs, timeout=min(30.0, left() - 2))
         except Exception as e:  # noqa: BLE001 — the stream must always end with an answer
             log.exception("insights ask failed")
             failure = _reason(e)
@@ -354,6 +375,11 @@ class Assistant:
                                                            "v_first_heard GROUP BY product_id, channel ORDER BY agents DESC"))]
         if any(w in ql for w in ("segment", "likely", "who will buy", "buyers")) and pid:
             return [Call(tool="likely_buyers", args=ToolArgs(product_id=pid, group_by=["age_band", "income_band"]))]
+        if "considering" in ql:
+            return [Call(tool="run_sql", args=ToolArgs(sql=(
+                "SELECT product_id, COUNT(DISTINCT agent_id) AS considering_count FROM beliefs_latest "
+                "WHERE stage IN ('curious','researching','inquiring','deciding') AND product_id IS NOT NULL "
+                "GROUP BY product_id ORDER BY considering_count DESC")))]
         if any(w in ql for w in ("bought", "purchase", "sales", "baseline")):
             return [Call(tool="run_sql", args=ToolArgs(sql=(
                 "SELECT 'our products' AS choice, (SELECT COUNT(*) FROM v_purchases WHERE is_ours) AS purchases "
@@ -387,12 +413,25 @@ class Assistant:
                                 and not isinstance(rows[0][c], bool)), None)
                 if val_col is None:
                     continue
+                rows = [row for row in rows if "product_id" not in row or not names or row["product_id"] in names]
+                if not rows:
+                    continue
                 top = rows[:6]
                 for row in top[:4]:
                     nums.append({"label": f"{names.get(row[label_col], row[label_col])} · {val_col}",
                                  "value": float(row[val_col] or 0), "source_ref": ref})
-                lines.append("; ".join(f"{names.get(row[label_col], row[label_col])}: {_fmt(row[val_col])} {val_col}"
-                                       for row in top[:4]) + ".")
+                for row in top[:4]:
+                    label = str(names.get(row[label_col], row[label_col]))
+                    value = _fmt(row[val_col])
+                    if val_col == "considering_count":
+                        lines.append(f"**{value} people** are considering **{label}** (interested or deciding, but not yet purchased).")
+                    elif "channel" in row and val_col == "agents":
+                        lines.append(f"**{value} people** first heard about **{label}** through {str(row["channel"]).replace("_", " " )}.")
+                    elif val_col == "purchases":
+                        lines.append(f"**{label.capitalize()}** accounted for **{value} purchases**.")
+                    else:
+                        metric = {"n": "total", "curious_plus": "number of interested people", "aware": "number of aware people"}.get(val_col, val_col.replace("_", " "))
+                        lines.append(f"For **{label}**, the recorded {metric} is **{value}**.")
                 charts.append({"type": "bar", "title": val_col.replace("_", " "),
                                "x": [str(names.get(row[label_col], row[label_col])) for row in top],
                                "series": [{"name": val_col, "data": [float(row[val_col] or 0) for row in top]}],
@@ -402,16 +441,16 @@ class Assistant:
                     quotes.append({"agent_id": row["agent_id"], "name": row["name"], "kind": row["kind"],
                                    "t": row["t"], "text": row["text"], "private": row["private"]})
             elif r["tool"] in ("run_sql", "cohort", "survey_results") and isinstance(res, dict) and res.get("error"):
-                lines.append(f"(A query failed: {res['error'][:120]})")
+                lines.append("Some requested data could not be retrieved. This answer covers only the available records.")
         if not results:
             lines.append("I can't answer that from the simulated world's data — Insights only knows what the agents in "
                          "Indiranagar saw, thought, said and bought.")
         elif not lines and not quotes:
             lines.append("There isn't enough data in the simulated world yet to answer that.")
-        md = " ".join(lines)
-        sugg = ["Which hoarding gets noticed most and does facing matter?",
-                "What do people privately think but not say about the Pixel 10a?",
-                "Who is most likely to buy the Pixel 10a, by age and income?"]
+        if any(w in q.lower() for w in ("why", "reason")) and not quotes:
+            lines.append("These counts do not establish why; no supporting comments were retrieved.")
+        md = " ".join(lines[:5])
+        sugg = list(STARTER_QUESTIONS)
         return {"answer_md": md, "numbers": nums[:8], "charts": charts[:1], "quotes": quotes[:4], "sql": [],
                 "caveats": ["Small simulated samples; differences of a few agents are noise.",
                             "Offline mode: deterministic template answer (no model)."],

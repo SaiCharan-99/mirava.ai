@@ -139,3 +139,28 @@ def test_conversation_list_detail_and_spread(client, db):  # noqa: F811
     assert [x["agent_id"] for x in d["spread"]["chain"]] == [9, 4, 3]
     k = c.get("/api/insights/conversations").json()
     assert k["errors"] == [] and k["kpis"][3][1].endswith("people") and int(k["kpis"][3][1].split()[0]) >= 1
+
+
+def test_interview_embedding_outage_and_provider_error(client, monkeypatch):
+    from agents.interviewer import InterviewOut
+    from shared.llm import FakeGemini, LLMError, LLMResult
+
+    class WithoutEmbeddings(FakeGemini):
+        async def embed(self, *args, **kwargs):
+            raise LLMError("embedding unavailable")
+
+        async def generate(self, *args, **kwargs):
+            return LLMResult(data=InterviewOut(answer="I would want to know more before deciding."))
+
+    c, _ = client
+    monkeypatch.setattr(ins, "get_llm", lambda: WithoutEmbeddings())
+    r = c.post("/api/insights/interview", json={"agent_id": 0, "question": "What matters in a new phone?"})
+    assert r.status_code == 200 and r.json()["answer"]
+
+    class Unavailable(WithoutEmbeddings):
+        async def generate(self, *args, **kwargs):
+            raise LLMError("secret provider diagnostics")
+
+    monkeypatch.setattr(ins, "get_llm", lambda: Unavailable())
+    r = c.post("/api/insights/interview", json={"agent_id": 0, "question": "What matters in a new phone?"})
+    assert r.status_code == 503 and "secret" not in r.text
