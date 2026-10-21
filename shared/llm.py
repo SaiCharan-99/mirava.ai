@@ -87,7 +87,8 @@ def strict_schema(schema_model: type[BaseModel]) -> dict:
             if "$ref" in node:
                 target = defs[node["$ref"].split("/")[-1]]
                 return walk(copy.deepcopy(target))
-            out = {k: walk(v) for k, v in node.items() if k not in ("title", "default")}
+            out = {k: ({n: walk(v) for n, v in val.items()} if k == "properties" else walk(val))
+                   for k, val in node.items() if k not in ("title", "default")}   # keep fields named title/default
             if out.get("type") == "object" and "properties" in out:
                 out["required"] = list(out["properties"].keys())
                 out["additionalProperties"] = False
@@ -295,6 +296,113 @@ class OpenRouterClient(_CachingClient):
             raise LLMError(f"OpenRouter does not list configured models: {missing}")
 
 
+# ---------------------------------------------------------------- IBM ICA (optional)
+
+# keywords Bedrock's structured output rejects; Pydantic still enforces them when the reply is validated
+_ICA_DROP = {"maxItems", "minItems", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength",
+             "maxLength", "multipleOf", "pattern", "format", "default", "title"}
+_ICA_HINT = {"minimum": "min {}", "maximum": "max {}", "minItems": "at least {} items", "maxItems": "at most {} items",
+             "minLength": "at least {} chars", "maxLength": "at most {} chars"}
+
+
+def ica_schema(node: Any) -> Any:
+    """strict_schema() minus the keywords Bedrock does not support. Dropped limits move into "description" so the
+    model still sees them; field names under "properties" are kept."""
+    if isinstance(node, dict):
+        out = {k: ({n: ica_schema(v) for n, v in val.items()} if k == "properties" else ica_schema(val))
+               for k, val in node.items() if k not in _ICA_DROP}
+        hints = [_ICA_HINT[k].format(node[k]) for k in _ICA_HINT if k in node]
+        if hints:
+            out["description"] = (f'{out["description"]}. ' if out.get("description") else "") + "; ".join(hints)
+        return out
+    if isinstance(node, list):
+        return [ica_schema(v) for v in node]
+    return node
+
+
+class ICAClient(OpenRouterClient):
+    """Chat via IBM ICA's OpenAI-compatible endpoint (LLM_BACKEND=ica). Every tier uses ICA_MODEL_ID; if ICA fails
+    (down, rate-limited, bad output) the call is retried once on OpenRouter with the original model. Embeddings stay on
+    OpenRouter because ICA has no embedding endpoint."""
+
+    def __init__(self, settings: Settings | None = None, **kw: Any) -> None:
+        super().__init__(settings, **kw)
+        self.base_url = self.s.ica_base_url.rstrip("/")
+        self.fallback = OpenRouterClient(self.s, on_cost=kw.get("on_cost"))
+        self.ica_failures = 0
+
+    def _key(self) -> str:
+        return self.s.ica_api_key.get_secret_value()
+
+    def _exhausted(self, r: httpx.Response) -> bool:
+        return False                                          # no second ICA key; OpenRouter is the fallback
+
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._key()}", "Content-Type": "application/json"}
+
+    def build_body(self, model: str, prompt: str | list, schema: type[BaseModel] | None, reasoning: Reasoning,
+                   max_tokens: int, images: list[str] | None) -> dict:
+        body: dict[str, Any] = {"model": self.s.ica_model_id, "messages": to_messages(prompt, images),
+                                "max_tokens": max_tokens, "stream": False}
+        if schema is not None:
+            sch = ica_schema(strict_schema(schema))
+            if json.dumps(sch).count('"anyOf"') > 12:         # Bedrock rejects schemas with too many unions: ask in-prompt
+                body["messages"].append({"role": "user", "content": (
+                    "Reply with ONLY one JSON object (no code fences, no commentary) that matches this JSON schema:\n"
+                    + json.dumps(sch))})
+            else:
+                body["response_format"] = {"type": "json_schema", "json_schema": {
+                    "name": schema.__name__, "strict": True, "schema": sch}}
+        return body
+
+    async def _post(self, path: str, body: dict) -> dict:
+        if path != "/chat/completions":
+            raise LLMError(f"ICA has no {path}")
+        raw = await super()._post("/chat-models/chat/completions", body)
+        try:                                                  # tolerate ```json fences around in-prompt JSON
+            msg = raw["choices"][0]["message"]
+            txt = (msg.get("content") or "").strip()
+            if txt.startswith("```"):
+                msg["content"] = txt.strip("`").removeprefix("json").strip()
+        except (KeyError, IndexError, AttributeError):
+            pass
+        return raw
+
+    async def generate(self, model: str, prompt: str | list, schema: type[BaseModel] | None = None, *,
+                       purpose: str, reasoning: Reasoning = "low", max_tokens: int = 600,
+                       images: list[str] | None = None, priority_class: str = "P5") -> LLMResult:
+        try:
+            try:
+                return await super().generate(model, prompt, schema, purpose=purpose, reasoning=reasoning,
+                                              max_tokens=max_tokens, images=images, priority_class=priority_class)
+            except LLMError as e:
+                if "did not validate" not in str(e) or e.__cause__ is None:
+                    raise
+                fix = ("Your previous JSON broke these rules, so reply again with valid JSON that respects every limit "
+                       f"(keep text short):\n{str(e.__cause__)[:600]}")
+                again = [*prompt, {"role": "user", "content": fix}] if isinstance(prompt, list) else f"{prompt}\n\n{fix}"
+                return await super().generate(model, again, schema, purpose=purpose, reasoning=reasoning,
+                                              max_tokens=max_tokens, images=images, priority_class=priority_class)
+        except LLMError as e:
+            self.ica_failures += 1
+            log.warning("ICA call failed (%s); falling back to OpenRouter", e)
+            return await self.fallback.generate(model, prompt, schema, purpose=purpose, reasoning=reasoning,
+                                                max_tokens=max_tokens, images=images, priority_class=priority_class)
+
+    async def embed(self, texts: list[str], dim: int = 768) -> list[list[float]]:
+        keep = dict(_STATUS)                                  # an OpenRouter embedding failure must not flag chat as down
+        try:
+            return await self.fallback.embed(texts, dim)
+        finally:
+            _STATUS.update(keep)
+
+    async def list_models(self) -> set[str]:
+        return {self.s.ica_model_id}
+
+    async def check_models(self) -> None:
+        return None
+
+
 # ---------------------------------------------------------------- Vertex AI (optional)
 
 class VertexClient(OpenRouterClient):
@@ -401,7 +509,7 @@ _client: LLMClient | None = None
 
 
 def get_llm(settings: Settings | None = None, *, fresh: bool = False) -> LLMClient:
-    """Backend chosen by LLM_BACKEND (fake | openrouter | vertex)."""
+    """Backend chosen by LLM_BACKEND (fake | openrouter | vertex | ica)."""
     global _client
     if _client is not None and not fresh and settings is None:
         return _client
@@ -411,6 +519,8 @@ def get_llm(settings: Settings | None = None, *, fresh: bool = False) -> LLMClie
         client = OpenRouterClient(s)
     elif s.llm_backend == "vertex":
         client = VertexClient(s)
+    elif s.llm_backend == "ica":
+        client = ICAClient(s)
     else:
         client = FakeGemini()
     if settings is None:

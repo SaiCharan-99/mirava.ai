@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 import respx
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 from shared import models
 from shared.llm import FakeGemini, LLMError, OpenRouterClient, get_llm, strict_schema
@@ -132,3 +132,101 @@ async def test_openrouter_embeddings_and_model_check():
     respx.get(f"{BASE}/embeddings/models").mock(return_value=httpx.Response(200, json={"data": []}))
     with pytest.raises(LLMError, match="embedding"):
         await OpenRouterClient(settings()).check_models()
+
+
+ICA = "https://api.nextgen-beta.ica.ibm.com/ica/v1/chat-models/chat/completions"
+
+
+def ica_settings() -> Settings:
+    return Settings(_env_file=None, llm_backend="ica", ica_api_key=SecretStr("sk-ica-test"),
+                    openrouter_api_key=SecretStr("sk-or-test"))
+
+
+@respx.mock
+async def test_ica_request_shape_and_model_override():
+    from shared.llm import ICAClient
+    route = respx.post(ICA).mock(
+        return_value=httpx.Response(200, json=ok_body({"text": "hi", "importance": 3, "tags": [], "mood": None})))
+    c = get_llm(ica_settings())
+    assert isinstance(c, ICAClient)
+    res = await c.generate(models.MODEL_PRO, "think", Thought, purpose="t", reasoning="high")
+    body = json.loads(route.calls[0].request.content)
+    assert body["model"] == "claude-haiku-4-5" and body["response_format"]["json_schema"]["strict"] is True
+    assert "reasoning" not in body and "provider" not in body
+    assert route.calls[0].request.headers["authorization"] == "Bearer sk-ica-test"
+    assert res.data is not None and res.data.text == "hi"
+
+
+@respx.mock
+async def test_ica_failure_falls_back_to_openrouter():
+    from shared.llm import ICAClient
+    respx.post(ICA).mock(return_value=httpx.Response(401, text="nope"))
+    fb = respx.post(f"{BASE}/chat/completions").mock(
+        return_value=httpx.Response(200, json=ok_body({"text": "via-or", "importance": 1, "tags": [], "mood": None})))
+    c = ICAClient(ica_settings(), backoff_s=0)
+    res = await c.generate(models.MODEL_LITE, "think", Thought, purpose="t")
+    assert res.data is not None and res.data.text == "via-or" and fb.called and c.ica_failures == 1
+    assert json.loads(fb.calls[0].request.content)["model"] == models.MODEL_LITE
+
+
+@respx.mock
+async def test_ica_embed_failure_does_not_flag_chat_down():
+    from shared import llm as L
+    L._STATUS.update(out_of_credit=False, since=None)
+    respx.post(f"{BASE}/embeddings").mock(return_value=httpx.Response(402, text="credit"))
+    with pytest.raises(LLMError):
+        await L.ICAClient(ica_settings(), backoff_s=0).embed(["x"])
+    assert L.model_status()["out_of_credit"] is False
+
+
+def test_strict_schema_keeps_fields_named_title_and_default():
+    class R(BaseModel):
+        title: str
+        default: int
+
+    s = strict_schema(R)
+    assert set(s["properties"]) == {"title", "default"} and set(s["required"]) == {"title", "default"}
+
+
+def test_ica_schema_drops_unsupported_keywords_but_keeps_hints():
+    from shared.llm import ica_schema
+
+    class S(BaseModel):
+        title: str
+        score: int = Field(ge=0, le=10)
+        tags: list[str] = Field(max_length=3)
+
+    out = ica_schema(strict_schema(S))
+    assert "title" in out["properties"] and "maximum" not in str(out) and "maxItems" not in str(out)
+    assert "max 10" in out["properties"]["score"]["description"]
+    assert "at most 3 items" in out["properties"]["tags"]["description"]
+
+
+@respx.mock
+async def test_ica_heavy_union_schema_goes_in_prompt_and_fences_are_stripped():
+    from shared.llm import ICAClient
+
+    class Heavy(BaseModel):
+        a: str | None
+        b: str | None
+        c: str | None
+        d: str | None
+        e: str | None
+        f: str | None
+        g: str | None
+        h: str | None
+        i: str | None
+        j: str | None
+        k: str | None
+        ll: str | None
+        m: str | None
+        n: str | None
+
+    keys = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "ll", "m", "n"]
+    route = respx.post(ICA).mock(return_value=httpx.Response(200, json={
+        "model": "claude-haiku-4-5", "usage": {"prompt_tokens": 5, "completion_tokens": 5},
+        "choices": [{"message": {"content": "```json\n" + json.dumps({k: None for k in keys}) + "\n```"}}]}))
+    res = await ICAClient(ica_settings()).generate(models.MODEL_LITE, "p", Heavy, purpose="t")
+    body = json.loads(route.calls[0].request.content)
+    assert "response_format" not in body and "JSON schema" in body["messages"][-1]["content"]
+    assert res.data is not None and res.data.a is None
