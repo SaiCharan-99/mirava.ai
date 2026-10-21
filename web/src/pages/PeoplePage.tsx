@@ -7,7 +7,7 @@ import { useWatch } from "../state/watch";
 import { actLabel, bandLabel, incomeLabel } from "../lib/agentView";
 import { getJSON, peopleQS, type PeoplePage as PeopleResp, type PeopleQuery, type PeopleRow } from "../lib/api";
 import { fmtInt } from "../lib/time";
-import { isVisualTest, withMode } from "../lib/visualTest";
+import { withMode } from "../lib/visualTest";
 import type { Fixtures } from "../visual-fixtures/types";
 
 const PAGE = 15;
@@ -141,7 +141,7 @@ export function PeoplePage() {
       <div className="card" data-testid="people-table" style={{ padding: 0 }}>
         <table><tbody>
           <tr><th style={{ width: 34 }} /><th>Name</th><th>Age</th><th>Job</th><th>Income</th><th>Phone</th><th style={{ textAlign: "right" }}>Phone age</th>
-            {live.map((p) => <th key={p.id}>{p.name}</th>)}<th>Doing now</th>{!isVisualTest && <th />}</tr>
+            {live.map((p) => <th key={p.id}>{p.name}</th>)}<th>Doing now</th><th /></tr>
           {rows.map((a) => {
             const on = watch.includes(a.id);
             return (
@@ -152,7 +152,7 @@ export function PeoplePage() {
                 <td className="mono" style={{ textAlign: "right", color: a.phoneAge > 5 ? "var(--red)" : "inherit" }}>{a.phoneAge.toFixed(1)} y</td>
                 {live.map((p) => <td className="small" key={p.id}><Stage b={a.stages[p.id]} /></td>)}
                 <td className="small muted">{a.act}</td>
-                {!isVisualTest && <td><button className="btn sm" data-testid={`interview-${a.id}`} onClick={(e) => { e.stopPropagation(); nav(withMode(`/insights/interview?agent=${a.id}`)); }}>Interview</button></td>}
+                <td><button className="btn sm" data-testid={`interview-${a.id}`} onClick={(e) => { e.stopPropagation(); nav(withMode(`/insights/interview?agent=${a.id}`)); }}>Interview</button></td>
               </tr>
             );
           })}

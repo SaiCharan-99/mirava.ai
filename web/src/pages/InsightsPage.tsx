@@ -87,7 +87,7 @@ function AnswerBlock({ a, names, onRetry, onAsk }: { a: AskAnswerView; names: Na
     <div className="answer">
       {a.steps.length > 0 && (() => {
         const list = <div className="list" style={{ gap: 4, marginBottom: 10 }}>{a.steps.map(([t, d], i) => <div key={i} className="toolstep">✓ <code>{t}</code> {d}</div>)}</div>;
-        return isVisualTest ? list : <details><summary className="small muted">How this answer was found</summary>{list}</details>;
+        return <details><summary className="small muted">How this answer was found</summary>{list}</details>;
       })()}
       <p style={{ marginTop: 0 }} dangerouslySetInnerHTML={{ __html: a.html }} />
       {a.bars && (
@@ -177,7 +177,7 @@ function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
         )}
       </div>
       <div className="grid" style={{ alignContent: "start" }}>
-        <div className="card"><h3>What the assistant can use</h3><div className="list small">{[["Raw log", "every thought, message, exposure, inquiry, purchase (BigQuery)"], ["Semantic search", "VECTOR_SEARCH over thoughts, chats, posts, reviews"], ["Cohorts", "any filter on agents: age, income, phone age, stage…"], ["Likely-buyer model", "need × interest × affordability × stage"], (isVisualTest ? ["Poll / interview", "ask agents now (uses budget, asks first)"] : ["Polls / interview", "ask agents in person (focus group or written survey; uses budget, asks first)"])].map(([h, t]) => <div key={h} className="item"><b>{h}</b><div className="xs muted">{t}</div></div>)}</div></div>
+        <div className="card"><h3>What the assistant can use</h3><div className="list small">{[["Raw log", "every thought, message, exposure, inquiry, purchase (BigQuery)"], ["Semantic search", "VECTOR_SEARCH over thoughts, chats, posts, reviews"], ["Cohorts", "any filter on agents: age, income, phone age, stage…"], ["Likely-buyer model", "need × interest × affordability × stage"], ["Polls / interview", "ask agents in person (focus group or written survey; uses budget, asks first)"]].map(([h, t]) => <div key={h} className="item"><b>{h}</b><div className="xs muted">{t}</div></div>)}</div></div>
         <div className="card"><h3>Faithfulness</h3><p className="small muted" style={{ margin: 0 }}>Every number comes from a tool result; quotes are verbatim and private thoughts are labelled. If a check fails, the answer is regenerated or the claim is dropped.</p></div>
       </div>
     </div>
@@ -195,11 +195,11 @@ function OverviewTab() {
       <div className="grid g4">{d.kpis.map((k, i) => <Kpi key={i} l={k[0]} v={k[1]} d={k[2]} />)}</div>
       <div className="grid g21" style={{ marginTop: 14 }}>
         <div className="card"><h3>Awareness and curious+ over sim days</h3>{d.series.length ? <LineChart series={d.series} labels={d.labels} ymax={d.ymax} events={d.events} /> : <p className="small muted">No product is live yet.</p>}</div>
-        <div className="card" data-testid="overview-funnel"><h3>{isVisualTest ? "Funnel today" : "Funnel so far"}</h3>
-          <table><tbody><tr><th>{isVisualTest ? "Stage" : "People who…"}</th>{d.funnel.cols.map((c) => <th key={c}>{c}</th>)}</tr>
+        <div className="card" data-testid="overview-funnel"><h3>Funnel so far</h3>
+          <table><tbody><tr><th>People who…</th>{d.funnel.cols.map((c) => <th key={c}>{c}</th>)}</tr>
             {d.funnel.rows.map((r) => <tr key={String(r[0])}><td>{String(r[0])}</td>{r.slice(1).map((v, i) => <td key={i} className="mono">{
               typeof v === "object" ? <>{v.n.toLocaleString("en-IN")}<div className="xs muted">{v.pct}%</div></> : typeof v === "number" ? v.toLocaleString("en-IN") : v}</td>)}</tr>)}</tbody></table>
-          {!isVisualTest && <p className="xs muted">Cumulative: everyone counted in a row also reached every row above it. % = share of the row above (first row: of all residents).</p>}
+          <p className="xs muted">Cumulative: everyone counted in a row also reached every row above it. % = share of the row above (first row: of all residents).</p>
           <p className="xs muted">{d.note}</p></div>
       </div>
     </>
