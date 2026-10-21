@@ -34,6 +34,7 @@ from shared.store import DocStore
 log = logging.getLogger("engine.survey")
 LIVE_ONLY = {"survey_phase"}
 TRAVEL_LEAD = 30            # sim minutes before start_at the 'survey' block begins (agents walk / ride there)
+ARRIVE_M = 40.0             # within this many metres of the venue entrance counts as checked in (no 'arrive' needed)
 
 
 class SurveyRuntime:
@@ -82,22 +83,45 @@ class SurveyRuntime:
             return
         place, aid = ev.payload.get("place_id"), ev.agent_id
         if place == self.venue:
-            p = a["participants"].get(aid)
-            if p is None:
-                return
-            if p["rsvp"] == "accepted" and p.get("arrived_t") is None:
-                p["arrived_t"] = ev.t
-                a["dirty"] = True
-                a["dirty_outreach"] = True
-            elif p["rsvp"] == "no_show" and not p.get("no_show") and not p.get("turned_away") \
-                    and a["status"] in ("in_session", "finishing"):
-                p["turned_away"] = True                              # arrived after it began
-                a.setdefault("late", []).append(aid)
+            self._check_in(a, aid, ev.t)
             return
         if a["status"] == "recruiting" and "store_flyer" in a["s"].channels and self.commerce is not None \
                 and place in self.commerce.store_by_place and aid in a["pool_set"] and aid not in a["decided"]:
             if float(stream(self._seed, "flyer", a["id"], aid).random()) < 0.5:
                 a["queue"].append((ev.t, aid, "store_flyer"))
+
+    def _check_in(self, a: dict[str, Any], aid: int, t: int) -> None:
+        """Someone reached the venue: seated before the start, a late joiner for the next question, or turned away."""
+        p = a["participants"].get(aid)
+        if p is None or p.get("arrived_t") is not None or p.get("turned_away"):
+            return
+        if p["rsvp"] == "accepted":
+            p["arrived_t"] = t
+            a["dirty"] = True
+            a["dirty_outreach"] = True
+        elif p["rsvp"] == "no_show" and not p.get("no_show") and a["status"] in ("in_session", "finishing"):
+            if a["status"] == "in_session" and a.get("q_index", 0) + 1 < len(a["s"].questions):
+                p["arrived_t"] = t                                   # late: joins from the next question (B3.8)
+                a.setdefault("joiners", []).append(aid)
+            else:
+                p["turned_away"] = True                              # nothing left to join
+                a.setdefault("late", []).append(aid)
+            a["dirty_outreach"] = True
+
+    def _near_venue(self, w: World, a: dict[str, Any], t: int) -> None:
+        """Check in anyone on their way who is at (or within ARRIVE_M of) the venue without an 'arrive' event
+        (already there when the block began, or stopped just short of the door)."""
+        pl = w.wm.place_by_id.get(self.venue)
+        if pl is None:
+            return
+        door = pl.entrances[0]
+        for aid, p in list(a["participants"].items()):
+            if not p.get("injected") or p.get("arrived_t") is not None or p.get("turned_away") \
+                    or p["rsvp"] not in ("accepted", "no_show"):
+                continue
+            ag = w.agents[aid]
+            if ag.place_id == self.venue or math.dist(w.position(ag, float(t))[:2], door) <= ARRIVE_M:
+                self._check_in(a, aid, t)
 
     # ------------------------------------------------------------------ tick
     async def tick(self, w: World, bus: EventBus) -> None:
@@ -115,6 +139,7 @@ class SurveyRuntime:
         st = a["status"]
         if st in ("recruiting", "gathering"):
             self._inject(w, a)
+            self._near_venue(w, a, t)
             self._turn_away_late(w, bus, a)
         if st == "recruiting":
             self._outreach_tick(w, bus, a, t)
@@ -128,13 +153,18 @@ class SurveyRuntime:
             elif exp and (arrived >= math.ceil(exp * float(self.cfg["timings"]["gather_share"]))
                           or t >= a["start_t"] + int(self.cfg["timings"]["gather_timeout"])):
                 if t >= a["start_t"] or arrived >= exp:
+                    a["timed_out"] = arrived < math.ceil(exp * float(self.cfg["timings"]["gather_share"]))
                     self._begin(w, bus, a)
         elif st == "in_session":
+            self._near_venue(w, a, t)
             self._turn_away_late(w, bus, a)
+            self._seat_joiners(w, a, bus, t)
             self._release_items(w, bus, a, t)
-            if a["tables_fut"].done() and all(r["cursor"] >= len(r["runner"].items) for r in a["runners"]):
-                if a["tables_fut"].exception() is not None:
-                    log.error("survey session failed", exc_info=a["tables_fut"].exception())
+            futs = [a["tables_fut"], *a.get("late_futs", [])]
+            if all(f.done() for f in futs) and all(r["cursor"] >= len(r["runner"].items) for r in a["runners"]):
+                for f in futs:
+                    if f.exception() is not None:
+                        log.error("survey session failed", exc_info=f.exception())
                 self._after(w, bus, a)
         elif st == "finishing" and a["post_fut"].done():
             self._finish(w, bus, a)
@@ -394,21 +424,51 @@ class SurveyRuntime:
             bus.new("survey_turned_away", w.t, aid, {"survey_id": a["id"]}, product_id=a["s"].product_id)
 
     def _inject(self, w: World, a: dict[str, Any]) -> None:
-        """Planner: a 'survey' block at the venue from each accepter's own leave time (they travel on the road graph)."""
+        """Planner: a 'survey' block at the venue from each accepter's own leave time (they travel on the road graph).
+        The block lives in the day's plan, so it is put back after the midnight re-plan (`World._new_day`)."""
         per = int(self.cfg["timings"]["per_question_focus" if a["s"].mode == "focus_group" else "per_question_survey"])
+        end = a["start_t"] + len(a["s"].questions) * per + 30
         for aid, p in a["participants"].items():
-            if p["rsvp"] != "accepted" or p.get("injected") or p.get("no_show"):
+            if p["rsvp"] != "accepted" or p.get("no_show") or p.get("arrived_t") is not None:
                 continue
             ag = w.agents[aid]
-            leave = int(p["leave_t"])
-            if ag.plan_day != simtime.day_of(leave):
+            if p.get("injected") and p.get("inj_day") == ag.plan_day:
+                continue
+            day0 = (ag.plan_day - 1) * 1440
+            leave = max(int(p["leave_t"]), day0)
+            if simtime.day_of(leave) != ag.plan_day or end <= day0:   # the leave day's plan isn't built yet
                 continue
             s0 = simtime.minute_of_day(leave)
-            dur = max(0, a["start_t"] - leave) + len(a["s"].questions) * per + 30
-            ag.plan = insert_block(ag.plan, max(0, s0), min(1440, s0 + dur), "survey", self.venue)
-            p["injected"] = True
+            ag.plan = insert_block(ag.plan, s0, max(s0 + 1, min(1440, end - day0)), "survey", self.venue)
+            if not p.get("injected"):
+                w.live_evts.append({"k": "survey_trip", "a": aid, "survey_id": a["id"]})
+            p["injected"], p["inj_day"] = True, ag.plan_day
             a["dirty_outreach"] = True
-            w.live_evts.append({"k": "survey_trip", "a": aid, "survey_id": a["id"]})
+
+    def _seat_joiners(self, w: World, a: dict[str, Any], bus: EventBus, t: int) -> None:
+        """Late arrivals join from the next question: a side seat that answers the questions still to come."""
+        aids = a.pop("joiners", [])
+        s: Survey = a["s"]
+        rest = s.questions[a.get("q_index", 0) + 1:]
+        if not aids or not rest:
+            return
+        sub = {**s.model_dump(), "questions": [q.model_dump() for q in rest], "mode": "survey"}
+        for aid in aids:
+            p = a["participants"][aid]
+            tid = f"L{len(a['tables']) + 1}"
+            sid = f"fg-{s.survey_id}-{tid}"
+            tb = {"table_id": tid, "survey_id": s.survey_id, "session_id": sid, "seats": [aid], "present": [aid],
+                  "moderator_id": f"moderator-{tid}", "late": True}
+            a["tables"].append(tb)
+            p.update({"rsvp": "attended", "late": True, "table_id": tid, "seat": 0})
+            self.history[aid] = t
+            bus.new("survey_checkin", t, aid, {"survey_id": s.survey_id, "table_id": tid, "seat": 0, "late": True,
+                                               "from_question": rest[0].question_id}, product_id=s.product_id)
+            r = TableRunner(sub, tid, sid, [self._person(w, aid, s, s.topic)], llm=self.llm, decider=self.decider,
+                            cfg=self.cfg, seed=w.seed, budget=a["budget"], product_name=s.topic)
+            a["runners"].append({"runner": r, "cursor": 0, "table": tb, "t0": t})
+            a.setdefault("late_futs", []).append(asyncio.ensure_future(r.run()))
+        self._persist(a, {"tables": a["tables"], "outreach": self._outreach_doc(a)})
 
     # ------------------------------------------------------------------ in session
     def _stance(self, aid: int, s: Survey) -> float:
@@ -511,7 +571,7 @@ class SurveyRuntime:
         texts = []
         for x in a["runners"]:
             r: TableRunner = x["runner"]
-            while x["cursor"] < len(r.items) and a["session_t"] + r.items[x["cursor"]]["dt"] <= t:
+            while x["cursor"] < len(r.items) and x.get("t0", a["session_t"]) + r.items[x["cursor"]]["dt"] <= t:
                 it = r.items[x["cursor"]]
                 x["cursor"] += 1
                 if it["kind"] == "survey_phase" and x is a["runners"][0]:
@@ -653,10 +713,17 @@ class SurveyRuntime:
         answers = a.get("answers", [])
         cost = round(a.get("cost", 0.0) + sum(x["runner"].cost for x in a.get("runners", [])) * 0, 5)
         skipped = any(x["runner"].skipped_discussion for x in a.get("runners", []))
-        counts = {"invited": len(a["participants"]),
+        counts: dict[str, Any] = {"invited": len(a["participants"]),
                   "accepted": sum(1 for p in a["participants"].values() if p["rsvp"] in ("attended", "no_show", "accepted")),
                   "attended": sum(1 for p in a["participants"].values() if p["rsvp"] == "attended"),
-                  "answers": len(answers), "changed": sum(1 for x in answers if x.changed_from_prestance)}
+                  "answers": len(answers), "changed": sum(1 for x in answers if x.changed_from_prestance),
+                  "reached": len(a["decided"]), "late": sum(1 for p in a["participants"].values() if p.get("late")),
+                  "no_show": sum(1 for p in a["participants"].values() if p["rsvp"] == "no_show"),
+                  "turned_away": sum(1 for p in a["participants"].values() if p.get("turned_away")),
+                  "gather_timeout": bool(a.get("timed_out"))}
+        if counts["attended"] == 0:                      # say why nobody took part (results page)
+            counts["why_empty"] = ("nobody_reached" if not a["decided"] else "nobody_accepted" if counts["accepted"] == 0
+                                   else "no_shows")
         bus.new("survey_completed", t, None, {"survey_id": s.survey_id, "counts": counts, "actual_usd": cost,
                                               "estimate_usd": s.estimate_usd, "discussion_skipped": skipped,
                                               "empty": empty}, product_id=s.product_id)
@@ -792,13 +859,13 @@ class SurveyRuntime:
             out["tables"].append({"table_id": tid, "seats": tb["present"]})
             out["messages"][tid] = [{**{k: it["payload"].get(k) for k in ("message_id", "speaker", "text", "seq",
                                                                           "question_id")},
-                                     "t": a["session_t"] + it["dt"]} for it in done if it["kind"] == "message"][-n_messages:]
+                                     "t": x.get("t0", a["session_t"]) + it["dt"]} for it in done if it["kind"] == "message"][-n_messages:]
             out["ballots"][tid] = sorted({it["agent_id"] for it in done
                                           if it["kind"] == "survey_answer" and it["payload"].get("question_id") == qid})
             if include_private and tid == (table_id or out["tables"][0]["table_id"]):
                 out["private"] = [{"agent_id": it["agent_id"], "kind": it["kind"], "question_id": it["payload"].get("question_id"),
                                    "text": it["payload"].get("text") or it["payload"].get("gut_reason") or "",
-                                   "t": a["session_t"] + it["dt"], "private": True}
+                                   "t": x.get("t0", a["session_t"]) + it["dt"], "private": True}
                                   for it in done if it["kind"] in ("survey_thought", "survey_prestance")][-n_messages:]
         return out
 

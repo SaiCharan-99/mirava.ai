@@ -133,3 +133,27 @@ export function arrivalTables(ids: number[], size = 8): TableDef[] {
   return out.length ? out : [{ table_id: "T1", seats: [] }];
 }
 
+
+/** Final counts the engine stores on a completed session (`surveys/{id}.counts`). */
+export interface FinalCounts {
+  invited?: number; reached?: number; accepted?: number; attended?: number; answers?: number; late?: number;
+  no_show?: number; turned_away?: number; gather_timeout?: boolean; why_empty?: "nobody_reached" | "nobody_accepted" | "no_shows";
+}
+
+/** Why nobody took part, in plain words (null when someone did). */
+export function emptyReason(c: FinalCounts | undefined | null): string | null {
+  if (!c || (c.attended ?? 0) > 0) return null;
+  const reached = c.reached ?? c.invited ?? 0;
+  const yes = c.accepted ?? 0;
+  if (c.why_empty === "nobody_reached" || reached === 0) return "Nobody saw the invite before sign-ups closed, so no one could come. Try a later start time or more channels.";
+  if (c.why_empty === "nobody_accepted" || yes === 0) return `${reached} people saw the invite but nobody said yes. A better reward, a closer time or a wider audience may help.`;
+  const late = c.turned_away ? ` ${c.turned_away} arrived after it had finished and were turned away.` : "";
+  const wait = c.gather_timeout ? " The room waited the full gathering time, then started without them." : "";
+  return `${yes} said yes but nobody turned up (${c.no_show ?? yes} no-shows).${wait}${late}`;
+}
+
+/** Countdown that ticks smoothly between polls: seconds left at fetch time minus real time since. */
+export function liveSecondsLeft(secondsAtFetch: number | null | undefined, fetchedAtMs: number, nowMs: number): number {
+  if (secondsAtFetch == null) return 0;
+  return Math.max(0, secondsAtFetch - (nowMs - fetchedAtMs) / 1000);
+}

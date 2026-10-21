@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { PageTitle } from "../../components/Shell";
 import { HeatTable } from "../../components/charts";
 import { getJSON } from "../../lib/api";
-import { agentNames, flows, mean, type Edge, type Report, type ReportQ } from "../../lib/focus";
+import { agentNames, emptyReason, flows, type FinalCounts, mean, type Edge, type Report, type ReportQ } from "../../lib/focus";
 import { launchSurvey, rerunSurvey, type SurveyDoc } from "../../lib/survey";
 import { withMode } from "../../lib/visualTest";
 import { SessionsCol } from "./SessionsCol";
@@ -12,7 +12,7 @@ const COL = ["#2dd4bf", "#f5b041", "#a78bfa", "#94a3b8", "#60a5fa", "#f472b6"];
 const INFL_COL: Record<string, string> = { persuaded: "#2dd4bf", conformed: "#f5b041", reinforced: "#60a5fa", unchanged: "#64748b", reacted_against: "#f472b6" };
 const EDGE_COL: Record<Edge["type"], string> = { persuaded: "#2dd4bf", went_along: "#f5b041", pushed_back: "#f472b6" };
 type Names = Record<number, { name: string; age: number }>;
-type Doc = Omit<SurveyDoc, "results"> & { results?: Report; counts?: { attended?: number; accepted?: number }; completed_t?: number; start_label?: string; product_name?: string };
+type Doc = Omit<SurveyDoc, "results"> & { results?: Report; counts?: FinalCounts; completed_t?: number; start_label?: string; product_name?: string };
 
 const fmt = (v: unknown) => (Array.isArray(v) ? v.join(", ") : String(v));
 
@@ -164,7 +164,7 @@ export function FocusResultsPage() {
       {err && <div className="xs" style={{ color: "var(--red)", marginBottom: 8 }}>{err}</div>}
       <div className="grid" style={{ gridTemplateColumns: "1fr 340px", alignItems: "start" }}>
         <div>
-          {!r || !r.questions.some((question) => question.n > 0) ? <div className="card" role="status"><h3>No answers were recorded</h3><p className="small muted">{(doc as { results_error?: string }).results_error ?? "This session has no recorded ballots, so preference and opinion changes cannot be measured. Run the group again to collect answers."}</p></div> : <>
+          {!r || !r.questions.some((question) => question.n > 0) ? <div className="card" role="status"><h3>{emptyReason(doc.counts) && !notDone ? "Nobody took part" : "No answers were recorded"}</h3><p className="small muted" data-testid="empty-reason">{(!notDone && emptyReason(doc.counts)) || (doc as { results_error?: string }).results_error || "This session has no recorded ballots, so preference and opinion changes cannot be measured. Run the group again to collect answers."}</p></div> : <>
             <div className="grid g4">
               <div className="card kpi"><div className="l">Took part</div><div className="v">{r.n_attended}</div><div className="d muted">of {doc.counts?.accepted ?? "—"} who said yes</div></div>
               <div className="card kpi"><div className="l">Changed their mind</div><div className="v">{r.n_attended ? Math.round((100 * (r.changed_people ?? 0)) / r.n_attended) : 0}%</div><div className="d muted">{r.changed_people ?? 0} people, on at least one question</div></div>

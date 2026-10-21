@@ -94,9 +94,10 @@ def test_people_leave_early_enough_to_arrive_and_the_careless_cut_it_fine(run2):
 def test_tables_are_made_from_the_people_who_turned_up(run2):
     _, _, store, _, _ = run2
     doc = store.get("surveys", "sv-lead")
-    att = [p for p in doc["participants"] if p["rsvp"] == "attended"]
-    assert att and len(doc["tables"]) == math.ceil(len(att) / 8)
-    seated = {a for tb in doc["tables"] for a in tb["seats"]}
+    att = [p for p in doc["participants"] if p["rsvp"] == "attended" and not p.get("late")]
+    tables = [tb for tb in doc["tables"] if not tb.get("late")]          # late arrivals get a side seat (B3.8)
+    assert att and len(tables) == math.ceil(len(att) / 8)
+    seated = {a for tb in tables for a in tb["seats"]}
     assert seated == {p["agent_id"] for p in att}
     assert all(p.get("table_id") for p in att)
     assert not any(p.get("table_id") for p in doc["participants"] if p["rsvp"] in ("no_show", "declined"))
