@@ -98,7 +98,7 @@ export function HeatTable({ rows, cols, vals, unit = "%", max = 60, titles }:
           <tr key={r}>
             <td style={{ textAlign: "left", fontWeight: 500 }}>{r}</td>
             {(vals[i] || []).map((v, j) => (
-              <td key={j} title={titles?.[i]?.[j]} style={{ background: `color-mix(in srgb,var(--teal) ${Math.min(45, (v / max) * 45)}%,var(--panel2))`, color: "var(--ink)" }}>{v}{unit}</td>
+              <td key={j} title={titles?.[i]?.[j]} style={{ background: `color-mix(in srgb,var(--teal) ${Math.min(85, (v / max) * 85)}%,var(--panel2))`, color: v > max * 0.55 ? "#05201c" : "var(--ink)" }}>{v}{unit}</td>
             ))}
           </tr>
         ))}

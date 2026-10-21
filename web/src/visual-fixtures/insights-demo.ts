@@ -19,7 +19,7 @@ export const DEMO_ASK: { q: string; a: AskAnswerView }[] = [
         ["semantic_search", "thoughts + messages · cohort · 'why / why not' · 40 hits"], ["chart", "bar · curious+ share by product"]],
       html: "<b>187 agents (18.7%)</b> have phones older than 5 years. <b>38%</b> of them are curious or further about at least one of our live phones — more than twice the rate of everyone else (17%).",
       bars: [["Pulse 5", 31, "#22c55e"], ["Orbit S", 11, "#8b5cf6"], ["Either", 38, "var(--teal)"]], ymax: 40,
-      barsNote: "Curious, researching, inquiring, deciding or purchased · cohort n = 187",
+      unit: "%", barsNote: "Curious, researching, inquiring, deciding or purchased · cohort n = 187",
       sideHtml: "<b>Why Pulse 5 leads</b><ul style=\"margin:6px 0 10px;padding-left:18px\"><li>Battery (“two days”) maps directly to their pain: 64% of the cohort report weak batteries.</li><li>₹24,999 + ₹3,000 exchange bonus fits; 22 of them already asked about EMI in stores.</li></ul><b>Why Orbit S lags</b><ul style=\"margin:6px 0 0;padding-left:18px\"><li>₹49,999 is seen as paying for thinness, not for what they need.</li><li>Tanvi's review (“battery is the price you pay”) reached 41 of them.</li></ul>",
       quotes: [
         { agent_id: 31, text: "Two days on one charge? My phone barely lasts till lunch. If the exchange gives me ₹3,000 for this old one, I'm in.", kind: "thought after Digital Bazaar visit", private: true },
