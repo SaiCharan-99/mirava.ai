@@ -116,6 +116,9 @@ def to_messages(prompt: str | list, images: list[str] | None) -> list[dict]:
     return msgs
 
 
+VERTEX_EMBED_USD_PER_TOKEN = 0.15 / 1_000_000          # gemini-embedding-001 list price (input tokens)
+
+
 async def vertex_embed(s: Settings, texts: list[str], dim: int) -> list[list[float]]:
     """Embeddings from Vertex AI `gemini-embedding-001` (one text per request; ADC auth), fitted to `dim`."""
     import google.auth
@@ -435,7 +438,12 @@ class ICAClient(OpenRouterClient):
         """ICA has no embeddings: Vertex gemini-embedding-001 first (cloud only), then OpenRouter."""
         if self.s.env == "cloud":
             try:
-                return await vertex_embed(self.s, texts, dim)
+                out = await vertex_embed(self.s, texts, dim)
+                tokens = sum(len(t) for t in texts) // 4 + len(texts)   # ~4 chars per token
+                self._record("embed", "vertex/gemini-embedding-001", "P5",
+                             LLMResult(usage=Usage(prompt_tokens=tokens, cost_usd=tokens * VERTEX_EMBED_USD_PER_TOKEN),
+                                       model="vertex/gemini-embedding-001", cached=False))
+                return out
             except Exception:  # noqa: BLE001 — any Vertex failure falls through to OpenRouter
                 log.warning("Vertex embedding failed; trying OpenRouter", exc_info=True)
         keep = dict(_STATUS)                                  # an OpenRouter embedding failure must not flag chat as down

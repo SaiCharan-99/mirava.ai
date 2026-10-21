@@ -114,3 +114,21 @@ def test_views_drop_retired_products(tmp_path):
     assert [r["option"] for r in db.query("SELECT option FROM v_purchases")] == ["pixel-10a"]
     fh = db.query("SELECT product_id FROM v_first_heard")
     assert [r["product_id"] for r in fh] == ["pixel-10a"]
+
+
+def test_book_cost_forwards_only_real_spend(monkeypatch):
+    import api.main as m
+    import api.products as p
+
+    sent = []
+    monkeypatch.setattr(p, "_engine_command", lambda cmd: sent.append(cmd))
+
+    import threading
+
+    monkeypatch.setattr(threading, "Thread", lambda target, args, daemon: type("X", (), {"start": lambda s: target(*args)})())
+    from shared.llm import CostRecord, Usage
+
+    m.book_cost(CostRecord("ask", "m", "interactive", Usage(cost_usd=0.002), False))
+    m.book_cost(CostRecord("ask", "m", "interactive", Usage(cost_usd=0.0), False))
+    m.book_cost(CostRecord("ask", "m", "interactive", Usage(cost_usd=0.5), True))
+    assert sent == [{"type": "record_spend", "usd": 0.002, "purpose": "ask"}]

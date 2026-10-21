@@ -460,6 +460,12 @@ class Engine:
             res = self.surveys.launch(sid) if kind == "survey_launch" else self.surveys.cancel(sid, self.world, self.bus)
             self.bus.new("command", self.world.t, None, {k: v for k, v in cmd.items() if k != "auth"})
             return {**res, "ok": True}
+        elif kind == "record_spend":
+            usd = float(cmd.get("usd", 0.0) or 0.0)
+            if not 0 <= usd <= 5:
+                return {"ok": False, "error": "usd out of range"}
+            self.gov.record(usd, "interactive")
+            return {"ok": True, "interactive_used_usd": round(self.gov.interactive_today, 4)}
         elif kind == "launch":
             if self.media is None:
                 return {"ok": False, "error": "media runtime not running"}

@@ -29,6 +29,30 @@ async def no_store(request: Any, call_next: Any) -> Any:
     return resp
 
 
+def book_cost(rec: Any) -> None:
+    """Forward the real cost of an api-side model call (Ask, Interview, embeddings) to the engine's interactive budget."""
+    usd = float(getattr(getattr(rec, "usage", None), "cost_usd", 0.0) or 0.0)
+    if usd <= 0 or getattr(rec, "cached", False):
+        return
+    import threading
+
+    from api.products import _engine_command
+
+    threading.Thread(target=_engine_command, args=({"type": "record_spend", "usd": usd,
+                                                   "purpose": str(getattr(rec, "purpose", ""))},), daemon=True).start()
+
+
+@app.on_event("startup")
+def _install_cost_hook() -> None:
+    """Every api model call reports its spend (the engine governor holds the interactive cap)."""
+    from shared.llm import get_llm
+
+    c = get_llm()
+    for client in (c, getattr(c, "fallback", None)):
+        if client is not None and hasattr(client, "_on_cost"):
+            client._on_cost = book_cost
+
+
 api = APIRouter(prefix="/api")
 _cache: dict[str, tuple[float, Any]] = {}
 WATCH_DOC = "default"
