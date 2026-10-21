@@ -302,7 +302,7 @@ class Tools:
         except Exception:
             logging.getLogger(__name__).warning("Vector search unavailable; using keyword search", exc_info=True)
             rows = self._keyword(text, conds, params, k)
-        logging.getLogger(__name__).info("semantic_search %r filters=%s where=%s -> %d rows", text[:80],
+        logging.getLogger(__name__).warning("semantic_search %r filters=%s where=%s -> %d rows", text[:80],
                                          {k: v for k, v in f.items() if k != "agent_ids"}, " AND ".join(conds)[:300],
                                          len(rows))
         names = self._names([int(r["agent_id"]) for r in rows if r.get("agent_id") is not None])
