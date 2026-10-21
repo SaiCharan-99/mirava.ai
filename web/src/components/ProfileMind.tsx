@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWorld } from "../state/world";
 import { getJSON } from "../lib/api";
 import { fmt, shortT } from "../lib/time";
@@ -118,6 +118,8 @@ export function ConversationsTab({ a }: { a: AgentView }) {
   const feat = useFeatured();
   const name = useFxName();
   const [open, setOpen] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (open) detailRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [open]);
   const list = useApi<ApiConvItem[]>(source === "live" ? `/agents/${a.id}/conversations` : null);
   let items: ConvItemVM[] = [];
   let conv: ConvVM | null = null;
@@ -135,30 +137,38 @@ export function ConversationsTab({ a }: { a: AgentView }) {
     }
   } else {
     items = (list ?? []).map((c) => ({ id: c.session_id, withName: c.with_name ?? `#${c.with}`, t: c.t, kind: c.rendered ? c.kind : "unrendered",
-      n: c.n_messages, topics: c.rendered ? c.topics.join(" · ") : `${c.topics[0] ?? "small talk"} (not written out — budget)` }));
+      n: c.n_messages, topics: c.rendered ? c.topics.join(" · ") : `Short chat about ${topicLabel(c.topics[0])} · summary only` }));
   }
-  const pick = items.some((c) => c.id === open) ? open : null;
+  // The newest written-out chat starts open (as in the mockup); clicking a row toggles it inline.
+  const initial = items.find((c) => c.kind !== "unrendered")?.id ?? null;
+  const pick = open === "" ? null : items.some((c) => c.id === open) ? open : initial;
   const detail = useApi<ApiConv>(source === "live" && pick && items.find((c) => c.id === pick)?.kind !== "unrendered" ? `/conversations/${pick}?as_agent=${a.id}` : null);
   if (source === "live" && detail && !Array.isArray(detail)) conv = liveConv(detail, a.id, first);
+  const sel = items.find((c) => c.id === pick) ?? null;
+  if (source !== "live" && feat && pick !== feat.conversation.id) conv = null;   // fixtures carry one transcript
   return (
     <>
       <div className="list" data-testid="conversation-list">
         {items.length ? items.map((c) => (
           <div className="item" key={c.id}>
-            <button type="button" aria-expanded={pick === c.id} onClick={() => setOpen(pick === c.id ? null : c.id)}
+            <button type="button" aria-expanded={pick === c.id} onClick={() => setOpen(pick === c.id ? "" : c.id)}
               style={{ cursor: "pointer", width: "100%", textAlign: "left", border: 0, background: "transparent", color: "inherit", padding: 0 }}>
               <div className="row between"><b>{pick === c.id ? "▾" : "▸"} {c.kind === "focus_group" ? "Focus group" : c.kind === "store" ? `store visit · ${c.withName}` : `with ${c.withName}`}</b><span className="xs muted">{shortT(c.t)} · {c.n ? `${c.n} messages` : "Brief interaction"}</span></div>
               <div className="xs muted">{c.topics}</div>
             </button>
-            {pick === c.id && (c.kind === "unrendered"
-              ? <p className="small muted">This interaction was recorded, but no spoken transcript was generated. The topic and participants above are the available record.</p>
-              : conv ? <Transcript c={conv} /> : <p className="small muted">{detail ? "The transcript could not be loaded. Close and reopen to retry." : "Loading conversation…"}</p>)}
           </div>
         )) : <div className="item muted small">{source === "live" && !list ? "Loading…" : "No conversations yet."}</div>}
       </div>
-
+      {sel && <div ref={detailRef}>{sel.kind === "unrendered"
+        ? <p className="small muted" data-testid="conversation-summary" style={{ marginTop: 16 }}>{first} and {sel.withName.split(" ")[0]} chatted briefly; only this summary was kept, so there is no word-for-word transcript.</p>
+        : conv ? <Transcript c={conv} /> : <p className="small muted">{detail ? "The transcript could not be loaded. Close and reopen to retry." : "Loading conversation…"}</p>}</div>}
     </>
   );
+}
+
+/** "product:pixel-10a" → "pixel-10a"; empty → small talk. */
+function topicLabel(t: string | undefined): string {
+  return t ? t.replace(/^product:/, "") : "small talk";
 }
 
 /** Messages with THIS agent's own private thoughts interleaved (store visits: before each turn; focus groups: before

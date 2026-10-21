@@ -95,4 +95,27 @@ def test_early_store_inquiries_do_not_starve_social_chats() -> None:
         chats += 1
         assert chats < 100
     assert chats >= 5
-    assert g.spent_class["P4"] <= g.sim_day_budget() * 0.25 + 0.006
+    assert g.spent_class["P4"] <= g.sim_day_budget() * g.cfg["class_money_share"]["P4"] + 0.006
+
+
+def test_cheap_chats_render_150_plus_per_sim_day() -> None:
+    """Spend far below cap: chats are paced by money, not by a tiny count cap (fix-C finding 5)."""
+    demand = {"P1": 200, "P2": 40, "P4": 400}
+    COST_SAVE = dict(COST)
+    COST.update({"P2": 0.003, "P4": 0.0016})               # measured per-chat cost on Flash-Lite
+    try:
+        g, per_day, tally = simulate(demand, real_days=1)
+    finally:
+        COST.clear()
+        COST.update(COST_SAVE)
+    sim_days = 24 / g.speed_factor
+    chats = (tally["P2"][1] + tally["P4"][1]) / sim_days
+    assert chats >= 150, chats
+    assert per_day[0] <= 15 * 1.1
+
+
+def test_hour_pacing_is_by_money_when_spend_is_low() -> None:
+    g = BudgetGovernor(now=lambda: 0.0)
+    g.on_sim_hour(7 * 60)                                     # early morning: count pacing would allow only ~20%
+    n = sum(g.allow("P4", 0.0) for _ in range(200))
+    assert n == 200                                           # nothing spent yet → only money paces

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from shared.llm import LLMClient
 from shared.models import MODEL_FLASH, MODEL_LITE
 from shared.schemas.social import Message, SharePlan
+from social.turns import near_duplicate
 
 PROMPT = Path(__file__).resolve().parents[1] / "shared" / "prompts" / "dialogue.md"
 
@@ -61,11 +62,23 @@ async def write_dialogue(a: SharePlan, b: SharePlan, styles: dict[int, str], rel
     ids = {"A": a.agent_id, "B": b.agent_id}
     count = {"A": 0, "B": 0}
     msgs: list[Message] = []
+    said: list[str] = []
     for s, text in lines:
-        if count[s] >= max_per_person:
+        if said and near_duplicate(text, said):
+            continue                                  # drop a repeated line instead of publishing it again
+        if msgs and msgs[-1].speaker == ids[s]:       # strict alternation: a speaker's run is one message
+            prev = msgs[-1]
+            msgs[-1] = prev.model_copy(update={"text": f"{prev.text} {text}"[:300]})
+            said.append(text)
             continue
+        if count[s] >= max_per_person:
+            break                                     # the next speaker is out of turns: the talk ends here
         count[s] += 1
+        said.append(text)
         other = "B" if s == "A" else "A"
         msgs.append(Message(session_id=a.session_id, seq=len(msgs), speaker=ids[s], listener=ids[other], text=text,
                             t=t + len(msgs) // 2))
+    if len(msgs) < 2:                                 # everything after the greeting was a repeat: B still answers
+        msgs.append(Message(session_id=a.session_id, seq=len(msgs), speaker=b.agent_id, listener=a.agent_id,
+                            text=b.opening.strip()[:300] or "Hi!", t=t))
     return msgs, out, res.usage.cost_usd, model

@@ -253,7 +253,7 @@ class OpenRouterClient(_CachingClient):
             raise LLMError(f"malformed response: {str(raw)[:200]}") from e
         u = raw.get("usage") or {}
         usage = Usage(prompt_tokens=int(u.get("prompt_tokens", 0)), completion_tokens=int(u.get("completion_tokens", 0)),
-                      cost_usd=float(u.get("cost", 0.0) or 0.0))
+                      cost_usd=self._cost(u))
         data = None
         if schema is not None:
             try:
@@ -264,6 +264,10 @@ class OpenRouterClient(_CachingClient):
         self._cache[key] = res
         self._record(purpose, model, priority_class, res)
         return res
+
+    def _cost(self, u: dict) -> float:
+        """USD for one call from the provider's usage block (OpenRouter reports `cost`)."""
+        return float(u.get("cost", 0.0) or 0.0)
 
     async def embed(self, texts: list[str], dim: int = 768) -> list[list[float]]:
         """Embeddings via /embeddings, normalised to `dim`."""
@@ -334,6 +338,13 @@ class ICAClient(OpenRouterClient):
 
     def _key(self) -> str:
         return self.s.ica_api_key.get_secret_value()
+
+    def _cost(self, u: dict) -> float:
+        """ICA sends no `cost`: price its token counts so the governor and header see real spend."""
+        if u.get("cost"):
+            return float(u["cost"])
+        pin, pout = models.ICA_PRICE
+        return (int(u.get("prompt_tokens", 0) or 0) * pin + int(u.get("completion_tokens", 0) or 0) * pout) / 1e6
 
     def _exhausted(self, r: httpx.Response) -> bool:
         return False                                          # no second ICA key; OpenRouter is the fallback

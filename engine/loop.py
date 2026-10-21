@@ -369,7 +369,7 @@ class Engine:
 
     def budget(self) -> dict[str, float]:
         """Budget used today (background world) from the governor."""
-        return {"used_usd": round(self.gov.spent_today, 3), "cap_usd": self.s.daily_cap_usd,
+        return {"used_usd": round(self.gov.spent_today, 4), "cap_usd": self.s.daily_cap_usd,
                 "slowed": self.gov.slowed, "speed_factor": self.gov.speed_factor}
 
     def healthy(self) -> bool:
