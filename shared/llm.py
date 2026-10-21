@@ -119,25 +119,49 @@ def to_messages(prompt: str | list, images: list[str] | None) -> list[dict]:
 VERTEX_EMBED_USD_PER_TOKEN = 0.15 / 1_000_000          # gemini-embedding-001 list price (input tokens)
 
 
-async def vertex_embed(s: Settings, texts: list[str], dim: int) -> list[list[float]]:
-    """Embeddings from Vertex AI `gemini-embedding-001` (one text per request; ADC auth), fitted to `dim`."""
+_VERTEX: dict[str, Any] = {}          # cached ADC credentials + one pooled HTTP client (refresh only near expiry)
+
+
+async def _vertex_token() -> str:
+    """ADC access token, refreshed only when missing or about to expire."""
+    import datetime
+
     import google.auth
     import google.auth.transport.requests
 
-    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    await asyncio.to_thread(creds.refresh, google.auth.transport.requests.Request())
+    creds = _VERTEX.get("creds")
+    if creds is None:
+        creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        _VERTEX["creds"] = creds
+    exp = getattr(creds, "expiry", None)
+    soon = exp is None or exp - datetime.timedelta(minutes=5) <= datetime.datetime.utcnow()
+    if not creds.token or soon:
+        await asyncio.to_thread(creds.refresh, google.auth.transport.requests.Request())
+    return str(creds.token)
+
+
+async def vertex_embed(s: Settings, texts: list[str], dim: int) -> list[list[float]]:
+    """Embeddings from Vertex AI `gemini-embedding-001` (one text per request; ADC auth), fitted to `dim`."""
+    token = await _vertex_token()
     loc = s.gcp_region or "asia-south1"
     url = (f"https://{loc}-aiplatform.googleapis.com/v1/projects/{s.gcp_project_id}/locations/{loc}"
            "/publishers/google/models/gemini-embedding-001:predict")
-    headers = {"Authorization": f"Bearer {creds.token}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=20) as client:
-        async def one(t: str) -> list[float]:
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    loop = asyncio.get_running_loop()
+    per = _VERTEX.get("loop")
+    if per is None or per[0] is not loop or per[1].is_closed:    # the api runs embeds in short-lived loops
+        per = _VERTEX["loop"] = (loop, httpx.AsyncClient(timeout=15, limits=httpx.Limits(max_connections=16)),
+                                 asyncio.Semaphore(16))
+    _, client, gate = per
+
+    async def one(t: str) -> list[float]:
+        async with gate:
             r = await client.post(url, headers=headers, json={"instances": [{"content": t}],
                                                               "parameters": {"outputDimensionality": dim}})
-            if r.status_code >= 400:
-                raise LLMError(f"Vertex embeddings HTTP {r.status_code}: {r.text[:200]}")
-            return fit_dim(r.json()["predictions"][0]["embeddings"]["values"], dim)
-        return list(await asyncio.gather(*(one(t) for t in texts)))
+        if r.status_code >= 400:
+            raise LLMError(f"Vertex embeddings HTTP {r.status_code}: {r.text[:200]}")
+        return fit_dim(r.json()["predictions"][0]["embeddings"]["values"], dim)
+    return list(await asyncio.gather(*(one(t) for t in texts)))
 
 
 def fit_dim(vec: list[float], dim: int) -> list[float]:
