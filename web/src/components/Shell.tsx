@@ -47,6 +47,7 @@ export function Header() {
   const t = useWorld((s) => s.t);
   const agents = useWorld((s) => s.stats.agents);
   const budget = useWorld((s) => s.budget);
+  const pending = useWorld((s) => !isVisualTest && s.source !== "live");   // mockup fixtures must never pass as live data
   const [, toggle] = useTheme();
   const pct = Math.min(100, (budget.used_usd / budget.cap_usd) * 100);
   return (
@@ -66,12 +67,12 @@ export function Header() {
       {budget.slowed && <span className="chip amber" data-testid="slowed-chip" style={{ whiteSpace: "nowrap" }}
         title="Background model spend would exceed the daily budget, so sim time runs slower">Slowed to save budget</span>}
       <div className="row" data-testid="header-clock" style={{ gap: 8 }} title="1 sim day = 1 real hour">
-        <span className="clock" style={{ fontSize: 14, whiteSpace: "nowrap" }}>{fmt(t)}</span>
+        <span className="clock" style={{ fontSize: 14, whiteSpace: "nowrap" }}>{pending ? "Connecting…" : fmt(t)}</span>
       </div>
       <div data-testid="budget-meter" style={{ width: 140, whiteSpace: "nowrap" }} title="Background model budget used today">
         <div className="row between xs"><span className="muted">Budget today</span>
-          <span className="mono">${budget.used_usd.toFixed(budget.used_usd > 0 && budget.used_usd < 1 ? 3 : 2)} / ${budget.cap_usd}</span></div>
-        <div className="bar" style={{ height: 5, marginTop: 3 }}><i style={{ width: `${pct}%` }} /></div>
+          <span className="mono">{pending ? "—" : `$${budget.used_usd.toFixed(budget.used_usd > 0 && budget.used_usd < 1 ? 3 : 2)} / $${budget.cap_usd}`}</span></div>
+        <div className="bar" style={{ height: 5, marginTop: 3 }}><i style={{ width: `${pending ? 0 : pct}%` }} /></div>
       </div>
       <button className="btn sm ghost" data-testid="theme-toggle" title="Toggle theme" onClick={toggle}>◐ Theme</button>
       {/* keeps header geometry identical to the reference, where the mockup-only "Mockup" chip occupies this slot */}
@@ -94,6 +95,7 @@ export function Sidebar() {
   const t = useWorld((s) => s.t);
   const products = useWorld((s) => s.products);
   const live = products.filter((p) => p.status === "live");
+  const pending = useWorld((s) => !isVisualTest && s.source !== "live");
   const section = loc.pathname.split("/")[1] || "world";
   const active = section === "globe" ? "world" : section;
   const link = (to: string, key: string, ic: string, label: string) => (
@@ -114,10 +116,10 @@ export function Sidebar() {
         <div className="row between small"><b>Indiranagar world</b>
           <span className="chip green" style={{ padding: "1px 7px" }}><span className="dotlive" />always on</span></div>
         <div className="small muted" style={{ marginTop: 6 }}>
-          Living since Day 1 · <span className="mono">{days} d {hours} h</span> of sim time · 1 sim day = 1 real hour</div>
+          {pending ? "Connecting to the live world…" : <>Living since Day 1 · <span className="mono">{days} d {hours} h</span> of sim time · 1 sim day = 1 real hour</>}</div>
         <div className="small muted" style={{ marginTop: 8 }}>Products live</div>
         <div className="row wrap" style={{ gap: 6, marginTop: 4 }}>
-          {live.map((p) => (
+          {(pending ? [] : live).map((p) => (
             <span key={p.id} className="chip" style={{ padding: "1px 8px" }}>
               <span className="pdot" style={{ background: p.hex, width: 8, height: 8 }} />{p.name}</span>
           ))}

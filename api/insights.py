@@ -262,6 +262,9 @@ def funnel_sets(pids: list[str]) -> dict[str, list[set[int]]]:
     inq = _q(f"SELECT DISTINCT product_id, agent_id FROM v_inquiries WHERE product_id IN ({ph})")
     buy = _q(f"SELECT DISTINCT option AS product_id, agent_id FROM v_purchases WHERE option IN ({ph})")
     deeper = set(CURIOUS_PLUS)
+    # Residents only (the % base is the resident count): reviewers and store staff must not push "Reached" past 100%
+    res = _q("SELECT agent_id FROM agents_latest WHERE special_role = 'none' OR special_role IS NULL")
+    residents = {int(r["agent_id"]) for r in res} or None
     out: dict[str, list[set[int]]] = {}
     for pid in pids:
         def ids(rows: list[dict[str, Any]], pid: str = pid) -> set[int]:
@@ -271,7 +274,8 @@ def funnel_sets(pids: list[str]) -> dict[str, list[set[int]]]:
         visited = ids(inq) | bought
         interested = {int(r["agent_id"]) for r in bel if r["product_id"] == pid and r["stage"] in deeper} | visited
         aware = {int(r["agent_id"]) for r in bel if r["product_id"] == pid and r["stage"] != "unaware"} | interested
-        out[pid] = [ids(expo) | aware, aware, interested, visited, bought]
+        steps = [ids(expo) | aware, aware, interested, visited, bought]
+        out[pid] = [x & residents for x in steps] if residents else steps
     return out
 
 

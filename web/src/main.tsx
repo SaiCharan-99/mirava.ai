@@ -24,6 +24,7 @@ applyFreeze();
 // Fixtures render until world-engine's /live `hello` arrives (and always in visual-test mode).
 const fx = await loadFixtures();
 useWorld.getState().loadFixtures(fx);
+if (!isVisualTest) useWorld.setState({ budget: { used_usd: 0, cap_usd: 15 } });   // never show the mockup's $6.40 as real spend
 simClock.set(fx.t);
 simClock.frozen = isVisualTest;
 if (isVisualTest) useWatch.getState().seed(fx.agents.filter((a) => a.watch).map((a) => a.id), true);

@@ -236,6 +236,7 @@ function DayBar() {
   const hl = useWorld((s) => s.hl);
   const today = vals.length - 1;
   const mx = Math.max(1, ...vals);
+  const step = Math.max(2, Math.ceil(vals.length / 24));   // ~24 labels at most: 89 live days must not widen the page
   return (
     <div className="daybar" data-testid="day-timeline">
       <div><div className="xs muted">WORLD TIME</div>
@@ -255,7 +256,7 @@ function DayBar() {
             );
           })}
         </div>
-        <div className="dlabels">{vals.map((_, i) => <span key={i}>{i % 2 === 0 || i === today ? `D${i + 1}` : ""}</span>)}</div>
+        <div className="dlabels">{vals.map((_, i) => <span key={i}>{i % step === 0 || i === today ? `D${i + 1}` : ""}</span>)}</div>
       </div>
       <div className="row" style={{ gap: 8 }}><span className="legend">
         <span><i style={{ background: "var(--teal)" }} />today</span>

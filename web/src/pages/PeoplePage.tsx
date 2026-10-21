@@ -7,7 +7,7 @@ import { useWatch } from "../state/watch";
 import { actLabel, bandLabel, incomeLabel } from "../lib/agentView";
 import { getJSON, peopleQS, type PeoplePage as PeopleResp, type PeopleQuery, type PeopleRow } from "../lib/api";
 import { fmtInt } from "../lib/time";
-import { withMode } from "../lib/visualTest";
+import { isVisualTest, withMode } from "../lib/visualTest";
 import type { Fixtures } from "../visual-fixtures/types";
 
 const PAGE = 15;
@@ -78,7 +78,6 @@ function Stage({ b }: { b?: { stage: string; att?: number } }) {
 /** People (U-05): search, filters, watch stars, row → World + profile. */
 export function PeoplePage() {
   const nav = useNavigate();
-  const source = useWorld((s) => s.source);
   const fx = useWorld((s) => s.fixtures);
   const live = useWorld((s) => s.products).filter((p) => p.status === "live");
   const openProfile = useWorld((s) => s.openProfile);
@@ -93,9 +92,9 @@ export function PeoplePage() {
     return () => clearTimeout(id);
   }, [qText]);
 
-  const fixtureRows = useMemo(() => (source !== "live" && fx ? filterFixtures(fx, f) : null), [source, fx, f]);
+  const fixtureRows = useMemo(() => (isVisualTest && fx ? filterFixtures(fx, f) : null), [fx, f]);
   useEffect(() => {
-    if (source !== "live") return;
+    if (isVisualTest) return;                   // People reads REST: no need to wait for the engine's /live hello
     let on = true;
     getJSON<PeopleResp>(`/agents?${peopleQS(f, PAGE)}`)
       .then((r) => on && setResp({ rows: r.rows.map(fromApi), total: r.total, old: r.phone_old_count ?? 0 }))
@@ -103,11 +102,11 @@ export function PeoplePage() {
     return () => {
       on = false;
     };
-  }, [source, f]);
+  }, [f]);
 
   const total = fixtureRows ? fixtureRows.length : (resp?.total ?? 0);
   const rows = fixtureRows ? fixtureRows.slice((f.page - 1) * PAGE, f.page * PAGE) : (resp?.rows ?? []);
-  const old = fx && source !== "live" ? fx.agents.filter((a) => a.phone.age > 5).length : (resp?.old ?? 0);
+  const old = fixtureRows && fx ? fx.agents.filter((a) => a.phone.age > 5).length : (resp?.old ?? 0);
   const agents = useWorld((s) => s.stats.agents) || 1000;
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const set = (p: Partial<PeopleQuery>) => setF((x) => ({ ...x, ...p, page: p.page ?? 1 }));
@@ -118,7 +117,7 @@ export function PeoplePage() {
 
   return (
     <div className="page">
-      <PageTitle title="People" sub={`All ${fmtInt(agents)} agents in the world · ${old} have phones older than 5 years · ${watch.length} watched`}
+      <PageTitle title="People" sub={`All ${fmtInt(agents)} agents in the world · ${!fixtureRows && resp === null ? "…" : old} have phones older than 5 years · ${watch.length} watched`}
         right={<button className="btn" title="Download the agents matching these filters (simulated data)"
           onClick={() => void exportCsv(f, fixtureRows)}>Export CSV</button>} />
       <div className="card" data-testid="people-filters" style={{ marginBottom: 14 }}><div className="filters">
@@ -158,7 +157,7 @@ export function PeoplePage() {
           })}
         </tbody></table>
         <div className="row between small muted" style={{ padding: "10px 14px", borderTop: "1px solid var(--line)" }}>
-          <span>Showing {rows.length} of {fmtInt(total)}</span>
+          <span>{!fixtureRows && resp === null ? "Loading people…" : <>Showing {rows.length} of {fmtInt(total)}</>}</span>
           <span><a style={{ cursor: "pointer" }} onClick={() => f.page > 1 && set({ page: f.page - 1 })}>‹</a>{" "}
             {Array.from({ length: Math.min(3, pages) }, (_, i) => i + 1).map((n) => (
               <a key={n} style={{ cursor: "pointer", fontWeight: n === f.page ? 700 : 400 }} onClick={() => set({ page: n })}>{n} </a>))}

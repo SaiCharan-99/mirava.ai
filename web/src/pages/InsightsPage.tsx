@@ -444,7 +444,7 @@ export function InsightsPage() {
     void getJSON<{ label: string }>("/world/state").then((s) => setLive((x) => ({ ...x, day: s.label.split(" · ")[0] }))).catch(() => undefined);
   }, [fx]);
   const names = useMemo<Names>(() => (fx ? Object.fromEntries(fx.agents.map((a) => [a.id, { name: a.name, age: a.age, shirt: a.look.shirt, job: a.job, phoneAge: a.phone.age }])) : {}), [fx]);
-  const chip = isVisualTest ? D.DEMO_DATA_CHIP : `Data: Day 1 → ${live.day || "…"} · ${live.n} product${live.n === 1 ? "" : "s"} live`;
+  const chip = isVisualTest ? D.DEMO_DATA_CHIP : (live.day ? `Data: Day 1 → ${live.day} · ${live.n} product${live.n === 1 ? "" : "s"} live` : "Data: loading…");
   const body: Record<string, () => ReactNode> = {
     ask: () => <AskTab names={names} prodNames={Object.values(prods).map((p) => p.name)} />, overview: () => <OverviewTab />, sources: () => <SourcesTab />,
     hoardings: () => <HoardingsTab prods={prods} fx={fx} />, segments: () => <SegmentsTab />, conversations: () => (isVisualTest ? <ConversationsTab /> : <ConversationsLive />),
