@@ -14,7 +14,7 @@ for (const sid of ["sv-d3efb0ef", "sv-1eac8c0b"]) {
 }
 await p.goto(`${B}/world`, { waitUntil: "load" }); await p.waitForFunction(() => window.__ll, null, { timeout: 30000 }); await p.waitForTimeout(4000);
 await p.evaluate(() => window.__ll.openAgent(11, "conversations")); await p.waitForTimeout(5000);
-await p.locator("[data-testid=conversation-list] button").nth(2).click(); await p.waitForTimeout(5000);
+await p.locator("[data-testid=conversation-list] button").nth(0).click(); await p.waitForTimeout(5000);
 console.log("drawer detail:", await p.locator("[data-testid=conversation-detail]").count());
 await p.screenshot({ path: `${O}/7-profile-transcript.png` });
 await br.close();

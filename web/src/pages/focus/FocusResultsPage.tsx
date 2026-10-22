@@ -53,7 +53,7 @@ function Sankey({ q }: { q: ReportQ }) {
           if (!L[a] || !R[b]) return null;
           const h = (n / tot) * ih, ya = L[a].y + L[a].used, yb = R[b].y + R[b].used;
           L[a].used += h; R[b].used += h;
-          const m = (x0 + x1) / 2, tip = `${n} ${n === 1 ? "person" : "people"}: ${a} → ${b}`;
+          const m = (x0 + x1) / 2, tip = `${n} ${n === 1 ? "person" : "people"}: ${pretty(a)} → ${pretty(b)}`;
           return <path key={i} data-testid="sankey-band" d={`M${x0},${ya} C${m},${ya} ${m},${yb} ${x1},${yb} L${x1},${yb + h} C${m},${yb + h} ${m},${ya + h} ${x0},${ya + h} Z`}
             fill={COL[opts.indexOf(a) % COL.length]} opacity={hov === tip ? 0.95 : a === b ? 0.3 : 0.7} onMouseEnter={() => setHov(tip)} style={{ cursor: "pointer" }}><title>{tip}</title></path>;
         })}
