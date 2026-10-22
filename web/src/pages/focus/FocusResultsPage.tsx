@@ -26,10 +26,17 @@ function spreadLabels(ys: number[], gap: number, lo: number, hi: number): number
   return out;
 }
 
+/** '["Iphone","Google"]' (a multi-choice answer key) → "Iphone + Google". */
+function pretty(k: string): string {
+  if (!k.startsWith("[")) return k;
+  try { const v: unknown = JSON.parse(k); return Array.isArray(v) ? (v.length ? v.join(" + ") : "Nothing") : k; } catch { return k; }
+}
+
 /** Before (first private answer) → after (final ballot) flow. */
 function Sankey({ q }: { q: ReportQ }) {
   const [hov, setHov] = useState<string | null>(null);
-  const opts = Array.from(new Set([...(q.options ?? []), ...Object.keys(q.pre_distribution), ...Object.keys(q.distribution)]));
+  const used = (k: string) => (q.pre_distribution[k] ?? 0) > 0 || (q.distribution[k] ?? 0) > 0;   // options nobody picked take no room
+  const opts = Array.from(new Set([...(q.options ?? []), ...Object.keys(q.pre_distribution), ...Object.keys(q.distribution)])).filter(used);
   const tot = Math.max(1, ...[Object.values(q.pre_distribution), Object.values(q.distribution)].map((v) => v.reduce((a, b) => a + b, 0)));
   const LG = 18, W = 640, H = Math.max(240, opts.length * (LG + 6) + 20), pad = 10, x0 = 200, x1 = W - 200, gap = 6, ih = H - 2 * pad - gap * (opts.length - 1);
   const pos = (m: Record<string, number>) => { let y = pad; const o: Record<string, { y: number; h: number; used: number }> = {}; for (const k of opts) { const h = ((m[k] ?? 0) / tot) * ih; o[k] = { y, h, used: 0 }; y += h + gap; } return o; };
@@ -37,7 +44,7 @@ function Sankey({ q }: { q: ReportQ }) {
   if (!Object.keys(q.pre_distribution).length) return <div className="xs muted">No first answers were recorded (written surveys answer once).</div>;
   const ly = spreadLabels(opts.map((k) => L[k].y + L[k].h / 2), LG, pad + 6, H - pad - 6);
   const ry = spreadLabels(opts.map((k) => R[k].y + R[k].h / 2), LG, pad + 6, H - pad - 6);
-  const cut = (k: string) => (k.length > 24 ? `${k.slice(0, 23)}…` : k);
+  const cut = (k: string) => { const t = pretty(k); return t.length > 24 ? `${t.slice(0, 23)}…` : t; };
   return (
     <div title={hov ?? SANKEY_HELP}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" data-testid="sankey" onMouseLeave={() => setHov(null)}>
@@ -54,8 +61,8 @@ function Sankey({ q }: { q: ReportQ }) {
           <g key={k}>
             <rect x={x0 - 10} y={L[k].y} width={10} height={Math.max(1, L[k].h)} fill={COL[i % COL.length]} rx={2} />
             <rect x={x1} y={R[k].y} width={10} height={Math.max(1, R[k].h)} fill={COL[i % COL.length]} rx={2} />
-            <text x={x0 - 16} y={ly[i] + 4} textAnchor="end" fontSize={12} style={{ fill: "var(--ink)" }}><title>{k}</title>{cut(k)} · {q.pre_distribution[k] ?? 0}</text>
-            <text x={x1 + 16} y={ry[i] + 4} textAnchor="start" fontSize={12} style={{ fill: "var(--ink)" }}><title>{k}</title>{q.distribution[k] ?? 0} · {cut(k)}</text>
+            <text x={x0 - 16} y={ly[i] + 4} textAnchor="end" fontSize={12} style={{ fill: "var(--ink)" }}><title>{pretty(k)}</title>{cut(k)} · {q.pre_distribution[k] ?? 0}</text>
+            <text x={x1 + 16} y={ry[i] + 4} textAnchor="start" fontSize={12} style={{ fill: "var(--ink)" }}><title>{pretty(k)}</title>{q.distribution[k] ?? 0} · {cut(k)}</text>
           </g>
         ))}
       </svg>
