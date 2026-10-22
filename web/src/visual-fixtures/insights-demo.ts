@@ -28,7 +28,7 @@ export const DEMO_ASK: { q: string; a: AskAnswerView }[] = [
       ],
       sqlLabel: "Show SQL (2 queries · 38 MB scanned)",
       sql: ["SELECT b.product_id, COUNTIF(b.stage IN ('curious','researching','inquiring','deciding','purchased')) / COUNT(*) AS curious_plus\nFROM launch_lens.beliefs_latest b\nJOIN launch_lens.agents_latest a USING (agent_id)\nWHERE a.phone_age_years > 5 AND b.product_id IN ('pulse-5','orbit-s')\nGROUP BY b.product_id;"],
-      caveats: "Caveats: Nova X1 is not launched yet. Orbit S has been live for 4 sim days only. 61% of chats in this window were written out in full; the rest are logged as topics (budget). Simulated data.",
+      caveats: "Caveats: Nova X1 is not launched yet. Orbit S has been live for 4 sim days only. 61% of chats in this window were written out in full; the rest are logged as topics (budget).",
     },
   },
   {

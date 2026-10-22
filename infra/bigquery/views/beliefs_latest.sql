@@ -27,3 +27,5 @@ SELECT
   COALESCE(c.stage, b.stage, 'aware') AS stage,
   GREATEST(COALESCE(b.t, 0), COALESCE(c.t, 0)) AS updated_t
 FROM b FULL OUTER JOIN c ON b.agent_id = c.agent_id AND b.subject = c.subject
+-- retired demo products (config/retired_products.yaml) never reach Insights caveats or answers
+WHERE COALESCE(SUBSTR(COALESCE(b.subject, c.subject), 9), '') NOT IN (SELECT product_id FROM `mirava.retired_products`)

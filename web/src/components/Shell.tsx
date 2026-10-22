@@ -27,6 +27,19 @@ function useTheme(): [string, () => void] {
   return [theme, () => setTheme((t) => (t === "light" ? "dark" : "light"))];
 }
 
+type Budget = { used_usd: number; cap_usd: number; calls_today?: number; tokens_today?: number; llm_backend?: string };
+const kfmt = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
+const usd = (v: number) => `$${v.toFixed(v > 0 && v < 1 ? 3 : 2)}`;
+/** "12.4k calls · 3.1M tok · free": today's model use, since $ alone reads $0 on a free tier. */
+function budgetLabel(b: Budget): string {
+  return `${kfmt(b.calls_today ?? 0)} calls · ${kfmt(b.tokens_today ?? 0)} tok${b.llm_backend === "ica" ? " · free" : ""}`;
+}
+function budgetTip(b: Budget): string {
+  const free = b.llm_backend === "ica" ? " Chat models run on a free tier (cost 0x), so most calls cost $0." : "";
+  const use = b.calls_today != null ? ` Today: ${kfmt(b.calls_today)} model calls, ${kfmt(b.tokens_today ?? 0)} tokens.` : "";
+  return `Background model budget used today: ${usd(b.used_usd)} of $${b.cap_usd}.${use}${free} The money cap applies to paid providers (OpenRouter, Vertex embeddings).`;
+}
+
 /** Top bar (56 px): logo, crumbs, LIVE pill, world clock, budget meter, theme toggle. */
 /** True while the Gemini models are unreachable because the provider credit ran out (polled every 30 s). */
 export function useModelsDown(): boolean {
@@ -69,10 +82,11 @@ export function Header() {
       <div className="row" data-testid="header-clock" style={{ gap: 8 }} title="1 sim day = 1 real hour">
         <span className="clock" style={{ fontSize: 14, whiteSpace: "nowrap" }}>{pending ? "Connecting…" : fmt(t)}</span>
       </div>
-      <div data-testid="budget-meter" style={{ width: 140, whiteSpace: "nowrap" }} title="Background model budget used today">
+      <div data-testid="budget-meter" style={{ width: 140, whiteSpace: "nowrap" }} title={budgetTip(budget)}>
         <div className="row between xs"><span className="muted">Budget today</span>
-          <span className="mono">{pending ? "—" : `$${budget.used_usd.toFixed(budget.used_usd > 0 && budget.used_usd < 1 ? 3 : 2)} / $${budget.cap_usd}`}</span></div>
+          <span className="mono" data-testid="budget-value">{pending ? "—" : `${usd(budget.used_usd)} / $${budget.cap_usd}`}</span></div>
         <div className="bar" style={{ height: 5, marginTop: 3 }}><i style={{ width: `${pending ? 0 : pct}%` }} /></div>
+        {!pending && !isVisualTest && budget.calls_today != null && <div className="mono muted" data-testid="budget-calls" style={{ fontSize: 10, lineHeight: "12px", marginTop: 1 }}>{budgetLabel(budget)}</div>}
       </div>
       <button className="btn sm ghost" data-testid="theme-toggle" title="Toggle theme" onClick={toggle}>◐ Theme</button>
       {/* keeps header geometry identical to the reference, where the mockup-only "Mockup" chip occupies this slot */}

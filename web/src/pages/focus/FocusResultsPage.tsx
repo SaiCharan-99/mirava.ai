@@ -16,35 +16,52 @@ type Doc = Omit<SurveyDoc, "results"> & { results?: Report; counts?: FinalCounts
 
 const fmt = (v: unknown) => (Array.isArray(v) ? v.join(", ") : String(v));
 
+const SANKEY_HELP = "How people's answers changed from before to after the table discussion. Each band is a group of people moving from their first answer (left) to their final answer (right); wider bands = more people.";
+
+/** Spread label centres so neighbours are at least `gap` apart and stay inside [lo, hi]. */
+function spreadLabels(ys: number[], gap: number, lo: number, hi: number): number[] {
+  const out = ys.map((y) => Math.min(hi, Math.max(lo, y)));
+  for (let i = 1; i < out.length; i++) out[i] = Math.max(out[i], out[i - 1] + gap);
+  if (out.length && out[out.length - 1] > hi) { out[out.length - 1] = hi; for (let i = out.length - 2; i >= 0; i--) out[i] = Math.min(out[i], out[i + 1] - gap); }
+  return out;
+}
+
 /** Before (first private answer) → after (final ballot) flow. */
 function Sankey({ q }: { q: ReportQ }) {
+  const [hov, setHov] = useState<string | null>(null);
   const opts = Array.from(new Set([...(q.options ?? []), ...Object.keys(q.pre_distribution), ...Object.keys(q.distribution)]));
   const tot = Math.max(1, ...[Object.values(q.pre_distribution), Object.values(q.distribution)].map((v) => v.reduce((a, b) => a + b, 0)));
-  const W = 640, H = 260, x0 = 185, x1 = W - 185, gap = 8, ih = H - gap * (opts.length - 1);
-  const pos = (m: Record<string, number>) => { let y = 0; const o: Record<string, { y: number; h: number; used: number }> = {}; for (const k of opts) { const h = ((m[k] ?? 0) / tot) * ih; o[k] = { y, h, used: 0 }; y += h + gap; } return o; };
+  const LG = 18, W = 640, H = Math.max(240, opts.length * (LG + 6) + 20), pad = 10, x0 = 200, x1 = W - 200, gap = 6, ih = H - 2 * pad - gap * (opts.length - 1);
+  const pos = (m: Record<string, number>) => { let y = pad; const o: Record<string, { y: number; h: number; used: number }> = {}; for (const k of opts) { const h = ((m[k] ?? 0) / tot) * ih; o[k] = { y, h, used: 0 }; y += h + gap; } return o; };
   const L = pos(q.pre_distribution), R = pos(q.distribution);
   if (!Object.keys(q.pre_distribution).length) return <div className="xs muted">No first answers were recorded (written surveys answer once).</div>;
+  const ly = spreadLabels(opts.map((k) => L[k].y + L[k].h / 2), LG, pad + 6, H - pad - 6);
+  const ry = spreadLabels(opts.map((k) => R[k].y + R[k].h / 2), LG, pad + 6, H - pad - 6);
+  const cut = (k: string) => (k.length > 24 ? `${k.slice(0, 23)}…` : k);
   return (
-    <>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" data-testid="sankey">
+    <div title={hov ?? SANKEY_HELP}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" data-testid="sankey" onMouseLeave={() => setHov(null)}>
+        <title>{SANKEY_HELP}</title>
         {flows(q.shift).map(([a, b, n], i) => {
           if (!L[a] || !R[b]) return null;
           const h = (n / tot) * ih, ya = L[a].y + L[a].used, yb = R[b].y + R[b].used;
           L[a].used += h; R[b].used += h;
-          const m = (x0 + x1) / 2;
-          return <path key={i} d={`M${x0},${ya} C${m},${ya} ${m},${yb} ${x1},${yb} L${x1},${yb + h} C${m},${yb + h} ${m},${ya + h} ${x0},${ya + h} Z`} fill={COL[opts.indexOf(a) % COL.length]} opacity={a === b ? 0.28 : 0.75} />;
+          const m = (x0 + x1) / 2, tip = `${n} ${n === 1 ? "person" : "people"}: ${a} → ${b}`;
+          return <path key={i} data-testid="sankey-band" d={`M${x0},${ya} C${m},${ya} ${m},${yb} ${x1},${yb} L${x1},${yb + h} C${m},${yb + h} ${m},${ya + h} ${x0},${ya + h} Z`}
+            fill={COL[opts.indexOf(a) % COL.length]} opacity={hov === tip ? 0.95 : a === b ? 0.3 : 0.7} onMouseEnter={() => setHov(tip)} style={{ cursor: "pointer" }}><title>{tip}</title></path>;
         })}
         {opts.map((k, i) => (
           <g key={k}>
             <rect x={x0 - 10} y={L[k].y} width={10} height={Math.max(1, L[k].h)} fill={COL[i % COL.length]} rx={2} />
             <rect x={x1} y={R[k].y} width={10} height={Math.max(1, R[k].h)} fill={COL[i % COL.length]} rx={2} />
-            <text x={x0 - 16} y={L[k].y + L[k].h / 2 + 4} textAnchor="end" fontSize={12} style={{ fill: "var(--ink2)" }}>{k.slice(0, 22)} · {q.pre_distribution[k] ?? 0}</text>
-            <text x={x1 + 16} y={R[k].y + R[k].h / 2 + 4} fontSize={12} style={{ fill: "var(--ink2)" }}>{q.distribution[k] ?? 0} · {k.slice(0, 22)}</text>
+            <text x={x0 - 16} y={ly[i] + 4} textAnchor="end" fontSize={12} style={{ fill: "var(--ink)" }}><title>{k}</title>{cut(k)} · {q.pre_distribution[k] ?? 0}</text>
+            <text x={x1 + 16} y={ry[i] + 4} textAnchor="start" fontSize={12} style={{ fill: "var(--ink)" }}><title>{k}</title>{q.distribution[k] ?? 0} · {cut(k)}</text>
           </g>
         ))}
       </svg>
+      <div className="xs" data-testid="sankey-hover" style={{ minHeight: 16, color: hov ? "var(--ink)" : "var(--muted)" }}>{hov ?? "Hover a band to see who moved."}</div>
       <div className="row between xs muted"><span>← before the discussion (private first answer)</span><span>final private ballot →</span></div>
-    </>
+    </div>
   );
 }
 
@@ -178,7 +195,7 @@ export function FocusResultsPage() {
               {q && <><h3 style={{ marginTop: 0 }}>Q{qi + 1}. {q.text}</h3>
                 {(q.type === "single" || q.type === "multi") && <>
                   <div className="grid g2" style={{ alignItems: "start" }}>
-                    <div><div className="xs muted" style={{ marginBottom: 6 }}>How answers moved during the discussion</div><Sankey q={q} /></div>
+                    <div><div className="xs muted" style={{ marginBottom: 6 }} title={SANKEY_HELP}>How answers moved during the discussion ⓘ</div><Sankey q={q} /></div>
                     <div><div className="xs muted" style={{ marginBottom: 6 }}>Who moved whom (from the private ballots' “influenced by”)</div><Network edges={edges} seats={r.seats ?? {}} names={names} /></div>
                   </div>
                   <div className="grid g2" style={{ marginTop: 14, alignItems: "start" }}>

@@ -12,7 +12,8 @@ import {
   type SegmentsData, type SiteRow, type SourcesData,
 } from "../lib/insights";
 import { getJSON } from "../lib/api";
-import { ASK_STARTERS, POLL_TEMPLATES, askLink, interviewPrompts, segmentQuestion, siteQuestion } from "../lib/sampleQuestions";
+import { POLL_PRESETS } from "../lib/presets";
+import { ASK_STARTERS, askLink, interviewPrompts, segmentQuestion, siteQuestion } from "../lib/sampleQuestions";
 import { FocusBuilder } from "./focus/FocusBuilder";
 import { ConversationsTab as ConversationsLive } from "./insights/ConversationsTab";
 
@@ -119,7 +120,7 @@ export function toView(ans: AskAnswer, steps: string[]): AskAnswerView {
   const ymax = bars ? (unit === "%" && top <= 87 ? Math.min(100, Math.max(10, top * 1.15)) : Math.max(unit ? 10 : 4, top * 1.15)) : undefined;
   return {
     steps: steps.map((s) => { const m = s.match(/^(\S+)\s(.*)$/); return [m ? m[1] : s, m ? m[2] : ""] as [string, string]; }),
-    html: mdToHtml(ans.answer_md), bars, unit, ymax: ymax ? Math.ceil(ymax) : undefined, barsNote: bars ? `${ch?.title?.text ?? "Recorded values"} · ${unit ? "percentage" : ch?._unit === "value" ? "value" : "count"} · simulated` : undefined,
+    html: mdToHtml(ans.answer_md), bars, unit, ymax: ymax ? Math.ceil(ymax) : undefined, barsNote: bars ? `${ch?.title?.text ?? "Recorded values"} · ${unit ? "percentage" : ch?._unit === "value" ? "value" : "count"}` : undefined,
     sideHtml: ans.numbers.length ? `<b>Key numbers</b><ul style="margin:6px 0 0;padding-left:18px">${ans.numbers.slice(0, 5).map((n) => `<li>${mdToHtml(n.label)}: <b>${Number.isInteger(n.value) ? n.value.toLocaleString("en-IN") : n.value.toFixed(n.value < 1 ? 3 : 1)}</b></li>`).join("")}</ul>` : "",
     quotes: ans.quotes.map((q) => ({ agent_id: q.agent_id, name: q.name, text: q.text, kind: q.kind ?? "", private: q.private })),
     sql: ans.sql, caveats: ans.caveats.length ? "Caveats: " + ans.caveats.join(" ") : undefined, suggestions: ans.suggestions,
@@ -157,7 +158,7 @@ function AskTab({ names, prodNames }: { names: Names; prodNames: string[] }) {
     <div className="grid g31">
       <div>
         <div className="list" data-testid="ask-thread" style={{ gap: 14 }}>
-          {thread.length === 0 && <div className="answer"><p className="small muted" style={{ margin: 0 }}>Ask a question about the simulated world. Answers come only from logged data: SQL on curated views, semantic search over thoughts and messages, cohorts and likely-buyer segments.</p></div>}
+          {thread.length === 0 && <div className="answer"><p className="small muted" style={{ margin: 0 }}>Ask a question about the world. Answers come only from logged data: SQL on curated views, semantic search over thoughts and messages, cohorts and likely-buyer segments.</p></div>}
           {thread.map((t, i) => (
             <div key={i} className="list" style={{ gap: 14 }}>
               <div className="qbubble">{t.q}</div>
@@ -418,8 +419,8 @@ function PollsTab() {
   const search = typeof window === "undefined" ? "" : window.location.search;
   return (
     <>
-      {!isVisualTest && <div className="sugg" data-testid="poll-templates" style={{ marginBottom: 12 }}><span className="xs muted" style={{ alignSelf: "center" }}>Start from a template:</span>
-        {POLL_TEMPLATES.map((t) => <button key={t} onClick={() => nav(withMode(`/insights/focus?title=${encodeURIComponent(t)}`))}>{t}</button>)}</div>}
+      {!isVisualTest && <div className="sugg" data-testid="poll-templates" style={{ marginBottom: 12 }}><span className="xs muted" style={{ alignSelf: "center" }}>Ready-made polls:</span>
+        {POLL_PRESETS.map((t) => <button key={t.id} onClick={() => nav(withMode(`/insights/focus?preset=${t.id}`))}>{t.label}</button>)}</div>}
       <FocusBuilder key={search} />
     </>
   );
@@ -453,7 +454,7 @@ export function InsightsPage() {
   return (
     <div className="page">
       <PageTitle title="Insights" sub="Ask anything about what the world has seen, thought, said and bought. Answers come only from logged data."
-        right={<><span className="chip">{chip}</span><span className="sim-badge">SIMULATED</span></>} />
+        right={<><span className="chip">{chip}</span></>} />
       <div className="tabs" data-testid="insights-tabs">{ITABS.map(([k, l]) => (
         <button key={k} data-testid={`insights-tab-${k === "focus" ? "polls" : k}`} className={tab === k ? "on" : ""} onClick={() => nav(withMode(`/insights/${k}`))}>{l}</button>
       ))}</div>

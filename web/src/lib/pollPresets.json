@@ -1,0 +1,62 @@
+[
+  {
+    "id": "next-phone",
+    "label": "Next phone choice",
+    "hint": "Which phone people would pick next, and why",
+    "title": "Next phone choice",
+    "topic": "Which phone people plan to buy next and what drives the choice",
+    "use_products": true,
+    "questions": [
+      { "text": "Which of these phones would you most consider for your next purchase?", "type": "single", "option_source": "products", "options": ["Option A", "Option B"], "discuss": true },
+      { "text": "How soon are you likely to replace your current phone?", "type": "single", "options": ["Within a month", "In 1–6 months", "In 6–12 months", "Not this year"], "discuss": false },
+      { "text": "What would most make you switch to a new phone?", "type": "multi", "options": ["Longer battery life", "Better camera", "Lower price", "Faster performance"], "max_select": 2, "discuss": true },
+      { "text": "How likely are you to buy the phone you chose?", "type": "scale", "scale": { "min": 1, "max": 5, "low_label": "Not at all likely", "high_label": "Very likely" }, "discuss": true },
+      { "text": "In a sentence, why that phone?", "type": "open", "discuss": false }
+    ]
+  },
+  {
+    "id": "price-value",
+    "label": "Price & value",
+    "hint": "Whether the price feels fair for what you get",
+    "title": "Price and value",
+    "topic": "How people judge phone prices and value for money",
+    "use_products": true,
+    "questions": [
+      { "text": "Which of these phones feels like the best value for money?", "type": "single", "option_source": "products", "options": ["Option A", "Option B"], "discuss": true },
+      { "text": "What is the most you would spend on your next phone?", "type": "single", "options": ["Under ₹15,000", "₹15,000–25,000", "₹25,000–40,000", "Over ₹40,000"], "discuss": false },
+      { "text": "How fair does the price of the phone you picked feel?", "type": "scale", "scale": { "min": 1, "max": 5, "low_label": "Far too expensive", "high_label": "A great deal" }, "discuss": true },
+      { "text": "Which offers would make you buy sooner?", "type": "multi", "options": ["No-cost EMI", "Exchange bonus", "Bank cashback", "Free accessories"], "max_select": 2, "discuss": true },
+      { "text": "What would make the price feel worth it?", "type": "open", "discuss": false }
+    ]
+  },
+  {
+    "id": "camera-battery",
+    "label": "Camera vs battery",
+    "hint": "Which matters more day to day",
+    "title": "Camera vs battery",
+    "topic": "Trade-off between camera quality and battery life in a phone",
+    "use_products": false,
+    "questions": [
+      { "text": "If you could only improve one thing on your phone, which would it be?", "type": "single", "options": ["Camera", "Battery life", "Both equally", "Neither"], "discuss": true },
+      { "text": "How often does your phone battery run out before the day ends?", "type": "single", "options": ["Almost every day", "A few times a week", "Rarely", "Never"], "discuss": false },
+      { "text": "What do you photograph most?", "type": "multi", "options": ["People and selfies", "Food", "Documents and receipts", "Places and travel"], "max_select": 2, "discuss": false },
+      { "text": "How important is the camera when choosing your next phone?", "type": "scale", "scale": { "min": 1, "max": 5, "low_label": "Not important", "high_label": "Deciding factor" }, "discuss": true },
+      { "text": "How important is battery life when choosing your next phone?", "type": "scale", "scale": { "min": 1, "max": 5, "low_label": "Not important", "high_label": "Deciding factor" }, "discuss": true }
+    ]
+  },
+  {
+    "id": "ads-awareness",
+    "label": "Ads & awareness",
+    "hint": "Which ads people noticed and what stuck",
+    "title": "Ads and awareness",
+    "topic": "Which phone ads people noticed this week and what they remember",
+    "use_products": true,
+    "questions": [
+      { "text": "Which of these phones have you seen advertised recently?", "type": "multi", "option_source": "products", "options": ["Option A", "Option B"], "max_select": 4, "discuss": false },
+      { "text": "Where did you notice phone ads this week?", "type": "multi", "options": ["Hoardings on the street", "Reels on my feed", "Newspaper", "In a store"], "max_select": 3, "discuss": true },
+      { "text": "Did an ad make you curious enough to look the phone up?", "type": "single", "options": ["Yes, I looked it up", "Yes, but I didn't look", "No", "I don't remember"], "discuss": true },
+      { "text": "How much do you trust what phone ads claim?", "type": "scale", "scale": { "min": 1, "max": 5, "low_label": "Not at all", "high_label": "Completely" }, "discuss": true },
+      { "text": "What do you remember from the last phone ad you saw?", "type": "open", "discuss": false }
+    ]
+  }
+]

@@ -66,6 +66,20 @@ export function LineChart({ series, w = 720, h = 230, labels = [], ymax = 100, e
 }
 
 export type VBar = [string, number, string];
+/** Split an x-axis label into at most 2 lines of `max` chars (word-wrapped, ellipsis when longer) so neighbours never overlap. */
+export function axisLines(label: string, max: number): string[] {
+  if (label.length <= max) return [label];
+  const words = label.split(/\s+/), out: string[] = [""];
+  for (const w of words) {
+    const cur = out[out.length - 1];
+    if (!cur) out[out.length - 1] = w;
+    else if ((cur + " " + w).length <= max) out[out.length - 1] = `${cur} ${w}`;
+    else out.push(w);
+  }
+  const lines = out.slice(0, 2).map((l) => (l.length > max ? `${l.slice(0, max - 1)}…` : l));
+  if (out.length > 2 && !lines[1].endsWith("…")) lines[1] = `${lines[1].slice(0, max - 1)}…`;
+  return lines;
+}
 export function VBars({ rows, w = 520, h = 200, ymax = 100, unit = "%" }: { rows: VBar[]; w?: number; h?: number; ymax?: number; unit?: string }) {
   const pl = 30, pb = 34, pt = 10, iw = w - pl - 10, ih = h - pt - pb, bw = (iw / Math.max(1, rows.length)) * 0.56;
   return (
@@ -80,7 +94,8 @@ export function VBars({ rows, w = 520, h = 200, ymax = 100, unit = "%" }: { rows
           <g key={i}>
             <rect x={cx - bw / 2} y={pt + ih - bh} width={bw} height={bh} rx={4} fill={r[2]} />
             <text x={cx} y={pt + ih - bh - 5} fontSize={11} textAnchor="middle" style={{ fill: "var(--ink)", fontWeight: 600 }}>{r[1]}{unit}</text>
-            <text x={cx} y={h - 14} fontSize={11} textAnchor="middle">{r[0]}</text>
+            <text x={cx} y={h - (r[0].length > Math.floor(iw / Math.max(1, rows.length) / 6.2) ? 20 : 14)} fontSize={11} textAnchor="middle"><title>{r[0]}</title>
+              {axisLines(r[0], Math.max(4, Math.floor(iw / Math.max(1, rows.length) / 6.2))).map((ln, k) => <tspan key={k} x={cx} dy={k ? 12 : 0}>{ln}</tspan>)}</text>
           </g>
         );
       })}

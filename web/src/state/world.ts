@@ -36,7 +36,7 @@ export interface WorldStore {
   source: "fixtures" | "live";
   t: number;
   stats: WorldStats;
-  budget: { used_usd: number; cap_usd: number; slowed?: boolean };
+  budget: { used_usd: number; cap_usd: number; slowed?: boolean; calls_today?: number; tokens_today?: number; llm_backend?: string };
   hl: Highlights | null;
   setHighlights: (h: Highlights | null) => void;
   ticker: TickerItem[];

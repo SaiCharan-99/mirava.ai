@@ -43,7 +43,11 @@ export function FocusRoomPage() {
   const [selTable, setSelTable] = useState<string | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   const [showPrivate, setShowPrivate] = useState(true);
-  const [use3d, setUse3d] = useState(false);
+  const [use3d, setUse3dRaw] = useState(() => {
+    if (isVisualTest || !hasWebGL()) return false;
+    try { return localStorage.getItem("ll.room3d") !== "0"; } catch { return true; }
+  });
+  const setUse3d = (f: (v: boolean) => boolean) => setUse3dRaw((v) => { const n = f(v); try { localStorage.setItem("ll.room3d", n ? "1" : "0"); } catch { /* private mode */ } return n; });
   const [, tick] = useState(0);
   const qids = useRef<string[]>([]);
   const selRef = useRef<string | null>(null);

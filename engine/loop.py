@@ -404,10 +404,13 @@ class Engine:
                           "live_viewers": len(self.hub.clients), "slowed": bool(getattr(gs, "slowed", False))}),
               flush=True)
 
-    def budget(self) -> dict[str, float]:
-        """Budget used today (background world) from the governor."""
+    def budget(self) -> dict[str, Any]:
+        """Budget used today (background world) from the governor, plus today's model calls/tokens (free tiers cost $0)."""
+        from shared.llm import usage_today
+        u = usage_today()
         return {"used_usd": round(self.gov.spent_today, 4), "cap_usd": self.s.daily_cap_usd,
-                "slowed": self.gov.slowed, "speed_factor": self.gov.speed_factor}
+                "slowed": self.gov.slowed, "speed_factor": self.gov.speed_factor,
+                "calls_today": u["calls"], "tokens_today": u["tokens"], "llm_backend": self.s.llm_backend}
 
     def healthy(self) -> bool:
         """A tick happened in the last 120 s (or we are paused / waiting for the lease)."""

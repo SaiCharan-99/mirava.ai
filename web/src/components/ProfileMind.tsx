@@ -148,7 +148,7 @@ export function ConversationsTab({ a }: { a: AgentView }) {
   if (source !== "live" && feat && pick !== feat.conversation.id) conv = null;   // fixtures carry one transcript
   return (
     <>
-      <div className="list" data-testid="conversation-list">
+      <div className="list" data-testid="conversation-list" style={{ maxHeight: 300, overflowY: "auto" }}>
         {items.length ? items.map((c) => (
           <div className="item" key={c.id}>
             <button type="button" aria-expanded={pick === c.id} onClick={() => setOpen(pick === c.id ? "" : c.id)}
@@ -160,7 +160,7 @@ export function ConversationsTab({ a }: { a: AgentView }) {
         )) : <div className="item muted small">{source === "live" && !list ? "Loading…" : "No conversations yet."}</div>}
       </div>
       {sel && <div ref={detailRef}>{sel.kind === "unrendered"
-        ? <p className="small muted" data-testid="conversation-summary" style={{ marginTop: 16 }}>{first} and {sel.withName.split(" ")[0]} chatted briefly; only this summary was kept, so there is no word-for-word transcript.</p>
+        ? <p className="small muted" data-testid="conversation-summary" style={{ marginTop: 10 }}>{first} and {sel.withName.split(" ")[0]} chatted briefly about {sel.topics.replace(/^Short chat about /, "").replace(/ · summary only$/, "")}; only this summary was kept (budget), so there is no word-for-word transcript.</p>
         : conv ? <Transcript c={conv} /> : <p className="small muted">{detail ? "The transcript could not be loaded. Close and reopen to retry." : "Loading conversation…"}</p>}</div>}
     </>
   );

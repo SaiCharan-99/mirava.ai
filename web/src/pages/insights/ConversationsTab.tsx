@@ -12,7 +12,7 @@ interface Card { session_id: string; t: number; label: string; kind: string; ren
 interface Person { agent_id: number; name: string | null; age: number | null; occupation: string | null;
   plan: { opening: string | null; share: string[]; kept: string[]; withheld_count: number } | null;
   memory: { text: string | null; importance: number | null } | null; store_thoughts: { text: string }[] }
-interface Detail { session_id: string; kind: string; label: string; place: string; place_xy: { x: number; y: number } | null; products: { id: string; name: string }[];
+interface Detail { session_id: string; kind: string; label: string; place: string; place_xy: { x: number; y: number } | null; products: { id: string; name: string }[]; topics?: string[];
   people: Person[]; messages: { seq: number; speaker: number | string; text: string }[]; spread: { chain: Who[]; days: number } | null }
 
 const KIND_LABEL: Record<string, string> = { social: "Friends & family", stranger: "Strangers", store: "In a store", focus_group: "Focus group" };
@@ -109,7 +109,7 @@ export function ConversationsTab() {
             <h3 style={{ marginTop: 14 }}>What they said</h3>
             <div className="chatcol">{det.messages.map((m) => (
               <div key={m.seq} className={`bub ${m.speaker === A.agent_id ? "l" : "r"}`}><div className="who">{typeof m.speaker === "number" ? name(m.speaker) : "Moderator"}</div>{m.text}</div>))}
-              {!det.messages.length && <div className="xs muted">Not written out: only the topic was logged (budget).</div>}</div>
+              {!det.messages.length && <div className="small muted" data-testid="conv-summary">{det.people.map((p) => (p.name ?? "").split(" ")[0]).join(" and ")} chatted briefly about {(det.topics ?? []).map((t) => String(t).replace(/^product:/, "")).join(", ") || "everyday things"}. Only this summary was kept (budget), so there is no word-for-word transcript.</div>}</div>
             <h3 style={{ marginTop: 14 }}>What each one remembers <span className="privtag">PRIVATE MEMORY</span></h3>
             <div className="list">{det.people.filter((p) => p.memory?.text).map((p) => (
               <div key={p.agent_id} className="row" style={{ gap: 10, alignItems: "flex-start" }}><Av w={p} />

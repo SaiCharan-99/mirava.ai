@@ -8,6 +8,7 @@ import {
   type Channel, type EstimateOut, type Goodie, type QType, type QuestionDef, type When,
 } from "../../lib/survey";
 import { DEFAULT_GOODIES, GOODIE_PRESETS } from "../../lib/focus";
+import { POLL_PRESETS, applyPreset, type PollPreset } from "../../lib/presets";
 import { useWorld } from "../../state/world";
 import { SessionsCol } from "./SessionsCol";
 
@@ -95,6 +96,8 @@ export function FocusBuilder() {
   const [params] = useSearchParams();
   const simT = useWorld((s) => s.t);
   const [title, setTitle] = useState(params.get("title") ?? "");
+  const [topic, setTopic] = useState("");
+  const [presetId, setPresetId] = useState<string | null>(params.get("preset"));
   const [mode, setMode] = useState<"focus_group" | "survey">("focus_group");
   const [productIds, setProductIds] = useState<string[]>(params.get("product") ? [String(params.get("product"))] : []);
   const [qs, setQs] = useState<QuestionDef[]>([newQuestion(1)]);
@@ -116,6 +119,16 @@ export function FocusBuilder() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (!isVisualTest) void getJSON<Prod[]>("/products?active=1").then(setProducts).catch((e: unknown) => setProdErr(String(e))); }, []);
+  const pickPreset = (p: PollPreset, list: Prod[]) => {
+    const live = list.filter((x) => x.status === "live");
+    const f = applyPreset(p, live.length ? live : list);
+    setPresetId(p.id); setTitle(f.title); setTopic(f.topic); setProductIds(f.product_ids); setQs(f.questions); setWarn([]);
+  };
+  useEffect(() => {   // ?preset=… from the Polls tab: apply once the products are known
+    const p = POLL_PRESETS.find((x) => x.id === params.get("preset"));
+    if (p && (products.length || prodErr || isVisualTest)) pickPreset(p, products);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, prodErr]);
   const chosen = useMemo(() => products.filter((p) => productIds.includes(p.product_id)), [products, productIds]);
   const cohort = useMemo(() => {
     const c: string[] = [];
@@ -135,7 +148,7 @@ export function FocusBuilder() {
     return p ? { kind: p.kind, label: p.label, value_inr: p.value_inr } : { kind: "other", label: label.slice(0, 60), value_inr: 300 };
   }), [picked]);
   const incentive = useMemo(() => ({ cash_inr: 0, goodies, note: "" }), [goodies]);
-  const body = () => ({ title, mode, product_id: productIds[0] ?? null, product_ids: productIds, topic: "", questions: cleanQuestions(qs),
+  const body = () => ({ title, mode, product_id: productIds[0] ?? null, product_ids: productIds, topic, questions: cleanQuestions(qs),
     cohort_filter: cohort || null, interest_filter: stage && productIds[0] ? { product_id: productIds[0], min_stage: stage } : null,
     max_participants: maxN, table_size: tableSize, incentive, channels, start_at_t: start.t });
   const check = () => { lintQuestions(cleanQuestions(qs)).then((r) => setWarn(r.warnings)).catch(() => undefined); };
@@ -172,8 +185,18 @@ export function FocusBuilder() {
         <div className="card">
           <div className="row between"><h3 style={{ margin: 0 }}>New poll</h3>
             <div className="seg"><button className={mode === "focus_group" ? "on" : ""} onClick={() => setMode("focus_group")}>Focus group</button><button className={mode === "survey" ? "on" : ""} onClick={() => setMode("survey")}>Survey (written)</button></div></div>
+          <div className="xs muted" style={{ marginTop: 12 }}>Start from a ready-made question set</div>
+          <div className="grid g4" data-testid="poll-presets" style={{ marginTop: 6, gap: 8, gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+            {POLL_PRESETS.map((p) => (
+              <button key={p.id} data-testid={`preset-${p.id}`} className={`item ${presetId === p.id ? "on" : ""}`} aria-pressed={presetId === p.id}
+                style={{ textAlign: "left", cursor: "pointer", borderColor: presetId === p.id ? "var(--teal)" : undefined }} onClick={() => pickPreset(p, products)}>
+                <b className="small">{p.label}</b><div className="xs muted" style={{ marginTop: 2 }}>{p.hint} · {p.questions.length} questions</div>
+              </button>
+            ))}
+          </div>
           <div className="grid g2" style={{ marginTop: 12, gap: 10 }}>
-            <div><label className="xs muted">Title</label><input value={title} placeholder="e.g. Pixel 10a — price & battery" onChange={(e) => setTitle(e.target.value)} /></div>
+            <div><label className="xs muted">Title</label><input value={title} placeholder="e.g. Pixel 10a — price & battery" onChange={(e) => setTitle(e.target.value)} />
+              <label className="xs muted" style={{ display: "block", marginTop: 8 }}>Topic <span className="muted">(optional)</span></label><input value={topic} placeholder="What the moderator introduces" onChange={(e) => setTopic(e.target.value)} /></div>
             <div><label className="xs muted">Products <span className="muted">(optional · up to {MAX_PRODUCTS})</span></label>
               <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                 {products.map((p) => (

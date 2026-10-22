@@ -56,7 +56,7 @@ async function exportCsv(f: PeopleQuery, fixtureRows: Row[] | null): Promise<voi
   const csv = [CSV_COLS, ...lines].map((l) => l.map(esc).join(",")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  a.download = "mirava-agents-simulated.csv";
+  a.download = "mirava-agents.csv";
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -118,7 +118,7 @@ export function PeoplePage() {
   return (
     <div className="page">
       <PageTitle title="People" sub={`All ${fmtInt(agents)} agents in the world · ${!fixtureRows && resp === null ? "…" : old} have phones older than 5 years · ${watch.length} watched`}
-        right={<button className="btn" title="Download the agents matching these filters (simulated data)"
+        right={<button className="btn" title="Download the agents matching these filters"
           onClick={() => void exportCsv(f, fixtureRows)}>Export CSV</button>} />
       <div className="card" data-testid="people-filters" style={{ marginBottom: 14 }}><div className="filters">
         <div style={{ minWidth: 260 }}><label>Search</label><input placeholder="Name or job…" value={qText} onChange={(e) => setQText(e.target.value)} /></div>

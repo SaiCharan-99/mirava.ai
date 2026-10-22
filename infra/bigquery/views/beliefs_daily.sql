@@ -12,4 +12,5 @@ SELECT
   JSON_VALUE(payload, '$.cause_event_id') AS cause_event_id
 FROM `mirava.events_current`
 WHERE kind = 'belief_change'
+  AND COALESCE(SUBSTR(JSON_VALUE(payload, '$.subject'), 9), '') NOT IN (SELECT product_id FROM `mirava.retired_products`)
 QUALIFY ROW_NUMBER() OVER (PARTITION BY agent_id, JSON_VALUE(payload, '$.subject'), day ORDER BY t DESC, event_id DESC) = 1

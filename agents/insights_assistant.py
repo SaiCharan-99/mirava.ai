@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Literal
 
+import yaml
 from pydantic import BaseModel, Field
 
 from insights import faithfulness
@@ -159,6 +160,14 @@ def _p(name: str) -> str:
 def _compact(v: Any, n: int = 3500) -> str:
     s = json.dumps(v, default=str, ensure_ascii=False)
     return s if len(s) <= n else s[:n] + " …(truncated)"
+
+
+def _retired_ids() -> set[str]:
+    """Retired product ids/names (config/retired_products.yaml), never mentioned in answers or caveats."""
+    try:
+        return {str(x) for x in (yaml.safe_load(Path("config/retired_products.yaml").read_text()) or {}).get("retired", [])}
+    except OSError:
+        return set()
 
 
 class Assistant:
@@ -307,7 +316,8 @@ class Assistant:
         ans["charts"] = [chart_option(c) if "series" in c and "xAxis" not in c else c for c in ans.get("charts", [])]
         ans = self._only_active(ans)
         ans.setdefault("caveats", [])
-        ans["caveats"] = [*ans["caveats"], f"Simulated data{(' · ' + self.window) if self.window else ''}."]
+        if self.window:
+            ans["caveats"] = [*ans["caveats"], f"Data window: {self.window}."]
         ans["faithful"] = not faithfulness.check(ans, self.tools.ledger)
         ans["cost_usd"] = round(self.cost_usd, 5)
         yield {"step": "Checked numbers and quotes against the data"}
@@ -318,10 +328,12 @@ class Assistant:
         if not self.products:
             return ans
         active = {p["product_id"] for p in self.products} | {p.get("name", "") for p in self.products}
-        known = self.known_ids - active
+        known = (self.known_ids | _retired_ids()) - active
 
         def stale(text: str) -> bool:
             return any(k and k in text for k in known)
+
+        ans["caveats"] = [c for c in ans.get("caveats", []) if not stale(str(c))]
 
         ans["numbers"] = [n for n in ans.get("numbers", []) if not stale(str(n.get("label", "")))]
         ans["charts"] = [c for c in ans.get("charts", []) if not stale(json.dumps(c, default=str))]
@@ -507,7 +519,7 @@ class Assistant:
         sugg = [s for t in topics for s in FOLLOW_UPS.get(t, [])]
         sugg = [s for s in dict.fromkeys(sugg) if s != q.strip()][:3] or [s for s in STARTER_QUESTIONS if s != q.strip()][:3]
         return {"answer_md": md, "numbers": nums[:8], "charts": charts[:1], "quotes": quotes[:4], "sql": [],
-                "caveats": ["Small simulated samples; differences of a few agents are noise.",
+                "caveats": ["Small samples; differences of a few agents are noise.",
                             "Offline mode: deterministic template answer (no model)."],
                 "suggestions": sugg}
 

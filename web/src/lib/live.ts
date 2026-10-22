@@ -10,7 +10,7 @@ export interface LiveCounts {
 export interface LiveFunnelRow { aware: number; curious_plus: number; purchased: number }
 export interface LiveCampaign { ends_t: number; active: boolean }
 export interface LiveStats {
-  t: number; counts: LiveCounts; budget?: { used_usd: number; cap_usd: number; slowed?: boolean }; awareness?: Record<string, number>;
+  t: number; counts: LiveCounts; budget?: { used_usd: number; cap_usd: number; slowed?: boolean; calls_today?: number; tokens_today?: number; llm_backend?: string }; awareness?: Record<string, number>;
   funnel?: Record<string, LiveFunnelRow>; campaigns?: Record<string, LiveCampaign>;
 }
 export type LiveEvt = { k: string; a?: number; b?: number; text?: string; product?: string | null; [key: string]: unknown };

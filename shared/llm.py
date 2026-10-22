@@ -171,6 +171,24 @@ def fit_dim(vec: list[float], dim: int) -> list[float]:
     return [x / n for x in v]
 
 
+_USAGE: dict[str, Any] = {"day": "", "calls": 0, "tokens": 0}
+
+
+def usage_today() -> dict[str, int]:
+    """Model calls and tokens (non-cached) made by this process today (UTC), whatever they cost."""
+    if _USAGE["day"] != time.strftime("%Y-%m-%d", time.gmtime()):
+        return {"calls": 0, "tokens": 0}
+    return {"calls": int(_USAGE["calls"]), "tokens": int(_USAGE["tokens"])}
+
+
+def _count_usage(u: Usage) -> None:
+    d = time.strftime("%Y-%m-%d", time.gmtime())
+    if _USAGE["day"] != d:
+        _USAGE.update(day=d, calls=0, tokens=0)
+    _USAGE["calls"] += 1
+    _USAGE["tokens"] += int(u.prompt_tokens) + int(getattr(u, "completion_tokens", 0) or 0)
+
+
 class _CachingClient:
     """Shared cache + cost bookkeeping for all backends."""
 
@@ -182,6 +200,8 @@ class _CachingClient:
     def _record(self, purpose: str, model: str, priority_class: str, res: LLMResult) -> None:
         rec = CostRecord(purpose, model, priority_class, res.usage, res.cached)
         self.costs.append(rec)
+        if not res.cached:
+            _count_usage(res.usage)
         if self._on_cost:
             self._on_cost(rec)
 
