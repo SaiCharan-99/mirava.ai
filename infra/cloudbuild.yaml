@@ -24,7 +24,7 @@ steps:
            "--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID",
            "--region=${_REGION}", "--service-account=${_API_SA}@$PROJECT_ID.iam.gserviceaccount.com",
            "--set-secrets=OPENROUTER_API_KEY=openrouter-api-key:latest,OPENROUTER_API_KEY_FALLBACK=openrouter-api-key-fallback:latest,ICA_API_KEY=ica-api-key:latest",
-           "--set-env-vars=ENV=cloud,LLM_BACKEND=ica,ICA_PRICE_PER_M=0:0,ICA_MAX_CONCURRENT=2,DECISION_BACKEND=openrouter,BQ_BACKEND=bigquery,BQ_DATASET=mirava,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=${_REGION},INTERACTIVE_CAP_USD=10,ENGINE_URL=${_ENGINE_URL},GCS_BUCKET_WORLDS=$PROJECT_ID-mirava-worlds,GCS_BUCKET_UPLOADS=$PROJECT_ID-mirava-uploads,MODEL_ARMOR_ENABLED=true,MODEL_ARMOR_TEMPLATE=projects/$PROJECT_ID/locations/${_REGION}/templates/mirava-screen",
+           "--set-env-vars=ENV=cloud,LLM_BACKEND=ica,ICA_MODEL_ID=gemma-4-26b-a4b-it,ICA_PRICE_PER_M=0:0,ICA_MAX_CONCURRENT=2,DECISION_BACKEND=openrouter,BQ_BACKEND=bigquery,BQ_DATASET=mirava,GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=${_REGION},INTERACTIVE_CAP_USD=10,ENGINE_URL=${_ENGINE_URL},GCS_BUCKET_WORLDS=$PROJECT_ID-mirava-worlds,GCS_BUCKET_UPLOADS=$PROJECT_ID-mirava-uploads,MODEL_ARMOR_ENABLED=true,MODEL_ARMOR_TEMPLATE=projects/$PROJECT_ID/locations/${_REGION}/templates/mirava-screen",
            "--allow-unauthenticated", "--min-instances=0", "--max-instances=3", "--concurrency=8", "--memory=1Gi"]
   - id: web-build
     name: node:20
